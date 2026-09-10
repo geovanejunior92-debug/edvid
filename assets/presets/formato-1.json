@@ -1,0 +1,125 @@
+{
+  "_preset": "TELA DIVIDIDA FORMATO 1 — @drgeovanejunior",
+  "_uso": "Copiar este arquivo para <edit>/remotion/public/edit-data.json e preencher SÓ os campos marcados com PREENCHER. Todo o resto são valores fixos do formato: não re-derivar, não 'melhorar', não perguntar. Aprovado em 2026-08-17 no vídeo da tireoide.",
+  "_varia_por_video": [
+    "durationSec = fim da fala + duração do encerramento",
+    "hookStacked.lines = a frase de capa, quebrada em 4 linhas (ver referência)",
+    "splitInserts = as janelas de B-roll (tempos + clipes + matte por janela)",
+    "transitions = derivado das janelas (entrada 'corte' + saída 'saida')",
+    "outro.startSec = logo após o fim da fala"
+  ],
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "durationSec": "PREENCHER",
+  "camera": {
+    "enabled": true,
+    "zooms": [
+      1.14,
+      1.2,
+      1.12,
+      1.22
+    ],
+    "pushIn": 0.04,
+    "targetX": 0.5,
+    "targetY": 0.4
+  },
+  "hook": {
+    "enabled": false
+  },
+  "hookStacked": {
+    "enabled": true,
+    "endSec": 4.0,
+    "offsetY": 0.3,
+    "offsetYEnd": 0.155,
+    "slideStartSec": 1.0,
+    "slideDurSec": 0.9,
+    "color": "#ffffff",
+    "lines": [
+      {
+        "text": "PREENCHER — 1 a 2 palavras de impacto",
+        "style": 0,
+        "size": 112
+      },
+      {
+        "text": "PREENCHER — conectivo, menor",
+        "style": 1,
+        "size": 66
+      },
+      {
+        "text": "PREENCHER — a palavra-chave",
+        "style": 2,
+        "size": 112,
+        "color": "#3b82f6"
+      },
+      {
+        "text": "PREENCHER — fecho",
+        "style": 3,
+        "size": 92
+      }
+    ]
+  },
+  "logo": {
+    "enabled": true,
+    "src": "brand/logo-transparente.png",
+    "endSec": 4.0,
+    "width": 520,
+    "bottom": 120
+  },
+  "captions": {
+    "enabled": true,
+    "style": "stacked",
+    "fontSize": 76,
+    "maxWords": 3,
+    "safeWidth": 720,
+    "paddingBottom": 420,
+    "stackedOffsetY": 0.3,
+    "fontScale": 0.92,
+    "accent": "#3b82f6",
+    "pencilColor": "#3b82f6",
+    "windows": []
+  },
+  "_splitInserts_modelo": {
+    "kind": "video",
+    "fit": "cover",
+    "bandH": 508,
+    "layout": "top",
+    "focusY": 560,
+    "_zoomPulse_ciclo": [
+      1.0,
+      1.07,
+      0.95,
+      1.05,
+      0.97,
+      1.08,
+      0.96,
+      1.06,
+      0.98,
+      1.05,
+      1.04
+    ],
+    "_regra": "bandH 508 + SEAM_BLEND 100 = 608 = altura natural de um 16:9 em 1080 de largura. É isso que faz a costura ser a borda inferior do próprio clipe, sem sombra. Mexer em bandH obriga a recalcular focusY.",
+    "_primeira_janela": "nunca antes de 4s — só depois que a capa some"
+  },
+  "splitInserts": "PREENCHER",
+  "transitions": "PREENCHER — {at: start, variant: 'corte'} em cada janela + {at: end, variant: 'saida', intensity: 0.85} onde a faixa realmente sai (janelas coladas não levam saída entre elas)",
+  "inserts": [],
+  "behind": [],
+  "behindVideos": [],
+  "soundtrack": {
+    "enabled": true,
+    "file": "trilha.mp3",
+    "volume": 0.07,
+    "_regra": "trilha.mp3 PRECISA existir em public/ — o render morre com 404 se enabled:true e o arquivo faltar. Sem trilha nova, reusar a do projeto anterior do canal ou pôr enabled:false."
+  },
+  "outro": {
+    "enabled": true,
+    "startSec": "PREENCHER",
+    "durationSec": 2.6,
+    "lines": [
+      "Dr. Geovane Júnior",
+      "CRM - PE 28037 / RQE 13075"
+    ],
+    "bg": "#071d33"
+  }
+}

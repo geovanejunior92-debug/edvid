@@ -1,0 +1,61 @@
+{
+  "_nota": "Termos que a transcrição automática erra com frequência nos vídeos do Dr. Geovane. Chave = grafia correta; valor = formas erradas já vistas em legenda entregue. O gate do review_final procura essas formas nas legendas e reprova antes do envio. Acrescentar aqui toda vez que um erro novo aparecer — foi assim que 'Dozenpich' (2026-08-19) e 'mongeiro' (2026-08-20) viraram teste.",
+  "Mounjaro": [
+    "mongeiro",
+    "monjaro",
+    "moujaro",
+    "manjaro",
+    "mounjaru",
+    "monjar",
+    "monjá",
+    "mounjar"
+  ],
+  "Ozempic": [
+    "ozempique",
+    "dozenpich",
+    "ozenpic",
+    "o zempic",
+    "azempic"
+  ],
+  "tirzepatida": [
+    "tirzepatide",
+    "terzepatida",
+    "tirze patida"
+  ],
+  "semaglutida": [
+    "semaglutide",
+    "sema glutida",
+    "semaglutina"
+  ],
+  "levotiroxina": [
+    "levo tiroxina",
+    "levotiroxine"
+  ],
+  "hipotireoidismo": [
+    "hipotiroidismo",
+    "hipo tireoidismo"
+  ],
+  "GLP-1": [
+    "glp1",
+    "gl p 1",
+    "gelepe um",
+    "lp1",
+    "lp-1",
+    "naso de lp1",
+    "a naso de lp1",
+    "análises de lp1"
+  ],
+  "esteatose": [
+    "estatose",
+    "esteatoze"
+  ],
+  "insuficiência": [
+    "insuficiencia",
+    "insulficiência"
+  ],
+  "análogos": [
+    "análises",
+    "a naso",
+    "naso"
+  ]
+}
