@@ -21,6 +21,10 @@ dependencies = [
     # downloads a Whisper model plus a per-language wav2vec2 alignment model on
     # first run. That weight is the price of a keyless install.
     "whisperx",
+    # Parakeet TDT 0.6B v3 em ONNX: transcricao ~16-21x tempo real contra ~1x do
+    # whisperx (medido 2026-09-10 em 60 min de aula). O whisperx FICA como
+    # fallback — ele da borda de palavra mais precisa; o parakeet da velocidade.
+    "sherpa-onnx",
     # Editing from a URL (ingest_url.py). A dependency and not a system package
     # on purpose: as an "optional" brew/winget install nobody had it, so the
     # feature looked broken to anyone who pasted a link. In the venv it is always
