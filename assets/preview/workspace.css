@@ -83,3 +83,11 @@ body.workspace-editor {
 .source-clip { flex: 1 0 110px; max-width: 220px; min-height: 56px; padding: 10px; border: 1px solid #8b471e; border-radius: 9px; background: #2a1c13; color: var(--text); font: inherit; font-size: 12px; overflow-wrap: anywhere; cursor: pointer; }
 .source-clip.active { border-color: var(--orange); background: #503018; }
 @media(max-width:1100px) { .source-stage { display: flex; flex-direction: column-reverse; } .source-stage video { max-height: 46vh; } }
+.note-editor { width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; }
+.note-media-controls { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.note-media-controls label { display: block; margin: 4px 0; }
+.note-media-controls select, .note-media-controls input { width: 100%; padding: 10px; border: 1px solid var(--stroke); border-radius: 8px; font: inherit; color: var(--text); background: #0c141c; }
+.note-media-controls p, #noteAssetStatus { color: var(--dim); font-size: 11px; line-height: 1.5; }
+.note-media-controls [hidden] { display: none; }
+.note-media-controls { margin-bottom: 12px; }
+.note-media-controls a { color: #58d1d3; text-underline-offset: 3px; }

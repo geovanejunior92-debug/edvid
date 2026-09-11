@@ -1454,7 +1454,7 @@ function toggleMark() {
     return;
   }
   S.pendingIn = null;
-  const note = { id: `n${Date.now()}`, start, end, text: '' };
+  const note = { id: `n${Date.now()}`, start, end, text: '', phase: S.tab === 2 ? 2 : 1 };
   S.notes.push(note);
   S.notes.sort((a, b) => a.start - b.start);
   renderNotes();
@@ -1467,6 +1467,7 @@ function openNoteEditor(id, isNew) {
   S.editingNote = id;
   $('noteRange').textContent = `${fmt(n.start)} → ${fmt(n.end)}`;
   $('noteText').value = n.text || '';
+  window.noteMediaControls.load(n.media);
   $('noteDelete').classList.toggle('hidden', !!isNew);
   // centred over the timeline (where the user's eyes are), then clamped so a
   // short timeline panel cannot push the editor off-screen
@@ -2230,7 +2231,9 @@ $('setupGo').addEventListener('click', async () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if ((await res.json()).ok) {
+  const savedResult = await res.json();
+  if (!res.ok || !savedResult.ok) { toast(savedResult.error || 'Não foi possível salvar os ajustes', 4000); return; }
+  if (savedResult.ok) {
     S.savedPending = true;
     renderSetup();
     refreshHeader();
@@ -2697,8 +2700,12 @@ $('laneNotes').addEventListener('click', (e) => {
 $('noteOk').addEventListener('click', () => {
   const n = S.notes.find((x) => x.id === S.editingNote);
   if (n) {
+    let media;
+    try { media = window.noteMediaControls.read(); }
+    catch (error) { toast(error.message, 3000); return; }
     n.text = $('noteText').value.trim();
     if (!n.text) { toast('Escreva o ajuste desejado', 2000); return; }
+    n.media = media;
   }
   S.editingNote = null;
   $('noteEditor').classList.add('hidden');
@@ -2781,8 +2788,9 @@ $('btnSave').addEventListener('click', async () => {
       end: +n.end.toFixed(3),
       renderedStart: +draftToRendered(n.start).toFixed(3),
       renderedEnd: +draftToRendered(n.end).toFixed(3),
-      phase: S.tab === 2 ? 2 : 1,
+      phase: n.phase || (S.tab === 2 ? 2 : 1),
       text: n.text,
+      ...(n.media ? {media: {...n.media}} : {}),
     }));
   }
   if (S.textCuts.length) {
@@ -2802,7 +2810,9 @@ $('btnSave').addEventListener('click', async () => {
     payload.imageChanged = true;
   }
   const res = await fetch('api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if ((await res.json()).ok) {
+  const savedResult = await res.json();
+  if (!res.ok || !savedResult.ok) { toast(savedResult.error || 'Não foi possível salvar os ajustes', 4000); return; }
+  if (savedResult.ok) {
     S.savedPending = true;
     S.notes = [];
     S.pendingIn = null;

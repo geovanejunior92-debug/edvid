@@ -279,6 +279,19 @@
     <span class="note-range" id="noteRange">0:00 → 0:00</span>
     <button id="noteClose" class="btn ghost small" title="Fechar">✕</button>
   </div>
+  <div class="note-media-controls">
+    <label for="noteMediaKind">Conteúdo deste intervalo</label>
+    <select id="noteMediaKind"><option value="note">Ajuste por texto</option><option value="image">Imagem por IA</option><option value="video">Clipe por IA</option><option value="file">Arquivo do projeto</option></select>
+    <div id="noteLayoutField" hidden><label for="noteMediaLayout">Enquadramento</label><select id="noteMediaLayout"><option value="fullscreen">Tela cheia</option><option value="split">Tela dividida</option></select></div>
+    <div id="noteFileField" hidden>
+      <button id="noteBrowseAssets" class="btn ghost small" type="button">Buscar arquivos do projeto</button>
+      <select id="noteAssetList" aria-label="Arquivos disponíveis"><option value="">Selecione um arquivo</option></select>
+      <span id="noteAssetStatus" role="status"></span>
+      <label for="noteMediaFile">Caminho relativo à pasta do projeto</label><input id="noteMediaFile" placeholder="assets/cena.mp4">
+    </div>
+    <div id="noteProviderField" hidden><label for="noteMediaProvider">Provedor de geração</label><select id="noteMediaProvider"><option value="shutterstock">Shutterstock · pelo site</option><option value="agent">Astra ou Claude escolhe</option></select><a href="https://www.shutterstock.com/ai-video-generator/" target="_blank" rel="noopener noreferrer">Abrir gerador de vídeo da Shutterstock</a></div>
+    <p id="noteGenerationHint" hidden>Salva um pedido de geração para Astra ou Claude. O agente confirma provedor e custo antes de gerar; esta marcação não gasta créditos.</p>
+  </div>
   <textarea id="noteText" rows="3" placeholder="O que precisa mudar nesse trecho? Ex.: “corta o gaguejo”, “insere o logo da Amazon”, “abaixa a trilha”."></textarea>
   <div class="note-actions">
     <button id="noteDelete" class="btn ghost small hidden">remover</button>
@@ -291,6 +304,7 @@
 <div id="toast" class="toast hidden"></div>
 
 <script src="/assets/workspace.js"></script>
+<script src="/assets/media-controls.js"></script>
 <script src="/assets/app.js"></script>
 <script src="/assets/requests.js"></script>
 </body>

@@ -26,3 +26,11 @@ Selecione vídeos, use as setas para ordenar e abra **Ver sequência original**.
 Para roteiro, importe `.txt`/`.md` ou cole o texto. Para corte com IA, descreva a intenção. **Salvar pedido para o agente** grava um arquivo independente em `edit/agent-requests/`, com fontes na ordem escolhida e status `pending`. A UI mostra o histórico e consulta respostas a cada 15 segundos. Volte à conversa do agente e peça a execução dos pedidos do projeto. Não há modelo ou sessão de chat em execução dentro do preview; não confundir salvamento com início automático do corte. O agente consulta os pedidos conforme o SKILL.md compartilhado e registra a resposta somente após trabalhar.
 
 Esta parte exige um novo processo de `preview_server.py` (novas rotas); atualizar apenas a aba de um servidor antigo não carrega código Python novo. As mudanças anteriores apenas de CSS/JS não tinham essa exigência.
+
+## Mídia por intervalo
+
+No corte carregado, marque IN e OUT com **M** ou pelo botão da timeline. A marcação permite ajuste por texto, imagem por IA, clipe por IA e arquivo do projeto, em tela cheia ou dividida. A busca de arquivos lista mídia na raiz do projeto e nas pastas assets/ e edit/assets/, sem mover arquivos. Salve a marcação e depois **Salvar ajustes**.
+
+O arquivo preview_edits.json preserva start/end, renderedStart/renderedEnd e phase; `notes[].media` contém kind, layout, file (local) ou provider (IA), e status=requested. O agente deve ler estes campos junto da descrição, respeitar o intervalo e os gates existentes, gerar/buscar/importar a mídia e renderizar pelo fluxo Remotion. A marcação não altera o vídeo antes disso. A fase é capturada ao criar a nota, mesmo se o usuário mudar de aba antes de salvar.
+
+Shutterstock está disponível como provedor preferido no pedido, com link para https://www.shutterstock.com/ai-video-generator/. O conector disponível ao agente expõe busca de stock, não geração; não há API de geração Shutterstock integrada ao botão. O usuário informou em 11/09/2026 que seu plano é ilimitado para banco e geração de imagens/vídeos; informação declarada, sem inspeção da assinatura nesta entrega. Não presumir cobrança adicional nem adquirir complemento sem confirmação.

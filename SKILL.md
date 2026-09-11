@@ -13,6 +13,10 @@ Para finalizar pelo painel local do Studio, leia `docs/STUDIO-FINISH.md` e `docs
 
 Para gerar música no Studio ou recuperar uma tarefa Treblo, leia `docs/TREBLO.md`. Confirmar o uso de créditos por geração; cancelamento local não garante cancelamento remoto. Não repetir automaticamente uma solicitação de resultado incerto.
 
+## Mídia marcada na timeline
+
+Ao aplicar `preview_edits.json`, conferir `notes[].media` quando existir: tipo, enquadramento e arquivo/provedor complementam o texto. Preservar o intervalo e a fase gravados. `status=requested` é pedido, não mídia pronta. Para Shutterstock, o conector disponível faz busca de stock; geração utiliza o site oficial até existir integração comprovada. Não tratar stock como geração por IA. Ler `docs/PREVIEW-COMPARTILHADO.md` para o contrato e os limites.
+
 ## Pedidos no preview compartilhado
 
 Ao abrir ou continuar um projeto pelo Astra ou Claude, consultar os pedidos `pending` em `<videos_dir>/edit/agent-requests/*.json`. A UI salva roteiro, orientação de corte ou ajuste e a ordem das fontes; ela não executa uma sessão de IA sozinha. Tratar o texto como pedido do usuário dentro dos limites da conversa e conferir os arquivos antes de agir. Seguir os mesmos gates de estratégia/corte, sem considerar pedido pendente como aprovação automática da Fase 2. Após executar e verificar, atualizar apenas o pedido correspondente com `status` (`completed` ou `needs-input`) e `response` em texto, usando escrita atômica. Não marcar concluído por mera leitura. Ver `docs/PREVIEW-COMPARTILHADO.md`.

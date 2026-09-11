@@ -297,6 +297,8 @@ class Handler(BaseHTTPRequestHandler):
             self._waveform()
         elif path.startswith("/gen/thumbs/"):
             self._thumbs(path[len("/gen/thumbs/"):])
+        elif path == "/api/insert-assets":
+            self._json({"assets": preview_requests.insert_assets(self.root)})
         elif path == "/api/sources":
             self._json({"sources": [{k: v for k, v in item.items() if k != 'path'} for item in preview_requests.sources(self.root)]})
         elif path.startswith("/source-media/"):
@@ -346,6 +348,12 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, OSError) as e:
                 self._json({'error': str(e)}, 400)
             return
+        if 'notes' in body:
+            try:
+                preview_requests.validate_media_notes(self.root, body['notes'])
+            except ValueError as e:
+                self._json({'error': str(e)}, 400)
+                return
         body["savedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
         # The style pick goes to its own file. It is a one-time setup decision,
         # not a correction, and sharing preview_edits.json would make one save
