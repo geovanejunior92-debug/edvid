@@ -5,6 +5,10 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 
 # Edvid
 
+## Aplicativo próprio Edvid Studio
+
+Para abrir, compilar ou diagnosticar o aplicativo local do usuário, leia `desktop/README.md`. O Studio usa este mesmo motor compartilhado entre Astra e Claude; não confundir com o aplicativo comercial Edvid. A versão inicial oferece apenas as operações expostas e testadas na interface. Não declarar paridade integral nem geração/publicação integrada. Antes de alterar um projeto, conferir a fila do Studio e evitar dois escritores simultâneos.
+
 ## Principle
 
 1. **Two phases, one gate between them.** PHASE 1 is the clean cut + color grade; PHASE 2 is captions, graphics and images. (Hard Rule 1 enforces the gate.)

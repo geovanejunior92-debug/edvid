@@ -71,3 +71,8 @@ templates/
 .processing/
 .recovery/
 recovered/
+
+# Local Studio development and generated knowledge graph
+.venv
+graphify-out/
+.superpowers/

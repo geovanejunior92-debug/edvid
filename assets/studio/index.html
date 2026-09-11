@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Edvid Studio</title>
+  <link rel="stylesheet" href="/studio/style.css">
+</head>
+<body>
+  <header>
+    <div><span class="mark">E</span><strong>Edvid Studio</strong></div>
+    <span id="service-status" class="status">serviço local</span>
+  </header>
+  <main>
+    <aside>
+      <section>
+        <h1>Projetos</h1>
+        <form id="project-form">
+          <label for="project-path">Pasta do projeto</label>
+          <div class="field-row">
+            <input id="project-path" name="path" autocomplete="off" placeholder="/Users/…/Meu projeto" required>
+            <button id="choose-folder" class="secondary picker" type="button" hidden>Escolher</button>
+          </div>
+          <label class="check"><input id="create-project" type="checkbox"> Criar a pasta se ela ainda não existir</label>
+          <button type="submit">Adicionar à biblioteca</button>
+        </form>
+        <p id="project-error" class="error" role="alert"></p>
+      </section>
+      <nav id="project-list" aria-label="Biblioteca de projetos"></nav>
+    </aside>
+    <section class="workspace">
+      <div id="empty" class="empty">
+        <h2>Escolha um projeto</h2>
+        <p>Abra uma pasta da biblioteca para ver o editor e preparar arquivos de preview.</p>
+      </div>
+      <div id="project" hidden>
+        <div class="project-head">
+          <div><span class="eyebrow">Projeto selecionado</span><h2 id="project-name"></h2><p id="project-location"></p></div>
+          <button id="open-editor" type="button">Abrir editor</button>
+        </div>
+        <div class="job-create">
+          <div class="grow">
+            <label for="media-path">Arquivo de vídeo dentro do projeto</label>
+            <div class="field-row">
+              <input id="media-path" autocomplete="off" placeholder="/caminho/do/projeto/video.mp4">
+              <button id="choose-media" class="secondary picker" type="button" hidden>Escolher</button>
+            </div>
+          </div>
+          <button id="probe" class="secondary" type="button">Analisar</button>
+          <button id="proxy" type="button">Criar proxy</button>
+        </div>
+        <p id="job-error" class="error" role="alert"></p>
+        <video id="raw-preview" controls hidden></video>
+      </div>
+      <div class="lower-grid">
+        <section><div class="section-title"><h2>Fila</h2><span>uma tarefa por vez</span></div><div id="jobs"></div></section>
+        <section><div class="section-title"><h2>Diagnóstico</h2><button id="refresh" class="text-button" type="button">Atualizar</button></div><dl id="diagnostics"></dl></section>
+      </div>
+    </section>
+  </main>
+  <script>history.replaceState(null, "", location.pathname);</script>
+  <script src="/studio/app.js"></script>
+</body>
+</html>
