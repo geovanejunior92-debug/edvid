@@ -25,6 +25,7 @@
     <div id="stateMessage" class="state-message"></div>
   </div>
   <div class="head-actions">
+    <a id="projectsLink" class="btn ghost" href="/projects">Projetos</a>
     <span id="dirtyPill" class="pill hidden"><b id="dirtyCount">0</b> ajuste(s) não salvo(s)</span>
     <span id="savedPill" class="pill saved hidden">✓ Salvo — peça ao chat para aplicar as alterações. *Se estiver editando no Claude, a aplicação é automática; basta aguardar.</span>
     <button id="btnDiscard" class="btn ghost hidden">Descartar</button>
@@ -40,12 +41,27 @@
   <button class="tab" data-tab="2"><span class="tab-num">FASE 2</span> Visual</button>
 </nav>
 
+<aside class="project-status glass">
+  <p id="projectHealth" role="status" aria-live="polite">Conectando ao projeto…</p>
+  <form id="recoveryPanel" class="hidden" onsubmit="return false">
+    <label for="recoverField">Arquivo ausente</label>
+    <select id="recoverField"></select>
+    <button id="findMedia" class="btn ghost" type="button">Buscar vídeos na biblioteca</button>
+    <label for="mediaCandidates">Vídeos encontrados</label>
+    <select id="mediaCandidates"><option value="">Selecione um vídeo existente</option></select>
+    <label for="recoverPath">Arquivo escolhido (ou cole o caminho de outro vídeo)</label>
+    <input id="recoverPath" placeholder="/Users/seu-nome/Videos/projeto/cut.mp4" autocomplete="off">
+    <p class="recovery-help">Escolha o corte já editado ou a versão final, dentro da pasta de projetos. O vídeo bruto não substitui o corte. Uma cópia será criada e o original ficará intacto.</p>
+    <button id="recoverButton" class="btn primary" type="button">Localizar e recuperar</button>
+    <span id="recoverResult" role="status" aria-live="polite"></span>
+  </form>
+</aside>
 <main>
   <section id="emptyState" class="empty glass hidden">
     <div class="empty-inner">
       <div class="empty-icon">🎬</div>
-      <h2>Aguardando o primeiro render</h2>
-      <p>Assim que o <code>cut.mp4</code> existir, a timeline aparece aqui sozinha.</p>
+      <h2 id="emptyTitle">Abrindo projeto</h2>
+      <p id="emptyMessage">Verificando os arquivos da edição.</p>
     </div>
   </section>
 

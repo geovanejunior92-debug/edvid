@@ -134,6 +134,15 @@ Interface:
 
 ## Preview interface (standard — launch it at the start of every edit)
 
+**Project library and recovery:** pass `--library <videos-library>` to `preview_server.py` to list existing projects at `/projects`. The default library is the active edit directory's parent. Each project opens at `/p/<id>/`; those URLs keep simultaneous tabs independent. Never copy another project's state over the active project to switch projects.
+
+The preview distinguishes a first cut that does not exist yet, missing media in an existing project, processing and failures. Use "Buscar vídeos na biblioteca" to select an existing cut or final video, then "Localizar e recuperar". Recovery copies that file into the edit directory and backs up state; it does not edit or move the selected original. Never substitute raw footage for an approved cut. Recovery does not rebuild lost media. Pending edits and running work must finish before recovery.
+
+`render.py` and the transcription CLI publish operation reports in `<edit>/.processing/`. The preview reports live work and interrupted/failed workers; it does not invent a percentage or start processing just because the user saved. The existing phase-approval rules and host-specific save/apply flow below still apply.
+
+Transcription cache entries are validated by source SHA-256, resolved source path, language and model. A changed source or parameters, an invalid JSON cache or a legacy entry without this identity triggers regeneration; unchanged inputs reuse the result. Failed transcription preserves the previous JSON. Never manually delete cached transcripts to force routine refresh.
+
+
 Every edit session gets the same interactive interface in the user's preview panel: a video-editor timeline (video track with filmstrip + audio track with waveform), a live playhead that scrubs the render in real time, per-take trim handles and take removal, and — from Phase 2 — caption and insert tracks. The layout follows the source aspect on its own: **vertical** sources put a tall player on the right with the transport + timeline on the left; **horizontal** sources keep the player stacked above the timeline. Dark glass, Edvid brand. **Never build a UI per session** — feed the standard interface with `state.json`. Editing `assets/preview/` is allowed only when the user asks for a UI change; it is shared, so the improvement lands for every project.
 
 **Launch (do this when a session starts, even before the first render — the UI shows a waiting state):**
@@ -260,6 +269,8 @@ Then delete `preview_edits.json` and update `state.json`.
 # PHASE 1 — Clean cut + color grade
 
 Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for approval. No text, no graphics.
+
+0. **Repositório em dia — antes de qualquer coisa (2026-09-10).** Esta skill vive em `~/.agents/skills/edvid`, que É um repo git privado (`origin` = `geovanejunior92-debug/edvid`). Claude e Codex trabalham na MESMA instalação e os dois empurram, então a cópia local pode estar velha. Antes da transcrição: `git -C <skill> fetch origin main` e `git -C <skill> status -sb`. Atrás do remoto → `git pull --ff-only origin main` e só então comece. **Divergiu** (commit local E remoto) → **pare e avise**; nunca mescle no escuro no meio de uma edição. Editar com uma versão velha custa calibragem já aprovada — altura da capa, costura da tela dividida, som de encerramento, tudo mora neste arquivo. E **ao terminar qualquer alteração NA SKILL, commite e empurre na mesma sessão**: pedido permanente do usuário, não pergunte de novo.
 
 1. **Inventory.** URL source? `ingest_url.py` first (`--section` when only a range of a longform video matters). `ffprobe` every source. `transcribe_batch.py` (or `transcribe.py`) → `pack_transcripts.py` → read `takes_packed.md`. Note dimensions/orientation and whether it looks flat/LOG. Material you can't picture from the transcript → `watch_video.py` for a one-Read visual survey.
 2. **Pre-scan** `takes_packed.md` for verbal slips, mis-speaks, and dead-air-stretched words (Whisper stretches a word's end across silence — verify long "phrases" against `speech_regions.py`/waveform before trusting them). **Then run `voice_levels.py` on every source** — the transcript is level-blind, so an inaudible passage reads exactly like a normal one. Anything it flags is a decision to make BEFORE the EDL: boost it with `gain_db`, or cut the take entirely. **Depois do `voice_levels.py`, rode `audio_clean.py` em cada fonte e `check_audio.py` em seguida (2026-09-01)** — é o padrão, não opção: toda Fase 1 renderiza com `--audio-clean` a menos que o gate falhe (aí renderize sem, e diga por quê). Material com música, trânsito ou outra voz por baixo: `--denoise demucs`. O A/B (`<stem>.ab.wav`) vai junto com o corte no gate, em uma linha: "áudio limpo, ouça o A/B se quiser conferir".

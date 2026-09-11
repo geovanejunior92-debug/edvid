@@ -13,9 +13,9 @@
    and the needle jumped to 0, since the gutter sits left of t=0.
 */
 /* Edvid preview — interactive editing timeline.
- * IMMUTABLE app: everything per-session comes from /api/state (state.json,
- * edl.json) + /gen/* (waveform, thumbs) + /media/* (video, captions, edit-data).
- * User adjustments are POSTed to /api/save → <edit>/preview_edits.json and
+ * IMMUTABLE app: everything per-session comes from api/state (state.json,
+ * edl.json) + gen/* (waveform, thumbs) + media/* (video, captions, edit-data).
+ * User adjustments are POSTed to api/save → <edit>/preview_edits.json and
  * applied by the skill (which re-renders and bumps state).
  *
  * Three interaction rules worth knowing before editing this file:
@@ -947,9 +947,9 @@ function refreshHeader() {
 // ---------- data loading ----------
 async function poll() {
   try {
-    const res = await fetch('/api/state');
+    const res = await fetch('api/state');
     const data = await res.json();
-    const sig = JSON.stringify([data.state, data.edl, data.mtimes, data.videoDuration]);
+    const sig = JSON.stringify([data.state, data.edl, data.mtimes, data.videoDuration, data.health]);
     if (sig !== S.lastSig) {
       const hadEdits = dirtyCount() > 0;
       if (!hadEdits) {
@@ -959,7 +959,10 @@ async function poll() {
         toast('Novo estado disponível — salve ou descarte seus ajustes para atualizar', 4000);
       }
     }
-  } catch (e) { /* server restarting; keep polling */ }
+  } catch (e) {
+    $('projectHealth').textContent = 'Sem conexão com o editor. Tentando reconectar…';
+    $('projectHealth').dataset.status = 'error';
+  }
   // Outside the signature check on purpose. The LUT thumbnails appear on disk
   // WITHOUT any state/edl/mtime change (helpers/lut_thumbs.py just writes into
   // .preview_cache/), so hanging this off applyState() means it never runs in
@@ -976,7 +979,23 @@ async function applyState(data) {
   S.savedPending = !!data.hasPendingEdits;
 
   $('projectName').textContent = S.state.project || 'Edvid';
-  $('stateMessage').textContent = S.state.message || '';
+  const h = data.health || {};
+  $('stateMessage').textContent = h.code === 'ready' ? (S.state.message || h.message) : (h.message || '');
+  $('projectHealth').textContent = h.message || '';
+  $('projectHealth').dataset.status = h.code || 'waiting';
+  $('emptyTitle').textContent = h.code === 'missing' ? 'Vamos localizar seu vídeo' : h.code === 'error' ? 'Este projeto precisa de atenção' : h.code === 'processing' ? 'Processamento em andamento' : 'Seu corte ainda não está disponível';
+  $('emptyMessage').textContent = h.message || '';
+  $('recoveryPanel').classList.toggle('hidden', !h.missing?.length);
+  const field = $('recoverField');
+  const previous = field.value;
+  field.replaceChildren();
+  for (const item of h.missing || []) {
+    const option = document.createElement('option');
+    option.value = item.field;
+    option.textContent = (item.field === 'video' ? 'Corte' : 'Versão final') + ': ' + item.name;
+    field.append(option);
+  }
+  if ([...field.options].some(o => o.value === previous)) field.value = previous;
 
   const ranges = (data.edl && data.edl.ranges) || [];
   // J-cut timeline, written by render.py. Under a J-cut the picture of every take
@@ -1028,13 +1047,13 @@ async function applyState(data) {
   if ((S.state.phase || 1) >= 2) {
     if (S.state.captions) {
       try {
-        const caps = await (await fetch(`/media/${S.state.captions}?v=${Date.now()}`)).json();
+        const caps = await (await fetch(`media/${S.state.captions}?v=${Date.now()}`)).json();
         S.captions = groupCaptions(caps);
       } catch (e) { /* absent yet */ }
     }
     if (S.state.editData) {
       try {
-        S.editData = await (await fetch(`/media/${S.state.editData}?v=${Date.now()}`)).json();
+        S.editData = await (await fetch(`media/${S.state.editData}?v=${Date.now()}`)).json();
         buildInsertsDraft();
       } catch (e) { /* absent yet */ }
     }
@@ -1046,7 +1065,7 @@ async function applyState(data) {
   await loadWords();
   S.diag = null;
   try {
-    const r = await fetch(`/media/diagnostics.json?v=${Date.now()}`);
+    const r = await fetch(`media/diagnostics.json?v=${Date.now()}`);
     if (r.ok) S.diag = await r.json();
   } catch (e) { /* sem diagnóstico ainda */ }
 
@@ -1064,7 +1083,7 @@ async function applyState(data) {
 async function loadWords() {
   const rel = S.state.transcript || 'transcripts/cut.json';
   try {
-    const r = await fetch(`/media/${rel}?v=${Date.now()}`);
+    const r = await fetch(`media/${rel}?v=${Date.now()}`);
     if (r.ok) {
       const d = await r.json();
       S.words = (d.words || []).filter((w) => (w.type || 'word') === 'word' && (w.text || w.word))
@@ -1074,7 +1093,7 @@ async function loadWords() {
   } catch (e) { /* segue para a reserva */ }
   if (S.state.captions) {
     try {
-      const caps = await (await fetch(`/media/${S.state.captions}?v=${Date.now()}`)).json();
+      const caps = await (await fetch(`media/${S.state.captions}?v=${Date.now()}`)).json();
       S.words = (Array.isArray(caps) ? caps : []).filter((c) => c.text && c.text.trim())
         .map((c) => ({ text: c.text.trim(), start: c.startMs / 1000, end: c.endMs / 1000 }));
     } catch (e) { /* nada */ }
@@ -1085,7 +1104,7 @@ async function loadWords() {
 // when it exists, so captions/inserts are visible. Keeps the playback position.
 function updateVideoSrc() {
   const rel = (S.tab === 2 && S.state.finalVideo) ? S.state.finalVideo : (S.state.video || 'cut.mp4');
-  const vsrc = `/media/${rel}?v=${(S.mtimes && (S.mtimes.finalVideo || S.mtimes.video)) || 0}`;
+  const vsrc = `media/${rel}?v=${(S.mtimes && (S.mtimes.finalVideo || S.mtimes.video)) || 0}`;
   if (video.dataset.src === vsrc) return;
   const t = video.currentTime;
   const wasPlaying = !video.paused && !video.ended;
@@ -1154,13 +1173,13 @@ function buildInsertsDraft() {
 
 async function loadWave() {
   try {
-    S.wave = await (await fetch('/gen/waveform.json')).json();
+    S.wave = await (await fetch('gen/waveform.json')).json();
     drawWave();
   } catch (e) { S.wave = null; }
 }
 async function loadThumbsMeta() {
   try {
-    const meta = await (await fetch('/gen/thumbs/meta.json')).json();
+    const meta = await (await fetch('gen/thumbs/meta.json')).json();
     S.thumbCount = meta.count || 0;
     renderClips();
   } catch (e) { S.thumbCount = 0; }
@@ -1319,7 +1338,7 @@ function renderDiag() {
       if (a.ab) {
         const au = el('audio', '', s);
         au.controls = true; au.preload = 'none';
-        au.src = `/media/${a.ab}`;
+        au.src = `media/${a.ab}`;
         au.title = '8 s original → 8 s limpo';
       }
     }
@@ -1700,7 +1719,7 @@ const LUT_THUMBS = {
   tick: 0,
   probing: false,
   MAX_ATTEMPTS: 6,
-  src(id) { return `/media/.preview_cache/luts/${id}.jpg`; },
+  src(id) { return `media/.preview_cache/luts/${id}.jpg`; },
   fail(id, img) {
     img.style.background = '#1a1c22'; // flat swatch, not the broken-image icon
     img.removeAttribute('src');
@@ -1752,7 +1771,7 @@ function renderLutGrid() {
     const card = el('div', `lut-thumb${l.id === current ? ' on' : ''}`, host);
     card.dataset.id = l.id;
     const img = document.createElement('img');
-    img.src = `/media/.preview_cache/luts/${l.id}.jpg`;
+    img.src = `media/.preview_cache/luts/${l.id}.jpg`;
     // alt vazio de propósito: enquanto lut_thumbs.py ainda não escreveu a
     // miniatura, o navegador mostrava o ícone de imagem quebrada + o nome —
     // parecia picker quebrado (relato de 2026-09-01). Com alt vazio fica só a
@@ -2206,7 +2225,7 @@ $('setupGo').addEventListener('click', async () => {
       .map((e) => e.name),
     note: S.style.note,
   };
-  const res = await fetch('/api/save', {
+  const res = await fetch('api/save', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -2251,7 +2270,7 @@ function renderClips() {
         const idx = first + k + 1; // ffmpeg %04d is 1-based
         if (idx > S.thumbCount) break;
         const img = el('img', '', strip);
-        img.src = `/gen/thumbs/${String(idx).padStart(4, '0')}.jpg`;
+        img.src = `gen/thumbs/${String(idx).padStart(4, '0')}.jpg`;
         img.style.width = `${THUMB_EVERY * S.pps}px`;
         img.style.objectFit = 'cover';
       }
@@ -2782,7 +2801,7 @@ $('btnSave').addEventListener('click', async () => {
     payload.image = { ...S.style.image };
     payload.imageChanged = true;
   }
-  const res = await fetch('/api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const res = await fetch('api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   if ((await res.json()).ok) {
     S.savedPending = true;
     S.notes = [];
@@ -2860,3 +2879,36 @@ rafLoop();
 if (document.fonts && document.fonts.ready) {
   document.fonts.ready.then(() => { if (S.style) renderSetup(); });
 }
+
+$('recoverButton').addEventListener('click', async () => {
+  const button = $('recoverButton');
+  button.disabled = true;
+  $('recoverResult').textContent = 'Validando e copiando o vídeo…';
+  try {
+    const response = await fetch('api/relink', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({field: $('recoverField').value, path: $('recoverPath').value})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Não foi possível recuperar o vídeo.');
+    $('recoverResult').textContent = 'Vídeo recuperado. O arquivo original foi preservado.';
+    S.lastSig = null;
+  } catch (error) { $('recoverResult').textContent = error.message; }
+  finally { button.disabled = false; }
+});
+$('projectsLink').addEventListener('click', event => {
+  if (dirtyCount() && !window.confirm('Há ajustes não salvos. Sair deste projeto?')) event.preventDefault();
+});
+
+$('findMedia').addEventListener('click', async () => {
+  $('findMedia').disabled = true;
+  $('recoverResult').textContent = 'Procurando vídeos na biblioteca…';
+  try {
+    const response = await fetch('api/media-candidates');
+    if (!response.ok) throw new Error('Não foi possível procurar os vídeos.');
+    const data = await response.json();
+    $('mediaCandidates').replaceChildren(new Option('Selecione um vídeo existente', ''));
+    for (const file of data.files) $('mediaCandidates').add(new Option(file.name, file.path));
+    $('recoverResult').textContent = data.files.length ? `${data.files.length} vídeo(s) encontrado(s). Escolha a versão correspondente.` : 'Nenhum vídeo encontrado nesta biblioteca.';
+  } catch (e) { $('recoverResult').textContent = e.message; }
+  finally { $('findMedia').disabled = false; }
+});
+$('mediaCandidates').addEventListener('change', () => { $('recoverPath').value = $('mediaCandidates').value; });

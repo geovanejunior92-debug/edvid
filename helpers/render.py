@@ -21,6 +21,7 @@ Usage:
 
 from __future__ import annotations
 
+from project_health import operation
 import argparse
 import json
 import math
@@ -1494,151 +1495,152 @@ def main() -> None:
     edit_dir = edl_path.parent
     out_path = args.output.resolve()
 
-    # Frame-align every range BEFORE extraction, and persist it: the EDL, the
-    # preview timeline and segments.json must all describe the same cut as the
-    # rendered file, or anything that has to land on a cut lands beside it.
-    first_src = next(iter(edl.get("sources", {}).values()), None)
-    target_fps = int(shortform_target_fps(Path(first_src))) if (first_src and not args.keep_resolution) else 30
-    snapped = snap_ranges_to_frames(edl, target_fps)
-    if snapped:
-        edl["total_duration_s"] = round(sum(r["end"] - r["start"] for r in edl["ranges"]), 3)
-        edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
-        print(f"  frame-aligned {snapped} range(s) to {target_fps}fps → edl.json updated")
-
-    if args.draft:
-        base_name = "base_draft.mp4"
-    elif args.preview:
-        base_name = "base_preview.mp4"
-    else:
-        base_name = "base.mp4"
-    base_path = edit_dir / base_name
-
-    audio_clean = True if args.audio_clean else (edl.get("audio_clean") or False)
-    stabilize = True if args.stabilize else (edl.get("stabilize") or False)
-
-    jcut = None if args.no_jcut else jcut_settings(edl, target_fps)
-    if jcut and any(abs(float(r.get("speed", 1) or 1) - 1) > 1e-3 or float(r.get("freeze_end", 0) or 0) > 0
-                    for r in edl["ranges"]):
-        print("  range com speed/freeze_end → J-cut desligado neste render "
-              "(o overlap do J-cut assume duração de saída = duração do range)")
-        jcut = None
-    if jcut:
-        if args.jcut_lead is not None:
-            jcut["lead_frames"] = max(0, args.jcut_lead)
-        if args.jcut_tail_trim is not None:
-            jcut["tail_trim_frames"] = max(0, args.jcut_tail_trim)
-
-    if jcut:
-        # 1+2. Picture and sound extracted from different ranges, then overlapped.
-        plan = extract_and_assemble_jcut(
-            edl, edit_dir, jcut, preview=args.preview, draft=args.draft,
-            keep_resolution=args.keep_resolution, jobs=args.jobs,
-            base_path=base_path, audio_clean=audio_clean, stabilize=stabilize,
-        )
-        # Persist the real output timeline: everything downstream (preview
-        # timeline, segments.json, Phase-2 overlays) indexes off these, and the
-        # J-cut timeline is SHORTER than the sum of the ranges.
-        edl["jcut_timeline"] = [
-            {"beat": p["range"].get("beat"), "source": p["range"]["source"],
-             "video_start_in_output": round(p["v_off"], 6),
-             "video_duration": round(p["v_out"] - p["v_in"], 6),
-             "audio_start_in_output": round(p["a_off"], 6),
-             "audio_duration": round(p["a_out"] - p["a_in"], 6),
-             "tail_trim_frames": p["tail_frames"]}
-            for p in plan
-        ]
-        edl["total_duration_s"] = round(
-            sum(p["v_out"] - p["v_in"] for p in plan), 3)
-        edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
-        print(f"  timeline J-cut: {edl['total_duration_s']}s → edl.json atualizado")
-    else:
-        # 1. Extract per-segment (auto-grade per range if EDL grade is "auto")
-        segment_paths = extract_all_segments(
-            edl, edit_dir, preview=args.preview, draft=args.draft,
-            keep_resolution=args.keep_resolution, jobs=args.jobs,
-            audio_clean=audio_clean, stabilize=stabilize,
-        )
-        # 2. Concat → base
-        concat_segments(segment_paths, base_path, edit_dir)
-        # Drop any J-cut timeline from a PREVIOUS render — and persist that, or the
-        # stale block outlives the render it described and everything downstream
-        # (verify_cut, the preview lanes, Phase-2 offsets) keeps trusting it.
-        effective = round(sum((r["end"] - r["start"]) / float(r.get("speed", 1) or 1)
-                              + float(r.get("freeze_end", 0) or 0) for r in edl["ranges"]), 3)
-        changed = edl.pop("jcut_timeline", None) is not None
-        if abs(effective - float(edl.get("total_duration_s") or 0)) > 0.002:
-            edl["total_duration_s"] = effective
-            changed = True
-        if changed:
+    with operation(edit_dir, "Renderizando vídeo"):
+        # Frame-align every range BEFORE extraction, and persist it: the EDL, the
+        # preview timeline and segments.json must all describe the same cut as the
+        # rendered file, or anything that has to land on a cut lands beside it.
+        first_src = next(iter(edl.get("sources", {}).values()), None)
+        target_fps = int(shortform_target_fps(Path(first_src))) if (first_src and not args.keep_resolution) else 30
+        snapped = snap_ranges_to_frames(edl, target_fps)
+        if snapped:
+            edl["total_duration_s"] = round(sum(r["end"] - r["start"] for r in edl["ranges"]), 3)
             edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
-            print(f"  timeline: {effective}s → edl.json atualizado")
+            print(f"  frame-aligned {snapped} range(s) to {target_fps}fps → edl.json updated")
 
-    # 3. Subtitles: build if requested, resolve final path
-    subs_path: Path | None = None
-    if not args.no_subtitles:
-        if args.build_subtitles:
-            subs_path = edit_dir / "master.srt"
-            build_master_srt(edl, edit_dir, subs_path)
-        elif edl.get("subtitles"):
-            subs_path = resolve_path(edl["subtitles"], edit_dir)
-            if not subs_path.exists():
-                print(f"warning: subtitles path in EDL does not exist: {subs_path}")
-                subs_path = None
-
-    # 4. Composite (overlays + subtitles LAST) → intermediate (pre-loudnorm) path
-    overlays = edl.get("overlays") or []
-    # CLI takes precedence; otherwise read the EDL's own "voice_master" field,
-    # which can be `true` (default chain/targets) or `"premium"` (the style
-    # package: PREMIUM_VOICE_MASTER_CHAIN + -16 LUFS/-3dBTP loudnorm).
-    vm_mode = args.voice_master
-    if vm_mode is None:
-        edl_vm = edl.get("voice_master")
-        vm_mode = "premium" if edl_vm == "premium" else ("default" if edl_vm else None)
-    voice_master = vm_mode is not None
-    li, ltp, llra = (
-        (PREMIUM_LOUDNORM_I, PREMIUM_LOUDNORM_TP, LOUDNORM_LRA)
-        if vm_mode == "premium"
-        else (LOUDNORM_I, LOUDNORM_TP, LOUDNORM_LRA)
-    )
-
-    if args.no_loudnorm and not voice_master:
-        # Composite directly to final output
-        build_final_composite(base_path, overlays, subs_path, out_path, edit_dir)
-    else:
-        # Composite to a temp file, then optional voice master → optional loudnorm.
-        tmp_composite = out_path.with_suffix(".prenorm.mp4")
-        build_final_composite(base_path, overlays, subs_path, tmp_composite, edit_dir)
-        temps = [tmp_composite]
-
-        norm_input = tmp_composite
-        if voice_master:
-            chain = PREMIUM_VOICE_MASTER_CHAIN if vm_mode == "premium" else VOICE_MASTER_CHAIN
-            print(f"voice mastering ({vm_mode}) → EQ + compression + de-ess (spoken word)")
-            voiced = out_path.with_suffix(".voiced.mp4")
-            apply_voice_master(tmp_composite, voiced, chain=chain)
-            norm_input = voiced
-            temps.append(voiced)
-
-        if args.no_loudnorm:
-            # Voice master requested but loudnorm skipped: the mastered file is final.
-            norm_input.replace(out_path)
-            temps = [t for t in temps if t != norm_input]
+        if args.draft:
+            base_name = "base_draft.mp4"
+        elif args.preview:
+            base_name = "base_preview.mp4"
         else:
-            print(f"loudness normalization → {li} LUFS / {ltp} dBTP / LRA {llra}")
-            apply_loudnorm_two_pass(norm_input, out_path, preview=args.draft, target_i=li, target_tp=ltp, target_lra=llra)
+            base_name = "base.mp4"
+        base_path = edit_dir / base_name
 
-        for t in temps:
-            t.unlink(missing_ok=True)
+        audio_clean = True if args.audio_clean else (edl.get("audio_clean") or False)
+        stabilize = True if args.stabilize else (edl.get("stabilize") or False)
 
-    size_mb = out_path.stat().st_size / (1024 * 1024)
-    print(f"\ndone: {out_path} ({size_mb:.1f} MB)")
+        jcut = None if args.no_jcut else jcut_settings(edl, target_fps)
+        if jcut and any(abs(float(r.get("speed", 1) or 1) - 1) > 1e-3 or float(r.get("freeze_end", 0) or 0) > 0
+                        for r in edl["ranges"]):
+            print("  range com speed/freeze_end → J-cut desligado neste render "
+                  "(o overlap do J-cut assume duração de saída = duração do range)")
+            jcut = None
+        if jcut:
+            if args.jcut_lead is not None:
+                jcut["lead_frames"] = max(0, args.jcut_lead)
+            if args.jcut_tail_trim is not None:
+                jcut["tail_trim_frames"] = max(0, args.jcut_tail_trim)
 
-    if args.export_premium:
-        premium_path = out_path.with_suffix(".premium.mp4")
-        print(f"\npremium export → {premium_path.name}")
-        export_premium(out_path, premium_path)
-        premium_mb = premium_path.stat().st_size / (1024 * 1024)
-        print(f"done: {premium_path} ({premium_mb:.1f} MB)")
+        if jcut:
+            # 1+2. Picture and sound extracted from different ranges, then overlapped.
+            plan = extract_and_assemble_jcut(
+                edl, edit_dir, jcut, preview=args.preview, draft=args.draft,
+                keep_resolution=args.keep_resolution, jobs=args.jobs,
+                base_path=base_path, audio_clean=audio_clean, stabilize=stabilize,
+            )
+            # Persist the real output timeline: everything downstream (preview
+            # timeline, segments.json, Phase-2 overlays) indexes off these, and the
+            # J-cut timeline is SHORTER than the sum of the ranges.
+            edl["jcut_timeline"] = [
+                {"beat": p["range"].get("beat"), "source": p["range"]["source"],
+                 "video_start_in_output": round(p["v_off"], 6),
+                 "video_duration": round(p["v_out"] - p["v_in"], 6),
+                 "audio_start_in_output": round(p["a_off"], 6),
+                 "audio_duration": round(p["a_out"] - p["a_in"], 6),
+                 "tail_trim_frames": p["tail_frames"]}
+                for p in plan
+            ]
+            edl["total_duration_s"] = round(
+                sum(p["v_out"] - p["v_in"] for p in plan), 3)
+            edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
+            print(f"  timeline J-cut: {edl['total_duration_s']}s → edl.json atualizado")
+        else:
+            # 1. Extract per-segment (auto-grade per range if EDL grade is "auto")
+            segment_paths = extract_all_segments(
+                edl, edit_dir, preview=args.preview, draft=args.draft,
+                keep_resolution=args.keep_resolution, jobs=args.jobs,
+                audio_clean=audio_clean, stabilize=stabilize,
+            )
+            # 2. Concat → base
+            concat_segments(segment_paths, base_path, edit_dir)
+            # Drop any J-cut timeline from a PREVIOUS render — and persist that, or the
+            # stale block outlives the render it described and everything downstream
+            # (verify_cut, the preview lanes, Phase-2 offsets) keeps trusting it.
+            effective = round(sum((r["end"] - r["start"]) / float(r.get("speed", 1) or 1)
+                                  + float(r.get("freeze_end", 0) or 0) for r in edl["ranges"]), 3)
+            changed = edl.pop("jcut_timeline", None) is not None
+            if abs(effective - float(edl.get("total_duration_s") or 0)) > 0.002:
+                edl["total_duration_s"] = effective
+                changed = True
+            if changed:
+                edl_path.write_text(json.dumps(edl, ensure_ascii=False, indent=2))
+                print(f"  timeline: {effective}s → edl.json atualizado")
+
+        # 3. Subtitles: build if requested, resolve final path
+        subs_path: Path | None = None
+        if not args.no_subtitles:
+            if args.build_subtitles:
+                subs_path = edit_dir / "master.srt"
+                build_master_srt(edl, edit_dir, subs_path)
+            elif edl.get("subtitles"):
+                subs_path = resolve_path(edl["subtitles"], edit_dir)
+                if not subs_path.exists():
+                    print(f"warning: subtitles path in EDL does not exist: {subs_path}")
+                    subs_path = None
+
+        # 4. Composite (overlays + subtitles LAST) → intermediate (pre-loudnorm) path
+        overlays = edl.get("overlays") or []
+        # CLI takes precedence; otherwise read the EDL's own "voice_master" field,
+        # which can be `true` (default chain/targets) or `"premium"` (the style
+        # package: PREMIUM_VOICE_MASTER_CHAIN + -16 LUFS/-3dBTP loudnorm).
+        vm_mode = args.voice_master
+        if vm_mode is None:
+            edl_vm = edl.get("voice_master")
+            vm_mode = "premium" if edl_vm == "premium" else ("default" if edl_vm else None)
+        voice_master = vm_mode is not None
+        li, ltp, llra = (
+            (PREMIUM_LOUDNORM_I, PREMIUM_LOUDNORM_TP, LOUDNORM_LRA)
+            if vm_mode == "premium"
+            else (LOUDNORM_I, LOUDNORM_TP, LOUDNORM_LRA)
+        )
+
+        if args.no_loudnorm and not voice_master:
+            # Composite directly to final output
+            build_final_composite(base_path, overlays, subs_path, out_path, edit_dir)
+        else:
+            # Composite to a temp file, then optional voice master → optional loudnorm.
+            tmp_composite = out_path.with_suffix(".prenorm.mp4")
+            build_final_composite(base_path, overlays, subs_path, tmp_composite, edit_dir)
+            temps = [tmp_composite]
+
+            norm_input = tmp_composite
+            if voice_master:
+                chain = PREMIUM_VOICE_MASTER_CHAIN if vm_mode == "premium" else VOICE_MASTER_CHAIN
+                print(f"voice mastering ({vm_mode}) → EQ + compression + de-ess (spoken word)")
+                voiced = out_path.with_suffix(".voiced.mp4")
+                apply_voice_master(tmp_composite, voiced, chain=chain)
+                norm_input = voiced
+                temps.append(voiced)
+
+            if args.no_loudnorm:
+                # Voice master requested but loudnorm skipped: the mastered file is final.
+                norm_input.replace(out_path)
+                temps = [t for t in temps if t != norm_input]
+            else:
+                print(f"loudness normalization → {li} LUFS / {ltp} dBTP / LRA {llra}")
+                apply_loudnorm_two_pass(norm_input, out_path, preview=args.draft, target_i=li, target_tp=ltp, target_lra=llra)
+
+            for t in temps:
+                t.unlink(missing_ok=True)
+
+        size_mb = out_path.stat().st_size / (1024 * 1024)
+        print(f"\ndone: {out_path} ({size_mb:.1f} MB)")
+
+        if args.export_premium:
+            premium_path = out_path.with_suffix(".premium.mp4")
+            print(f"\npremium export → {premium_path.name}")
+            export_premium(out_path, premium_path)
+            premium_mb = premium_path.stat().st_size / (1024 * 1024)
+            print(f"done: {premium_path} ({premium_mb:.1f} MB)")
 
 
 if __name__ == "__main__":

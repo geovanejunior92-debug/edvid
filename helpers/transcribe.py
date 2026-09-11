@@ -36,7 +36,7 @@ speaker_id}, where type is "word" or "spacing":
     without times; they inherit a neighbouring boundary rather than being
     dropped, so no word ever disappears from the transcript.
 
-Cached: if the output file already exists, the work is skipped.
+Cache validated against source content, language and model; legacy entries are rebuilt once.
 
 Usage:
     uv run python helpers/transcribe.py <video_path>
@@ -47,6 +47,9 @@ Usage:
 
 from __future__ import annotations
 
+from project_health import operation
+import hashlib
+import os
 import argparse
 import json
 import subprocess
@@ -239,10 +242,21 @@ def transcribe_one(
     transcripts_dir.mkdir(parents=True, exist_ok=True)
     out_path = transcripts_dir / f"{video.stem}.json"
 
+    digest = hashlib.sha256()
+    with video.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    cache_key = {"version": 1, "source": str(video.resolve()),
+                 "sha256": digest.hexdigest(), "language": language, "model": model}
     if out_path.exists():
-        if verbose:
-            print(f"cached: {out_path.name}")
-        return out_path
+        try:
+            cached = json.loads(out_path.read_text())
+            if isinstance(cached, dict) and cached.get("_cache") == cache_key:
+                if verbose:
+                    print(f"cached: {out_path.name}")
+                return out_path
+        except (ValueError, OSError):
+            pass
 
     duration = _probe_duration(video)
     if verbose:
@@ -266,7 +280,12 @@ def transcribe_one(
         "words": _to_scribe_words(raw.get("words", [])),
         "_transcription_backend": tag,
     }
-    out_path.write_text(json.dumps(payload, indent=2))
+    payload["_cache"] = cache_key
+    # Atomic replacement keeps a failed write from destroying the previous transcript.
+    with tempfile.NamedTemporaryFile(mode="w", dir=transcripts_dir, delete=False) as tmp:
+        json.dump(payload, tmp, indent=2)
+        tmp_name = tmp.name
+    os.replace(tmp_name, out_path)
     dt = time.time() - t0
 
     if verbose:
@@ -311,13 +330,15 @@ def main() -> None:
     if not video.exists():
         sys.exit(f"video not found: {video}")
 
-    transcribe_one(
-        video=video,
-        edit_dir=(args.edit_dir or (video.parent / "edit")).resolve(),
-        language=args.language,
-        num_speakers=args.num_speakers,
-        model=args.model,
-    )
+    edit_dir = (args.edit_dir or (video.parent / "edit")).resolve()
+    with operation(edit_dir, "Transcrevendo vídeo"):
+        transcribe_one(
+            video=video,
+            edit_dir=(args.edit_dir or (video.parent / "edit")).resolve(),
+            language=args.language,
+            num_speakers=args.num_speakers,
+            model=args.model,
+        )
 
 
 if __name__ == "__main__":

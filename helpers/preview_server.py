@@ -26,6 +26,11 @@ Usage:
 """
 from __future__ import annotations
 
+import hashlib
+import os
+import uuid
+from urllib.parse import urlsplit
+from project_health import health, write_json
 import argparse
 import array
 import json
@@ -62,14 +67,13 @@ _thumb_state: dict[str, float] = {}  # video path -> mtime generated
 
 
 def probe_duration(path: Path) -> float:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "csv=p=0", str(path)],
-        capture_output=True, text=True,
-    ).stdout.strip()
     try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(path)], capture_output=True, text=True, timeout=15,
+        ).stdout.strip()
         return float(out)
-    except ValueError:
+    except (ValueError, OSError, subprocess.TimeoutExpired):
         return 0.0
 
 
@@ -182,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _safe(self, base: Path, rel: str) -> Path | None:
         p = (base / rel.lstrip("/")).resolve()
-        return p if str(p).startswith(str(base.resolve())) else None
+        return p if p.is_relative_to(base.resolve()) else None
 
     def _current_video(self) -> Path | None:
         state_p = self.root / "state.json"
@@ -195,9 +199,89 @@ class Handler(BaseHTTPRequestHandler):
         p = self._safe(self.root, rel)
         return p if p and p.exists() else None
 
+    def _select_project(self) -> bool:
+        self.root = self.server.default_root
+        path = self.path.split('?', 1)[0]
+        if path.startswith('/p/'):
+            parts = path.split('/', 3)
+            if len(parts) < 4 or parts[2] not in self.server.projects:
+                self._json({'error': 'Projeto não encontrado'}, 404)
+                return False
+            self.root = self.server.projects[parts[2]]
+            self.path = '/' + parts[3]
+        return True
+
+    def _projects(self) -> None:
+        items = []
+        for key, root in self.server.projects.items():
+            try:
+                state = json.loads((root / 'state.json').read_text())
+                status = health(root, state)
+                thumbs = sorted((root / '.preview_cache' / 'thumbs').glob('*.jpg'))
+                items.append({'id': key, 'name': state.get('project') or root.parent.name,
+                              'updatedAt': (root / 'state.json').stat().st_mtime,
+                              'status': status['code'], 'message': status['message'],
+                              'thumbnail': f'/p/{key}/media/.preview_cache/thumbs/{thumbs[0].name}' if thumbs else None})
+            except (OSError, ValueError, TypeError):
+                items.append({'id': key, 'name': root.parent.name, 'updatedAt': 0,
+                              'status': 'error', 'message': 'Projeto indisponível', 'thumbnail': None})
+        self._json({'projects': sorted(items, key=lambda x: x['updatedAt'], reverse=True)})
+
+    def _relink(self, body: dict) -> None:
+        if health(self.root, {}).get('code') == 'processing' or (self.root / 'preview_edits.json').exists():
+            raise ValueError('Aguarde o processamento ou a aplicação dos ajustes antes de recuperar a mídia.')
+        field = body.get('field')
+        if field not in ('video', 'finalVideo'):
+            raise ValueError('Escolha o corte ou a versão final.')
+        source = Path(str(body.get('path', ''))).expanduser().resolve()
+        if not source.is_relative_to(self.server.library) or not source.is_file():
+            raise ValueError('Escolha um arquivo dentro da pasta de projetos configurada.')
+        if source.suffix.lower() not in ('.mp4', '.mov', '.m4v', '.webm') or probe_duration(source) <= 0:
+            raise ValueError('O arquivo escolhido não é um vídeo legível.')
+        # Copy instead of moving or hard-linking: the selected original stays untouched.
+        state_path = self.root / 'state.json'
+        state = json.loads(state_path.read_text())
+        if not isinstance(state, dict):
+            raise ValueError('O estado do projeto é inválido.')
+        folder = self.root / 'recovered'
+        folder.mkdir(exist_ok=True)
+        dest = folder / (uuid.uuid4().hex + source.suffix.lower())
+        temp = dest.with_suffix('.tmp')
+        try:
+            shutil.copy2(source, temp)
+            temp.replace(dest)
+            write_json(self.root / '.recovery' / (uuid.uuid4().hex + '.json'), state)
+            state[field] = str(dest.relative_to(self.root))
+            write_json(state_path, state)
+        finally:
+            temp.unlink(missing_ok=True)
+        self._json({'ok': True})
+
     # ---- routes ----
     def do_GET(self) -> None:  # noqa: N802
+        if not self._select_project():
+            return
         path = self.path.split("?", 1)[0]
+        if path == '/api/media-candidates':
+            files = []
+            for base, dirs, names in os.walk(self.server.library):
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'transcripts')]
+                for name in names:
+                    file = Path(base, name)
+                    if file.suffix.lower() in ('.mp4', '.mov', '.m4v', '.webm') and file.is_file() and file.resolve().is_relative_to(self.server.library):
+                        files.append({'path': str(file.resolve()), 'name': str(file.relative_to(self.server.library))})
+                    if len(files) >= 300:
+                        break
+                if len(files) >= 300:
+                    break
+            self._json({'files': sorted(files, key=lambda x: x['name'])})
+            return
+        if path == '/api/projects':
+            self._projects()
+            return
+        if path == '/projects':
+            self._send_file(APP_DIR / 'projects.html')
+            return
         if path in ("/", "/index.html"):
             self._send_file(APP_DIR / "index.html")
         elif path.startswith("/assets/"):
@@ -216,14 +300,31 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "unknown route"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.split("?", 1)[0] != "/api/save":
+        if not self._select_project():
+            return
+        origin = self.headers.get('Origin')
+        if origin and urlsplit(origin).netloc != self.headers.get('Host'):
+            self._json({'error': 'Origem não permitida'}, 403)
+            return
+        if self.path.split("?", 1)[0] not in ("/api/save", "/api/relink"):
             self._json({"error": "unknown route"}, 404)
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= length <= 1024 * 1024:
+                raise ValueError('Request too large')
             body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError('Expected object')
         except (ValueError, json.JSONDecodeError):
             self._json({"error": "invalid JSON"}, 400)
+            return
+        if self.path.split('?', 1)[0] == '/api/relink':
+            try:
+                with self.server.recovery_lock:
+                    self._relink(body)
+            except (ValueError, OSError) as e:
+                self._json({'error': str(e)}, 400)
             return
         body["savedAt"] = time.strftime("%Y-%m-%d %H:%M:%S")
         # The style pick goes to its own file. It is a one-time setup decision,
@@ -244,7 +345,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if state_p.exists():
                 state = json.loads(state_p.read_text())
-        except json.JSONDecodeError:
+                if not isinstance(state, dict):
+                    raise ValueError('Expected object')
+        except (json.JSONDecodeError, ValueError):
             state = {"error": "state.json inválido"}
         except OSError as e:
             # A read that is refused (macOS privacy, or a permission change made
@@ -279,11 +382,16 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         edits_p = self.root / "preview_edits.json"
         video = self._current_video()
+        duration = probe_duration(video) if video else 0
+        project_health = health(self.root, state)
+        if video and duration <= 0 and project_health['code'] != 'processing':
+            project_health.update(code='error', message='O vídeo existe, mas não foi possível abri-lo. Verifique o arquivo e o ffprobe.')
         self._json({
             "state": state,
+            "health": project_health,
             "edl": edl,
             "mtimes": mtimes,
-            "videoDuration": probe_duration(video) if video else 0,
+            "videoDuration": duration,
             "hasPendingEdits": edits_p.exists(),
             "now": time.time(),
         })
@@ -383,9 +491,23 @@ def _check_access(root: Path) -> None:
     )
 
 
+def discover_projects(library: Path, active: Path) -> dict[str, Path]:
+    library, active = library.resolve(), active.resolve()
+    projects = {hashlib.sha256(str(active).encode()).hexdigest()[:16]: active}
+    for base, dirs, files in os.walk(library):
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'remotion', 'transcripts')]
+        if 'state.json' in files:
+            path = Path(base).resolve()
+            if path.is_relative_to(library.resolve()):
+                projects[hashlib.sha256(str(path).encode()).hexdigest()[:16]] = path
+            dirs[:] = []
+    return projects
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Edvid preview interface server")
     ap.add_argument("--root", type=Path, required=True, help="the session <edit> dir")
+    ap.add_argument('--library', type=Path, help='folder containing projects; defaults to the active project parent')
     ap.add_argument("--port", type=int, default=4820)
     ap.add_argument("--host", default="127.0.0.1",
                     help="0.0.0.0 libera o preview para a rede local (celular na mesma Wi-Fi)")
@@ -404,6 +526,10 @@ def main() -> None:
     # conexão da rede local, que é como o usuário assiste e marca correções pelo
     # celular enquanto o Mac faz o trabalho (2026-08-17).
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
+    srv.default_root = root
+    srv.library = (args.library or root.parent).resolve()
+    srv.projects = discover_projects(srv.library, root)
+    srv.recovery_lock = threading.Lock()
     print(f"Edvid preview → http://{args.host}:{args.port}  (root: {root})", flush=True)
     srv.serve_forever()
 

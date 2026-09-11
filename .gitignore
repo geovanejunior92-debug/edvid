@@ -66,3 +66,8 @@ templates/
 .env.*
 !.env.example
 *.bak*
+
+# Local project recovery and processing reports
+.processing/
+.recovery/
+recovered/
