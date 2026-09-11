@@ -15,6 +15,7 @@
      "Cartaz" headline font and the "Impacto" caption style, added 2026-08-15. -->
 <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,600;0,700;0,800;0,900;1,900&family=Playfair+Display:ital,wght@1,900&family=Lora:ital,wght@0,400;0,600;1,400;1,600&family=Libre+Baskerville:wght@700&family=Inter:wght@500&family=Bebas+Neue&family=Anton&family=Alex+Brush&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/workspace.css">
 </head>
 <body>
 
@@ -27,7 +28,7 @@
   <div class="head-actions">
     <a id="projectsLink" class="btn ghost" href="/projects">Projetos</a>
     <span id="dirtyPill" class="pill hidden"><b id="dirtyCount">0</b> ajuste(s) não salvo(s)</span>
-    <span id="savedPill" class="pill saved hidden">✓ Salvo — peça ao chat para aplicar as alterações. *Se estiver editando no Claude, a aplicação é automática; basta aguardar.</span>
+    <span id="savedPill" class="pill saved hidden">✓ Salvo — volte à conversa com Astra ou Claude para aplicar os ajustes.</span>
     <button id="btnDiscard" class="btn ghost hidden">Descartar</button>
     <button id="btnSave" class="btn primary hidden">Salvar ajustes</button>
   </div>
@@ -289,6 +290,7 @@
 <div id="tooltip" class="tooltip hidden"></div>
 <div id="toast" class="toast hidden"></div>
 
+<script src="/assets/workspace.js"></script>
 <script src="/assets/app.js"></script>
 </body>
 </html>

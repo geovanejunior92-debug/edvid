@@ -2102,8 +2102,8 @@ function renderSetup() {
   const show = S.tab === 'style';
   $('styleSetup').classList.toggle('hidden', !show);
   const hasVideo = S.videoDuration > 0;
-  $('stage').classList.toggle('hidden', show || !hasVideo);
-  $('emptyState').classList.toggle('hidden', hasVideo || show);
+  $('stage').classList.toggle('hidden', !hasVideo);
+  $('emptyState').classList.toggle('hidden', hasVideo);
 
   if (!show) {
     capAnims = []; // stop stepping demos that are not on screen

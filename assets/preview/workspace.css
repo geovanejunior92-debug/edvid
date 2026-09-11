@@ -1,0 +1,65 @@
+/* One editor shared by Claude and Astra. The video keeps its measured aspect ratio. */
+body.workspace-editor {
+  background: #080d12;
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  height: 100dvh;
+  min-height: 0;
+}
+.workspace-editor > header { grid-column: 1 / -1; margin: 0; background: #0c1219; border-radius: 12px; gap: 12px; }
+.workspace-editor .logo-chip img { height: 23px; }
+.workspace-editor .head-info { flex: 1; }
+.workspace-editor .head-actions { flex-wrap: wrap; }
+.workspace-editor .pill { white-space: normal; max-width: 360px; }
+.workspace-editor .workspace-tools { min-height: 0; overflow-y: auto; background: #0c1219; display: flex; flex-direction: column; }
+.workspace-title { font-size: 14px; padding: 16px; border-bottom: 1px solid var(--stroke); }
+.workspace-editor .tabs { margin: 0; padding: 0 8px; gap: 0; border-bottom: 1px solid var(--stroke); }
+.workspace-editor .tab, .workspace-editor .tab.active { padding: 13px 10px; font-size: 12px; border: 0; border-radius: 0; background: none; flex: 1; white-space: nowrap; }
+.workspace-editor .tab.active { border-bottom: 3px solid var(--teal); color: #e8f8f8; }
+.workspace-editor .tab-num { display: none; }
+.workspace-editor .project-status { margin: 0; padding: 14px; max-height: none; overflow: visible; border: 0; border-bottom: 1px solid var(--stroke); border-radius: 0; background: none; }
+.workspace-editor #projectHealth { font-size: 12px; }
+.workspace-editor #recoveryPanel { grid-template-columns: minmax(0, 1fr); }
+.workspace-editor #recoveryPanel > * { grid-column: 1; }
+.workspace-editor .img-adjust-panel, .workspace-editor .diag-panel { margin: 0; padding: 14px; border: 0; border-bottom: 1px solid var(--stroke); border-radius: 0; background: none; flex: 0 0 auto; overflow: visible; }
+.workspace-editor .drawer-body, .workspace-editor .diag-body { max-height: none; overflow: visible; }
+.workspace-editor .slider-grid { grid-template-columns: minmax(0, 1fr); }
+.workspace-editor .diag-body { display: flex; flex-direction: column; }
+.workspace-editor .setup { overflow: visible; padding: 14px; flex: 0 0 auto; }
+.workspace-editor .setup-inner { max-width: none; padding: 0; }
+.workspace-editor .setup-head h2 { font-size: 14px; }
+.workspace-editor .setup-actions { flex-direction: column; align-items: stretch; }
+.workspace-editor .opt-grid { gap: 6px; }
+.workspace-editor .workspace-guide { margin-top: auto; padding: 18px 14px; font-size: 12px; line-height: 1.7; color: var(--dim); }
+.workspace-guide strong { color: #dbe5ed; }
+.workspace-guide p { margin: 8px 0; }
+.workspace-guide span { font-size: 10px; }
+.workspace-editor > main { padding: 12px; border: 1px solid var(--stroke); border-radius: 16px; background: #0b1016; min-width: 0; overflow: auto; }
+.workspace-editor .stage { min-height: 420px; }
+.workspace-editor .editor-col { overflow: auto; }
+.workspace-editor .editor-col .transport { width: 100%; flex-wrap: wrap; align-self: stretch; }
+.workspace-editor .timeline-panel { min-height: 200px; }
+.workspace-editor:not(.portrait) .player-wrap { flex: 1 1 auto; height: auto; min-height: 160px; }
+.workspace-editor.portrait .player-wrap { max-width: 46%; }
+.workspace-editor.portrait .player-frame video { max-width: 100%; }
+.workspace-editor .empty { min-height: 280px; }
+.workspace-editor .help-fab { bottom: 18px; left: auto; right: 20px; }
+.workspace-editor :focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+@media (max-width: 1100px) {
+  body.workspace-editor { grid-template-columns: 290px minmax(0, 1fr); gap: 8px; padding: 8px; }
+  .workspace-editor.portrait .stage { flex-direction: column; }
+  .workspace-editor.portrait .player-wrap { order: 0; height: auto; min-height: 180px; flex: 1 1 auto; max-width: 100%; }
+  .workspace-editor.portrait .player-frame { height: auto; max-height: 42vh; }
+  .workspace-editor.portrait .player-frame video { max-height: 42vh; }
+  .workspace-editor.portrait .editor-col { flex: 0 0 auto; }
+}
+@media (max-width: 740px) {
+  body.workspace-editor { display: flex; overflow-y: auto; height: auto; min-height: 100dvh; }
+  .workspace-editor .workspace-tools { overflow: visible; flex-shrink: 0; }
+  .workspace-editor > main { min-height: 580px; flex-shrink: 0; }
+  .workspace-editor .workspace-guide { display: none; }
+  .workspace-editor .head-actions { margin-left: 0; }
+}
