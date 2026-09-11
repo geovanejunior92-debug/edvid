@@ -42,3 +42,9 @@ A aba Estilo inclui título editável (até 180 caracteres), aplicado às miniat
 `helpers/preview_mix.py` valida as escolhas, atualiza somente hook.lines de um edit-data.json existente (preserva tempo, logo e demais propriedades) e/ou mistura stems de áudio separados em WAV novo, com ganhos em dB, duração da voz, sem normalização automática do amix. Sem --apply, apenas descreve o plano. Título vazio preserva o texto anterior. A ativação/estilo do hook continua no fluxo existente.
 
 Para mixar, indicar --style, --voice, opcionais --music e --sfx, --output novo.wav e --apply. As entradas devem ser as faixas isoladas da mixagem-base; não aplicar repetidamente sobre saídas já ajustadas. Isso não separa instrumentos ou vozes de áudio pronto. O helper não substitui loudness/sincronismo/QC da entrega: usar a mixagem no remux final, medir e revisar. Limiter pode atuar em picos; ganho pedido não equivale a loudness garantido. Os sliders não alteram separadamente o áudio misturado que já está no player.
+
+## Abertura e vídeo novo
+
+A raiz `/` abre a biblioteca com criação de projeto e seletor de vídeos. O nome gera uma pasta única dentro da biblioteca configurada. Os vídeos selecionados são copiados, sem mover os originais; nomes repetidos não sobrescrevem arquivos. Limite: 8 GiB por arquivo MOV, MP4, M4V ou WEBM. Envios interrompidos removem apenas o arquivo temporário incompleto; importações concluídas permanecem.
+
+O projeto novo abre a sequência original. Ainda é preciso salvar um pedido e pedir ao agente para executar o corte. Projetos anteriores abrem apenas quando escolhidos, pelo endereço `/p/<id>/`. Reinicie servidores antigos para carregar as novas rotas Python; recarregar a aba sozinho não atualiza o servidor.

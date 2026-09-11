@@ -160,6 +160,8 @@ Interface:
 
 ## Preview interface (standard — launch it at the start of every edit)
 
+**New video is the default:** `/` opens the library and the “Criar projeto e adicionar vídeos” form, never C014 or another previous project automatically. Ask for a project name and let the user select MOV/MP4/M4V/WEBM files (up to 8 GiB each). The browser copies only the selected files into a new isolated folder under `--library`; it never moves or reorganizes Desktop/Downloads. Existing projects remain accessible by explicit choice. The import opens `/p/<id>/?sources=1` with the original sequence, not an approved cut. To show an existing edit deliberately, get its link from `/api/projects` or `/projects` and open `/p/<id>/`.
+
 **Project library and recovery:** pass `--library <videos-library>` to `preview_server.py` to list existing projects at `/projects`. The default library is the active edit directory's parent. Each project opens at `/p/<id>/`; those URLs keep simultaneous tabs independent. Never copy another project's state over the active project to switch projects.
 
 The preview distinguishes a first cut that does not exist yet, missing media in an existing project, processing and failures. Use "Buscar vídeos na biblioteca" to select an existing cut or final video, then "Localizar e recuperar". Recovery copies that file into the edit directory and backs up state; it does not edit or move the selected original. Never substitute raw footage for an approved cut. Recovery does not rebuild lost media. Pending edits and running work must finish before recovery.

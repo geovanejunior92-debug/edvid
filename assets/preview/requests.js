@@ -85,7 +85,7 @@
   }
   $('source-refresh').addEventListener('click', async () => {
     $('source-refresh').disabled = true;
-    try { const result = await api('api/sources'); files = result.sources; selected = new Set([...selected].filter(id => files.some(x => x.id === id))); rows(); message('Lista atualizada. Nenhum arquivo foi movido.'); }
+    try { const result = await api('api/sources'); files = result.sources; selected = new Set([...selected].filter(id => files.some(x => x.id === id))); rows(); message('Lista atualizada. Nenhum arquivo foi movido.'); if (new URLSearchParams(location.search).get('sources') === '1' && !current) { selected = new Set(files.map(x => x.id)); rows(); if (files.length) $('source-open').click(); } }
     catch (error) { message(error.message); }
     finally { $('source-refresh').disabled = false; }
   });
@@ -115,5 +115,6 @@
     finally { busy = false; $('request-send').disabled = false; }
   });
   history();
+  if (new URLSearchParams(location.search).get('sources') === '1') $('source-refresh').click();
   setInterval(() => { if (!document.hidden && !busy) history(); }, 15000);
 })();

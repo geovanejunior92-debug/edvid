@@ -29,10 +29,11 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote
 from project_health import health, write_json
 import preview_requests
 import preview_mix
+import preview_library
 import argparse
 import array
 import json
@@ -206,7 +207,8 @@ class Handler(BaseHTTPRequestHandler):
     def _select_project(self) -> bool:
         self.root = self.server.default_root
         path = self.path.split('?', 1)[0]
-        if path.startswith('/p/'):
+        self.project_scoped = path.startswith('/p/')
+        if self.project_scoped:
             parts = path.split('/', 3)
             if len(parts) < 4 or parts[2] not in self.server.projects:
                 self._json({'error': 'Projeto não encontrado'}, 404)
@@ -217,7 +219,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _projects(self) -> None:
         items = []
-        for key, root in self.server.projects.items():
+        for key, root in list(self.server.projects.items()):
             try:
                 state = json.loads((root / 'state.json').read_text())
                 status = health(root, state)
@@ -287,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send_file(APP_DIR / 'projects.html')
             return
         if path in ("/", "/index.html"):
-            self._send_file(APP_DIR / "index.html")
+            self._send_file(APP_DIR / ("index.html" if self.project_scoped else "projects.html"))
         elif path.startswith("/assets/"):
             p = self._safe(APP_DIR, path[len("/assets/"):])
             self._send_file(p) if p else self._json({"error": "bad path"}, 400)
@@ -323,7 +325,17 @@ class Handler(BaseHTTPRequestHandler):
         if origin and urlsplit(origin).netloc != self.headers.get('Host'):
             self._json({'error': 'Origem não permitida'}, 403)
             return
-        if self.path.split("?", 1)[0] not in ("/api/save", "/api/relink", "/api/requests"):
+        if self.path.split('?', 1)[0] == '/api/import':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                self.connection.settimeout(120)
+                name = preview_library.receive(self.root, unquote(self.headers.get('X-Filename', '')), self.rfile, length)
+                self._json({'ok': True, 'filename': name})
+            except (ValueError, OSError) as e:
+                self.close_connection = True
+                self._json({'error': str(e)}, 400)
+            return
+        if self.path.split("?", 1)[0] not in ("/api/save", "/api/relink", "/api/requests", "/api/projects/create"):
             self._json({"error": "unknown route"}, 404)
             return
         try:
@@ -335,6 +347,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Expected object')
         except (ValueError, json.JSONDecodeError):
             self._json({"error": "invalid JSON"}, 400)
+            return
+        if self.path.split('?', 1)[0] == '/api/projects/create':
+            try:
+                key, root = preview_library.create(self.server.library, body.get('name'))
+                self.server.projects[key] = root
+                self._json({'ok': True, 'id': key, 'url': f'/p/{key}/'})
+            except (ValueError, OSError) as e:
+                self._json({'error': str(e)}, 400)
             return
         if self.path.split('?', 1)[0] == '/api/requests':
             try:
