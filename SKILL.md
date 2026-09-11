@@ -5,6 +5,15 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 
 # Edvid
 
+## Abertura padrão — versão web
+
+Quando o usuário pedir apenas para “abrir o Edvid”, abrir sempre o Edvid Preview
+web no navegador interno do agente, na tela para iniciar um vídeo novo. Não abrir
+o aplicativo nativo Edvid Studio nesse caso. O aplicativo só deve ser aberto
+quando o usuário disser explicitamente “aplicativo”, “Edvid Studio” ou
+equivalente. No Preview web, a raiz `/` continua sendo a abertura padrão; projeto
+antigo só abre quando for pedido pelo nome.
+
 ## Aplicativo próprio Edvid Studio
 
 Para abrir, compilar ou diagnosticar o aplicativo local do usuário, leia `desktop/README.md`. O Studio usa este mesmo motor compartilhado entre Astra e Claude; não confundir com o aplicativo comercial Edvid. A versão inicial oferece apenas as operações expostas e testadas na interface. Não declarar paridade integral nem geração/publicação integrada. Antes de alterar um projeto, conferir a fila do Studio e evitar dois escritores simultâneos.
