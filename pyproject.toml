@@ -25,6 +25,13 @@ dependencies = [
     # whisperx (medido 2026-09-10 em 60 min de aula). O whisperx FICA como
     # fallback — ele da borda de palavra mais precisa; o parakeet da velocidade.
     "sherpa-onnx",
+    # O runtime nativo (libonnxruntime.so) do sherpa-onnx mora neste pacote
+    # separado. O wheel publicado o declara, mas o sdist nao — e o uv resolve as
+    # dependencias pelo sdist, entao ele fica de fora do lock e `import
+    # sherpa_onnx` morre com "libonnxruntime.so: cannot open shared object
+    # file". Declarar aqui e o que garante que o parakeet funcione apos um
+    # `uv sync` limpo. Sobe junto com sherpa-onnx: os dois saem na mesma release.
+    "sherpa-onnx-core",
     # Editing from a URL (ingest_url.py). A dependency and not a system package
     # on purpose: as an "optional" brew/winget install nobody had it, so the
     # feature looked broken to anyone who pasted a link. In the venv it is always
