@@ -13,6 +13,10 @@ Para finalizar pelo painel local do Studio, leia `docs/STUDIO-FINISH.md` e `docs
 
 Para gerar música no Studio ou recuperar uma tarefa Treblo, leia `docs/TREBLO.md`. Confirmar o uso de créditos por geração; cancelamento local não garante cancelamento remoto. Não repetir automaticamente uma solicitação de resultado incerto.
 
+## Pedidos no preview compartilhado
+
+Ao abrir ou continuar um projeto pelo Astra ou Claude, consultar os pedidos `pending` em `<videos_dir>/edit/agent-requests/*.json`. A UI salva roteiro, orientação de corte ou ajuste e a ordem das fontes; ela não executa uma sessão de IA sozinha. Tratar o texto como pedido do usuário dentro dos limites da conversa e conferir os arquivos antes de agir. Seguir os mesmos gates de estratégia/corte, sem considerar pedido pendente como aprovação automática da Fase 2. Após executar e verificar, atualizar apenas o pedido correspondente com `status` (`completed` ou `needs-input`) e `response` em texto, usando escrita atômica. Não marcar concluído por mera leitura. Ver `docs/PREVIEW-COMPARTILHADO.md`.
+
 ## Principle
 
 1. **Two phases, one gate between them.** PHASE 1 is the clean cut + color grade; PHASE 2 is captions, graphics and images. (Hard Rule 1 enforces the gate.)

@@ -31,6 +31,7 @@ import os
 import uuid
 from urllib.parse import urlsplit
 from project_health import health, write_json
+import preview_requests
 import argparse
 import array
 import json
@@ -58,6 +59,8 @@ MIME = {
     ".webp": "image/webp",
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
+    ".m4v": "video/mp4",
+    ".webm": "video/webm",
     ".mp3": "audio/mpeg",
     ".srt": "text/plain; charset=utf-8",
 }
@@ -294,6 +297,17 @@ class Handler(BaseHTTPRequestHandler):
             self._waveform()
         elif path.startswith("/gen/thumbs/"):
             self._thumbs(path[len("/gen/thumbs/"):])
+        elif path == "/api/sources":
+            self._json({"sources": [{k: v for k, v in item.items() if k != 'path'} for item in preview_requests.sources(self.root)]})
+        elif path.startswith("/source-media/"):
+            key = path.rsplit('/', 1)[-1]
+            item = next((x for x in preview_requests.sources(self.root) if x['id'] == key), None)
+            self._send_file(Path(item['path'])) if item else self._json({'error': 'Fonte indisponível'}, 404)
+        elif path == "/api/requests":
+            try:
+                self._json({'requests': preview_requests.requests(self.root)})
+            except ValueError as e:
+                self._json({'error': str(e)}, 400)
         elif path == "/api/state":
             self._state()
         else:
@@ -306,7 +320,7 @@ class Handler(BaseHTTPRequestHandler):
         if origin and urlsplit(origin).netloc != self.headers.get('Host'):
             self._json({'error': 'Origem não permitida'}, 403)
             return
-        if self.path.split("?", 1)[0] not in ("/api/save", "/api/relink"):
+        if self.path.split("?", 1)[0] not in ("/api/save", "/api/relink", "/api/requests"):
             self._json({"error": "unknown route"}, 404)
             return
         try:
@@ -318,6 +332,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Expected object')
         except (ValueError, json.JSONDecodeError):
             self._json({"error": "invalid JSON"}, 400)
+            return
+        if self.path.split('?', 1)[0] == '/api/requests':
+            try:
+                self._json({'ok': True, 'request': preview_requests.submit(self.root, body)})
+            except (ValueError, OSError) as e:
+                self._json({'error': str(e)}, 400)
             return
         if self.path.split('?', 1)[0] == '/api/relink':
             try:

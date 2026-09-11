@@ -63,3 +63,23 @@ body.workspace-editor {
   .workspace-editor .workspace-guide { display: none; }
   .workspace-editor .head-actions { margin-left: 0; }
 }
+.request-panel { padding: 14px; border-top: 1px solid var(--stroke); font-size: 12px; display: flex; flex-direction: column; gap: 10px; }
+.request-panel h2 { font-size: 14px; }
+.request-panel select, .request-panel textarea { width: 100%; min-width: 0; font: inherit; background: #080d12; color: var(--text); border: 1px solid var(--stroke); border-radius: 8px; padding: 10px; }
+.request-panel textarea { resize: vertical; user-select: text; }
+.request-hint { color: var(--dim); line-height: 1.6; }
+.source-row { display: flex; gap: 4px; margin: 8px 0; align-items: center; }
+.source-row label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.source-row input { margin-right: 6px; }
+#request-history article { border: 1px solid var(--stroke); padding: 12px; border-radius: 8px; margin-top: 10px; }
+#request-history p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+#request-history small { color: var(--dim); }
+.workspace-editor.viewing-sources main > #stage, .workspace-editor.viewing-sources main > #emptyState { display: none !important; }
+.source-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 42%); gap: 14px; height: 100%; min-height: 380px; }
+.source-stage video { width: 100%; height: 100%; max-height: 80vh; object-fit: contain; background: #06090c; }
+.source-heading { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.source-sequence > p { margin: 12px 0; color: var(--dim); font-size: 12px; }
+#source-timeline { display: flex; gap: 4px; overflow-x: auto; padding: 20px 0; }
+.source-clip { flex: 1 0 110px; max-width: 220px; min-height: 56px; padding: 10px; border: 1px solid #8b471e; border-radius: 9px; background: #2a1c13; color: var(--text); font: inherit; font-size: 12px; overflow-wrap: anywhere; cursor: pointer; }
+.source-clip.active { border-color: var(--orange); background: #503018; }
+@media(max-width:1100px) { .source-stage { display: flex; flex-direction: column-reverse; } .source-stage video { max-height: 46vh; } }
