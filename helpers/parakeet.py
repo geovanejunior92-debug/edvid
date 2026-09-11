@@ -118,8 +118,45 @@ def fatias(dur: float, sil: list[tuple[float, float]], alvo: float) -> list[tupl
     return [(a, b) for a, b in zip(cortes, cortes[1:]) if b - a > 0.05]
 
 
-def descomprimir(t: float, sil_local: list[tuple[float, float]]) -> float:
-    """Tempo comprimido do transdutor -> tempo real do audio.
+def regioes_de_fala(dur: float, sil_local: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Complemento do silencio dentro do pedaco: onde HA fala, em tempo real."""
+    out, t = [], 0.0
+    for a, b in sorted(sil_local):
+        a, b = max(0.0, a), min(dur, b)
+        if a > t:
+            out.append((t, a))
+        t = max(t, b)
+    if t < dur:
+        out.append((t, dur))
+    return [(a, b) for a, b in out if b - a > 0.01]
+
+
+def para_real(t: float, fala: list[tuple[float, float]]) -> float:
+    """Tempo comprimido -> tempo real, por MAPEAMENTO EXATO.
+
+    CORRIGIDO 2026-09-10 apos o Astra apontar, e a medicao confirmar, que a
+    versao heuristica somava silencio demais: a ultima palavra caia em 238,0 s
+    num video de 227,7 s — 10,3 s de excesso acumulado, e o erro crescia ao
+    longo do arquivo.
+
+    A versao certa nao SOMA nada: o relogio do transdutor e a linha do tempo so
+    da fala, entao basta percorrer as regioes de fala reais gastando `t` dentro
+    delas. Nao pode ultrapassar a duracao do pedaco, porque o resultado e sempre
+    um instante DENTRO de uma regiao de fala medida no audio.
+    """
+    acc = 0.0
+    for a, b in fala:
+        d = b - a
+        if t <= acc + d:
+            return a + (t - acc)
+        acc += d
+    return fala[-1][1] if fala else t
+
+
+def _descomprimir_antigo(t: float, sil_local: list[tuple[float, float]]) -> float:
+    """OBSOLETA — mantida so para documentar o erro. Ver `para_real`.
+
+    Tempo comprimido do transdutor -> tempo real do audio.
 
     O NUCLEO DO PROBLEMA. O transdutor so emite token quando ha fala: o silencio
     nao gasta nenhum passo, entao a linha do tempo que ele devolve e a do audio
@@ -243,7 +280,8 @@ def transcrever(media: Path, modelo: Path, threads: int, alvo: float) -> dict:
         r = s.result
         # pausas DENTRO deste pedaco, em tempo relativo a ele
         sil_local = [(a - ini, b - ini) for a, b in sil if a >= ini and b <= fim]
-        ts_real = [descomprimir(float(x), sil_local) for x in r.timestamps]
+        fala_local = regioes_de_fala(fim - ini, sil_local)
+        ts_real = [para_real(float(x), fala_local) for x in r.timestamps]
         palavras.extend(palavras_de_tokens(list(r.tokens), ts_real, ini))
     # O SCHEMA e o do transcribe.py, e o conversor dele e importado em vez de
     # reescrito: assim os dois motores nao podem divergir de formato. O resto da
@@ -257,7 +295,14 @@ def transcrever(media: Path, modelo: Path, threads: int, alvo: float) -> dict:
         "text": " ".join(w["word"] for w in palavras),
         "words": _to_scribe_words(palavras),
         "duration": dur,
-        "_transcription_backend": "parakeet-tdt-0.6b-v3/onnx",
+        # O sufixo /UNALIGNED e a convencao que esta skill JA usa para dizer "tempo de
+        # palavra e do decodificador, nao de alinhamento forcado — nao confie nele
+        # para legenda karaoke". Medido em 2026-09-10 contra o speech_regions.py:
+        # 88,4% dos inicios caem dentro de fala real, com a linha de base do acaso
+        # em 80,8% e o WhisperX em 93%. Serve para LER e escolher trecho; nao serve
+        # para borda de corte nem para karaoke. Quem precisa de precisao usa o
+        # transcribe.py.
+        "_transcription_backend": "parakeet-tdt-0.6b-v3/onnx/UNALIGNED",
     }
 
 
