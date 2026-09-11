@@ -13,6 +13,10 @@ Para finalizar pelo painel local do Studio, leia `docs/STUDIO-FINISH.md` e `docs
 
 Para gerar música no Studio ou recuperar uma tarefa Treblo, leia `docs/TREBLO.md`. Confirmar o uso de créditos por geração; cancelamento local não garante cancelamento remoto. Não repetir automaticamente uma solicitação de resultado incerto.
 
+## Título e mixagem escolhidos no preview
+
+Ao consumir preview_style.json, aplicar headlineText a hook.lines (vazio preserva o anterior). Para audioMix, partir das faixas isoladas da mixagem-base, aplicar os offsets de voz/trilha/efeitos uma vez e manter verificação de loudness e sincronismo. `helpers/preview_mix.py` oferece validação, atualização do título e mistura em WAV novo; ver docs/PREVIEW-COMPARTILHADO.md. Atualizar state.style com as escolhas efetivamente aplicadas após render, para a interface reabrir com os valores corretos. Não apresentar sliders como separação de áudio pronto nem como prévia isolada ao vivo.
+
 ## Mídia marcada na timeline
 
 Ao aplicar `preview_edits.json`, conferir `notes[].media` quando existir: tipo, enquadramento e arquivo/provedor complementam o texto. Preservar o intervalo e a fase gravados. `status=requested` é pedido, não mídia pronta. Para Shutterstock, o conector disponível faz busca de stock; geração utiliza o site oficial até existir integração comprovada. Não tratar stock como geração por IA. Ler `docs/PREVIEW-COMPARTILHADO.md` para o contrato e os limites.

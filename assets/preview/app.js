@@ -556,13 +556,13 @@ function hlFit(lines, S, family) {
   return Math.max(HL_MIN, Math.min(size, S.cap));
 }
 
-function buildHeadlineDemo(host, styleId, fontId) {
+function buildHeadlineDemo(host, styleId, fontId, text = HEADLINE_TEXT) {
   const s = host.clientWidth / 1080;
   const S = HL_STYLES[styleId];
   const family = HL_FONT_FAMILIES[fontId] || HL_FONT_FAMILIES.poppins;
   host.innerHTML = '';
   const wrap = el('div', 'cap-demo', host);
-  const raw = styleId === 'card' ? HEADLINE_TEXT.toUpperCase() : HEADLINE_TEXT;
+  const raw = styleId === 'card' ? text.toUpperCase() : text;
   const lines = hlTwoLines(raw, S.weights, family);
   const size = hlFit(lines, S, family) * s;
   const box = el('div', `hl-demo hl-${styleId}`, wrap);
@@ -976,7 +976,7 @@ async function applyState(data) {
   S.mtimes = data.mtimes || {};
   S.videoDuration = data.videoDuration || 0;
   S.fps = S.state.fps || 24;
-  S.savedPending = !!data.hasPendingEdits;
+  S.savedPending = !!data.hasPendingEdits || !!data.pendingStyle;
 
   $('projectName').textContent = S.state.project || 'Edvid';
   const h = data.health || {};
@@ -1009,11 +1009,16 @@ async function applyState(data) {
 
   // style picks: the skill's copy wins, so applying a change (or reopening the
   // session) shows what is actually rendered — not a stale local selection
-  S.style = { ...defaultStyle(), ...(S.state.style || {}) };
+  S.style = { ...defaultStyle(), ...(S.state.style || {}), ...(data.pendingStyle || {}) };
   S.style.elements = forceAlwaysOn({ ...defaultStyle().elements, ...((S.state.style || {}).elements || {}) });
   S.style.image = { ...defaultStyle().image, ...((S.state.style || {}).image || {}) };
   S.imageOrig = { ...S.style.image }; // snapshot for dirty-tracking, like EDL ranges' .orig
   $('setupNote').value = S.style.note || '';
+  $('headlineText').value = S.style.headlineText || '';
+  for (const key of ['voice', 'music', 'sfx']) {
+    const gain = S.style.audioMix?.[key + 'Db'] ?? 0;
+    $(key + 'Gain').value = gain; $(key + 'GainValue').textContent = `${gain} dB`;
+  }
   // The gate used to force-jump to the Estilo tab the moment the skill set
   // `awaitingStyle`. User's read (2026-08-16): after editing, land on the
   // Fase 1 Corte preview first — review the cut, then open Estilo when
@@ -2134,11 +2139,11 @@ function renderSetup() {
       const kind = o.mock ? 'frame' : (o.hl || o.hlbox || o.font) ? 'cap hlbox' : 'cap';
       const prev = el('div', `opt-preview ${kind}`, card);
       if (o.demo) capAnims.push(CAP_BUILDERS[o.demo](prev));
-      else if (o.hl) buildHeadlineDemo(prev, o.hl, S.style.headlineFont);
+      else if (o.hl) buildHeadlineDemo(prev, o.hl, S.style.headlineFont, S.style.headlineText || HEADLINE_TEXT);
       // font cards render the CURRENTLY chosen headline style in THIS font —
       // real type, not a generic "Aa" swatch, and it stays in sync when the
       // style above changes without needing a second render path.
-      else if (o.font) buildHeadlineDemo(prev, S.style.headline, o.font);
+      else if (o.font) buildHeadlineDemo(prev, S.style.headline, o.font, S.style.headlineText || HEADLINE_TEXT);
       else if (o.stat) {
         const step = buildStaticDemo(prev, o.stat);
         if (step) capAnims.push(step);
@@ -2199,6 +2204,15 @@ $('styleSetup').addEventListener('click', (e) => {
   }
 });
 
+$('headlineText').addEventListener('input', () => {
+  S.style.headlineText = $('headlineText').value;
+  renderSetup();
+});
+for (const key of ['voice', 'music', 'sfx']) $(key + 'Gain').addEventListener('input', () => {
+  S.style.audioMix = S.style.audioMix || {voiceDb: 0, musicDb: 0, sfxDb: 0};
+  S.style.audioMix[key + 'Db'] = Number($(key + 'Gain').value);
+  $(key + 'GainValue').textContent = `${$(key + 'Gain').value} dB`;
+});
 $('setupGo').addEventListener('click', async () => {
   S.style.note = $('setupNote').value.trim();
   const rerender = !S.state.awaitingStyle;
@@ -2210,6 +2224,8 @@ $('setupGo').addEventListener('click', async () => {
     edit: S.style.edit,
     editName: styleName('edits', S.style.edit),
     headline: S.style.headline,
+    headlineText: $('headlineText').value.trim(),
+    audioMix: S.style.audioMix || {voiceDb: 0, musicDb: 0, sfxDb: 0},
     headlineName: styleName('headlines', S.style.headline),
     headlineFont: S.style.headlineFont,
     headlineFontName: styleName('headlineFonts', S.style.headlineFont),

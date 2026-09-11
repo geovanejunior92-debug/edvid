@@ -32,6 +32,7 @@ import uuid
 from urllib.parse import urlsplit
 from project_health import health, write_json
 import preview_requests
+import preview_mix
 import argparse
 import array
 import json
@@ -348,6 +349,12 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, OSError) as e:
                 self._json({'error': str(e)}, 400)
             return
+        if body.get('type') == 'style-setup':
+            try:
+                preview_mix.validate(body)
+            except ValueError as e:
+                self._json({'error': str(e)}, 400)
+                return
         if 'notes' in body:
             try:
                 preview_requests.validate_media_notes(self.root, body['notes'])
@@ -408,6 +415,13 @@ class Handler(BaseHTTPRequestHandler):
                 edl = json.loads(p.read_text())
             except json.JSONDecodeError:
                 pass
+        pending_style = None
+        style_path = self._safe(self.root, "preview_style.json")
+        if style_path and style_path.is_file():
+            try:
+                candidate = json.loads(style_path.read_text())
+                if isinstance(candidate, dict): pending_style = candidate
+            except (ValueError, OSError): pass
         edits_p = self.root / "preview_edits.json"
         video = self._current_video()
         duration = probe_duration(video) if video else 0
@@ -416,6 +430,7 @@ class Handler(BaseHTTPRequestHandler):
             project_health.update(code='error', message='O vídeo existe, mas não foi possível abri-lo. Verifique o arquivo e o ffprobe.')
         self._json({
             "state": state,
+            "pendingStyle": pending_style,
             "health": project_health,
             "edl": edl,
             "mtimes": mtimes,

@@ -34,3 +34,11 @@ No corte carregado, marque IN e OUT com **M** ou pelo botão da timeline. A marc
 O arquivo preview_edits.json preserva start/end, renderedStart/renderedEnd e phase; `notes[].media` contém kind, layout, file (local) ou provider (IA), e status=requested. O agente deve ler estes campos junto da descrição, respeitar o intervalo e os gates existentes, gerar/buscar/importar a mídia e renderizar pelo fluxo Remotion. A marcação não altera o vídeo antes disso. A fase é capturada ao criar a nota, mesmo se o usuário mudar de aba antes de salvar.
 
 Shutterstock está disponível como provedor preferido no pedido, com link para https://www.shutterstock.com/ai-video-generator/. O conector disponível ao agente expõe busca de stock, não geração; não há API de geração Shutterstock integrada ao botão. O usuário informou em 11/09/2026 que seu plano é ilimitado para banco e geração de imagens/vídeos; informação declarada, sem inspeção da assinatura nesta entrega. Não presumir cobrança adicional nem adquirir complemento sem confirmação.
+
+## Título e mixagem
+
+A aba Estilo inclui título editável (até 180 caracteres), aplicado às miniaturas, e ganhos relativos por faixa: voz, trilha e efeitos. A galeria de legendas usa duas colunas. Salvar estilo grava headlineText e audioMix.voiceDb/musicDb/sfxDb; watch_edits inclui esses campos no resumo para o agente.
+
+`helpers/preview_mix.py` valida as escolhas, atualiza somente hook.lines de um edit-data.json existente (preserva tempo, logo e demais propriedades) e/ou mistura stems de áudio separados em WAV novo, com ganhos em dB, duração da voz, sem normalização automática do amix. Sem --apply, apenas descreve o plano. Título vazio preserva o texto anterior. A ativação/estilo do hook continua no fluxo existente.
+
+Para mixar, indicar --style, --voice, opcionais --music e --sfx, --output novo.wav e --apply. As entradas devem ser as faixas isoladas da mixagem-base; não aplicar repetidamente sobre saídas já ajustadas. Isso não separa instrumentos ou vozes de áudio pronto. O helper não substitui loudness/sincronismo/QC da entrega: usar a mixagem no remux final, medir e revisar. Limiter pode atuar em picos; ganho pedido não equivale a loudness garantido. Os sliders não alteram separadamente o áudio misturado que já está no player.

@@ -79,6 +79,18 @@
         <div id="optEdit" class="opt-grid"></div>
       </div>
 
+      <div class="setup-group">
+        <label class="group-title" for="headlineText">Texto do título</label>
+        <textarea id="headlineText" maxlength="180" rows="3" placeholder="Digite o título do vídeo"></textarea>
+        <p class="request-hint">O texto aparece nos modelos abaixo e será aplicado ao renderizar.</p>
+      </div>
+      <div class="setup-group" id="audioMixControls">
+        <div class="group-title">Mixagem por faixa</div>
+        <label for="voiceGain">Voz · <output id="voiceGainValue">0 dB</output></label><input id="voiceGain" type="range" min="-24" max="12" step="0.5" value="0">
+        <label for="musicGain">Trilha · <output id="musicGainValue">0 dB</output></label><input id="musicGain" type="range" min="-48" max="12" step="0.5" value="0">
+        <label for="sfxGain">Efeitos · <output id="sfxGainValue">0 dB</output></label><input id="sfxGain" type="range" min="-48" max="12" step="0.5" value="0">
+        <p class="request-hint">Ajustes relativos à mixagem existente. Só serão ouvidos após nova renderização; não separam o áudio já misturado no player.</p>
+      </div>
       <!-- Ahead of the text styles: the accent is what they paint with, so it is
            set first and both preview groups below react to it. -->
       <div class="setup-group">

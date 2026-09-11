@@ -91,3 +91,10 @@ body.workspace-editor {
 .note-media-controls [hidden] { display: none; }
 .note-media-controls { margin-bottom: 12px; }
 .note-media-controls a { color: #58d1d3; text-underline-offset: 3px; }
+#headlineText { width: 100%; background: #080d12; color: var(--text); border: 1px solid var(--stroke); border-radius: 8px; padding: 10px; font: inherit; font-size: 13px; resize: vertical; margin: 10px 0; user-select: text; }
+#audioMixControls label { display: block; font-size: 12px; margin-top: 14px; }
+#audioMixControls input { width: 100%; accent-color: var(--teal); }
+#audioMixControls output { color: #58d1d3; font-variant-numeric: tabular-nums; }
+.workspace-editor #optCaptions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.workspace-editor #optCaptions .opt { min-width: 0; width: 100%; }
+.workspace-editor #optCaptions .opt-preview.cap { width: 100%; min-width: 0; }

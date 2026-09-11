@@ -76,6 +76,8 @@ def style_digest(p: Path) -> str:
         f'  · tipo de edição: {d.get("editName") or d.get("edit")}',
         f'  · headline: {d.get("headlineName") or d.get("headline")}',
         f'  · legenda: {d.get("captionsName") or d.get("captions")}',
+        f'  · texto do título: {d.get("headlineText", "preservar")}',
+        f'  · ajustes de mixagem (dB): {d.get("audioMix", {})}',
     ]
     # Only worth reporting when the chosen styles actually paint an accent —
     # naming a colour that nothing uses reads as an instruction to go find a
