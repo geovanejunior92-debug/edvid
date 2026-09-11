@@ -19,6 +19,7 @@ from http.server import ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 import preview_server
+import treblo_music
 
 
 APP_DIR = Path(__file__).resolve().parent.parent / "assets" / "studio"
@@ -87,6 +88,8 @@ class ProjectRegistry:
 
 class JobQueue:
     FINAL = {"completed", "failed", "cancelled", "interrupted"}
+    PIPELINE_ACTIONS = {"status", "save-brief", "transcribe", "propose-cut", "approve-plan",
+                        "render-cut", "apply-preview-edits", "undo", "redo"}
 
     def __init__(self, data_dir: Path, projects: ProjectRegistry, command_builder=None):
         self.path = data_dir / "queue.json"
@@ -112,12 +115,36 @@ class JobQueue:
 
     def list(self) -> list[dict]:
         with self.lock:
-            return [dict(x) for x in reversed(self.jobs)]
+            return [self._public_job(x) for x in reversed(self.jobs)]
 
     def get(self, job_id: str) -> dict | None:
         with self.lock:
             job = next((x for x in self.jobs if x["id"] == job_id), None)
-            return dict(job) if job else None
+            return self._public_job(job) if job else None
+
+    @staticmethod
+    def _manifest_provider(job: dict) -> dict | None:
+        raw = job.get("manifest")
+        if not raw:
+            return None
+        value = _read_json(Path(raw), None)
+        if not isinstance(value, dict):
+            return None
+        task_id = value.get("task_id")
+        status = value.get("status")
+        provider = {}
+        if isinstance(task_id, str) and task_id:
+            provider["taskId"] = task_id
+        if isinstance(status, str) and status:
+            provider["status"] = status
+        return provider or None
+
+    def _public_job(self, job: dict) -> dict:
+        result = dict(job)
+        provider = self._manifest_provider(job)
+        if provider:
+            result["provider"] = provider
+        return result
 
     def enqueue(self, project_id: str, kind: str, input_path: Path) -> dict:
         project = self.projects.get(project_id)
@@ -133,6 +160,95 @@ class JobQueue:
         job = {"id": uuid.uuid4().hex, "projectId": project_id, "kind": kind,
                "input": str(source), "status": "queued", "createdAt": now, "updatedAt": now}
         with self.condition:
+            self.jobs.append(job)
+            self._save()
+            self.condition.notify()
+        return dict(job)
+
+    def enqueue_music(self, project_id: str, prompt: str, length_min: int,
+                      length_max: int, confirmed: bool) -> dict:
+        project = self.projects.get(project_id)
+        if not project:
+            raise ValueError("Projeto não encontrado.")
+        prompt = prompt.strip()
+        if not 1 <= len(prompt) <= 2000:
+            raise ValueError("Descreva a música em até 2.000 caracteres.")
+        if confirmed is not True:
+            raise ValueError("Confirme que autoriza o uso de créditos da Treblo.")
+        if (isinstance(length_min, bool) or isinstance(length_max, bool)
+                or not isinstance(length_min, int) or not isinstance(length_max, int)
+                or length_min < 0 or length_max > 300
+                or length_min % 30 or length_max % 30 or length_min >= length_max):
+            raise ValueError("As durações devem ser múltiplos de 30, entre 0 e 300, com mínimo menor que máximo.")
+        try:
+            treblo_music.load_api_key()
+        except RuntimeError:
+            raise ValueError("A Treblo ainda não está configurada neste computador.") from None
+        project_root = Path(project["path"]).resolve()
+        folder = Path(project.get("editPath") or project_root / "edit") / "music"
+        folder.mkdir(parents=True, exist_ok=True)
+        job_id = uuid.uuid4().hex
+        output = folder / f"{job_id}.mp3"
+        manifest = folder / f"{job_id}.json"
+        now = time.time()
+        job = {"id": job_id, "projectId": project_id, "kind": "music", "prompt": prompt,
+               "lengthMin": length_min, "lengthMax": length_max, "output": str(output),
+               "manifest": str(manifest), "status": "queued", "createdAt": now, "updatedAt": now}
+        with self.condition:
+            self.jobs.append(job)
+            self._save()
+            self.condition.notify()
+        return dict(job)
+
+    def enqueue_pipeline(self, project_id: str, action: str, options: dict) -> dict:
+        project = self.projects.get(project_id)
+        if not project:
+            raise ValueError("Projeto não encontrado.")
+        if action not in self.PIPELINE_ACTIONS:
+            raise ValueError("Ação da Fase 1 não permitida.")
+        root = Path(project["path"]).resolve()
+        now = time.time()
+        job = {"id": uuid.uuid4().hex, "projectId": project_id, "kind": "pipeline",
+               "action": action, "status": "queued", "createdAt": now, "updatedAt": now}
+        if action in {"transcribe", "propose-cut"}:
+            source = Path(str(options.get("source", ""))).expanduser().resolve()
+            if not source.is_file() or not source.is_relative_to(root):
+                raise ValueError("O vídeo da Fase 1 precisa estar dentro do projeto selecionado.")
+            job["source"] = str(source.relative_to(root))
+        if action == "save-brief":
+            script = options.get("script")
+            if not isinstance(script, str) or not script.strip() or len(script) > 100_000:
+                raise ValueError("Informe um roteiro de até 100.000 caracteres.")
+            job["script"] = script
+        if action == "transcribe":
+            language = options.get("language", "pt")
+            if language not in {"pt", "en", "es"}:
+                raise ValueError("Idioma de transcrição não permitido.")
+            job["language"] = language
+        if action in {"approve-plan", "render-cut"}:
+            revision = options.get("revision")
+            plan_hash = options.get("planHash")
+            if (isinstance(revision, bool) or not isinstance(revision, int) or revision < 1
+                    or not isinstance(plan_hash, str) or len(plan_hash) != 64
+                    or any(char not in "0123456789abcdef" for char in plan_hash.lower())):
+                raise ValueError("A revisão e o hash do plano exibido são obrigatórios.")
+            if action == "approve-plan" and options.get("approve") is not True:
+                raise ValueError("A aprovação precisa ser confirmada explicitamente.")
+            job.update(revision=revision, planHash=plan_hash)
+            if action == "approve-plan":
+                job["approve"] = True
+        if action == "apply-preview-edits":
+            raw = str(options.get("previewEdits", "edit/preview_edits.json"))
+            candidate = Path(raw).expanduser()
+            preview_edits = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+            if not preview_edits.is_file() or not preview_edits.is_relative_to(root) or preview_edits.suffix.lower() != ".json":
+                raise ValueError("Os ajustes de preview precisam ser um JSON dentro do projeto.")
+            job["previewEdits"] = str(preview_edits.relative_to(root))
+        with self.condition:
+            if action != "status" and any(x.get("kind") == "pipeline" and x.get("projectId") == project_id
+                                          and x.get("status") in {"queued", "running"} and x.get("action") != "status"
+                                          for x in self.jobs):
+                raise ValueError("Este projeto já tem uma ação da Fase 1 na fila.")
             self.jobs.append(job)
             self._save()
             self.condition.notify()
@@ -159,13 +275,17 @@ class JobQueue:
 
     @staticmethod
     def _terminate(process: subprocess.Popen) -> None:
-        if process.poll() is not None:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
             return
-        process.terminate()
         try:
             process.wait(timeout=1)
         except subprocess.TimeoutExpired:
-            process.kill()
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             process.wait(timeout=1)
 
     def close(self) -> None:
@@ -181,6 +301,29 @@ class JobQueue:
         atomic_json(self.path, {"version": 1, "jobs": self.jobs})
 
     def _build_command(self, job: dict) -> list[str]:
+        if job["kind"] == "music":
+            return [sys.executable, str(Path(__file__).with_name("treblo_music.py")), job["prompt"],
+                    "-o", job["output"], "--length-min", str(job["lengthMin"]),
+                    "--length-max", str(job["lengthMax"]), "--manifest", job["manifest"]]
+        if job["kind"] == "pipeline":
+            project = self.projects.get(job["projectId"])
+            if not project:
+                raise ValueError("Projeto removido da biblioteca.")
+            command = [sys.executable, str(Path(__file__).with_name("studio_pipeline.py")),
+                       "--root", str(Path(project["path"]).resolve()), "--action", job["action"]]
+            if job.get("source"):
+                command.extend(["--source", job["source"]])
+            if job["action"] == "save-brief":
+                command.extend(["--script", job["script"]])
+            if job["action"] == "transcribe":
+                command.extend(["--language", job["language"], "--model", "large-v3-turbo"])
+            if job["action"] in {"approve-plan", "render-cut"}:
+                command.extend(["--revision", str(job["revision"]), "--plan-hash", job["planHash"]])
+            if job["action"] == "approve-plan":
+                command.append("--approve")
+            if job["action"] == "apply-preview-edits":
+                command.extend(["--preview-edits", job["previewEdits"]])
+            return command
         source = job["input"]
         if job["kind"] == "probe":
             return ["ffprobe", "-v", "error", "-show_entries", "format=duration,size,format_name",
@@ -215,7 +358,8 @@ class JobQueue:
                                    error="Tarefa cancelada." if job.get("cancelRequested") else "O aplicativo foi encerrado durante esta tarefa.")
                         continue
                 command = self.command_builder(job)
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                           start_new_session=True)
                 with self.lock:
                     self.process = process
                     self._save()
@@ -231,12 +375,22 @@ class JobQueue:
                         job.update(status="cancelled", error="Tarefa cancelada.")
                     elif process.returncode == 0:
                         job.update(status="completed")
-                        if job["kind"] == "probe":
+                        if job["kind"] in {"probe", "pipeline"}:
                             job["result"] = json.loads(stdout or "{}")
                     else:
-                        tool = "ffprobe" if job["kind"] == "probe" else "FFmpeg"
-                        detail = (stderr or "terminou sem explicar o erro.").strip()[-3900:]
-                        message = f"{tool}: {detail}"
+                        if job["kind"] == "pipeline":
+                            try:
+                                failure = json.loads(stdout or "{}")
+                            except (ValueError, TypeError):
+                                failure = {}
+                            detail = failure.get("error") if isinstance(failure, dict) else None
+                            message = detail if isinstance(detail, str) and 0 < len(detail) <= 500 else "A ação da Fase 1 não foi concluída."
+                        elif job["kind"] == "music":
+                            message = "A operação local não terminou. Consulte o ID da tarefa antes de usar a recuperação pela linha de comando."
+                        else:
+                            tool = "ffprobe" if job["kind"] == "probe" else "FFmpeg"
+                            detail = (stderr or "terminou sem explicar o erro.").strip()[-3900:]
+                            message = f"{tool}: {detail}"
                         job.update(status="failed", error=message)
             except (OSError, ValueError, json.JSONDecodeError) as exc:
                 with self.lock:
@@ -248,7 +402,7 @@ class JobQueue:
                     self.running_id = None
                     self._save()
                     self.condition.notify_all()
-                if job.get("status") != "completed" and job.get("output"):
+                if job.get("kind") == "proxy" and job.get("status") != "completed" and job.get("output"):
                     try:
                         Path(job["output"]).unlink(missing_ok=True)
                     except OSError as exc:
@@ -448,6 +602,33 @@ class StudioHandler(preview_server.Handler):
             self._json({"projects": items})
         elif path == "/api/jobs":
             self._json({"jobs": self.app.queue.list()})
+        elif path.startswith("/api/pipeline/"):
+            project_id = path[len("/api/pipeline/"):]
+            project = self.app.projects.get(project_id)
+            if not project:
+                self._json({"error": "Projeto não encontrado."}, 404)
+                return
+            state_path = Path(project.get("editPath") or Path(project["path"]) / "edit") / "studio-pipeline" / "state.json"
+            if not state_path.is_file():
+                self._json({"state": None})
+                return
+            try:
+                if state_path.stat().st_size > 2 * 1024 * 1024:
+                    raise ValueError
+                state = _read_json(state_path, None)
+                if not isinstance(state, dict):
+                    raise ValueError
+            except (OSError, ValueError):
+                self._json({"error": "O estado da Fase 1 não pôde ser lido."}, 400)
+                return
+            self._json({"state": state})
+        elif path == "/api/providers/treblo":
+            try:
+                treblo_music.load_api_key()
+                configured = True
+            except RuntimeError:
+                configured = False
+            self._json({"configured": configured})
         elif path == "/api/diagnostics":
             self._json({"python": sys.version.split()[0], "ffmpeg": shutil.which("ffmpeg"),
                         "ffprobe": shutil.which("ffprobe"), "dataDir": str(self.app.data_dir),
@@ -493,8 +674,24 @@ class StudioHandler(preview_server.Handler):
                 item = self.app.projects.add(Path(str(body.get("path", ""))), bool(body.get("create")))
                 self._json(item, 201)
             elif path == "/api/jobs":
-                job = self.app.queue.enqueue(str(body.get("projectId", "")), str(body.get("kind", "")), Path(str(body.get("input", ""))))
+                if body.get("kind") == "music":
+                    job = self.app.queue.enqueue_music(str(body.get("projectId", "")), str(body.get("prompt", "")),
+                                                       body.get("lengthMin"), body.get("lengthMax"),
+                                                       body.get("confirmed") is True)
+                elif body.get("kind") == "pipeline":
+                    job = self.app.queue.enqueue_pipeline(str(body.get("projectId", "")),
+                                                          str(body.get("action", "")), body)
+                else:
+                    job = self.app.queue.enqueue(str(body.get("projectId", "")), str(body.get("kind", "")), Path(str(body.get("input", ""))))
                 self._json(job, 202)
+            elif path == "/api/providers/treblo/check":
+                try:
+                    key = treblo_music.load_api_key()
+                    balance = treblo_music.check_connection(key)
+                    safe = {name: balance.get(name) for name in ("num_credits", "num_credits_payg") if name in balance}
+                    self._json({"authenticated": True, "balance": safe})
+                except (RuntimeError, OSError, ValueError):
+                    self._json({"error": "Não foi possível autenticar na Treblo. Confira a configuração e tente novamente."}, 400)
             elif path.startswith("/api/jobs/") and path.endswith("/cancel"):
                 job_id = path.split("/")[3]
                 if not self.app.queue.cancel(job_id):

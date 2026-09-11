@@ -1,35 +1,33 @@
-# Edvid Studio — escopo da versão 0.1
+# Edvid Studio — estado da implementação
 
-Esta é a primeira versão local do aplicativo próprio, construída sobre o motor compartilhado. Não é uma reprodução completa do Edvid comercial.
+Aplicativo local próprio sobre o motor compartilhado entre Astra e Claude. A ampliação desta entrega acrescenta controles de corte técnico e Treblo; **ainda não há paridade integral com o aplicativo comercial**.
 
-| Área | Escopo desta versão |
+| Área | Disponível |
 |---|---|
-| Aplicativo Mac | Janela própria WebKit, seleção pelo Finder, compilação Swift |
-| Projetos | Registro local persistente de pastas e reabertura |
-| Revisão | Acesso ao preview/editor já existente no motor |
-| Processamento | Fila local serial para inspeção de mídia e proxy leve, com cancelamento |
-| Diagnóstico | Disponibilidade do Python, FFmpeg e FFprobe, resultados de tarefas |
-| Claude e Astra | Mesmos arquivos do motor canônico; não é uma sessão de IA embutida |
-| Distribuição | Build local com assinatura ad-hoc; requer motor e dependências neste Mac |
+| Aplicativo Mac | Janela WebKit, seletores Finder, biblioteca persistente de pastas |
+| Fila | Inspeção FFprobe, proxy, pipeline técnico e música; cancelamento de processos descendentes |
+| Entrada | Fonte de vídeo, roteiro salvo como referência e idioma da transcrição |
+| Corte técnico | WhisperX, proposta por pausas acústicas, intervalos visíveis, aprovação vinculada à revisão/hash |
+| Render do corte | Staging, detecção de cor, shot_check e verify_cut; bloqueio quando os gates reprovam |
+| Ajustes | Aplicação dos textCuts do preview, histórico de EDL e nova aprovação após alterações |
+| Música | Treblo instrumental, duração sugerida, consulta de conexão/saldo, confirmação de créditos, player e recuperação por taskId |
+| Claude e Astra | Mesma instalação canônica; não equivale a chat de IA dentro do aplicativo |
+| Instalação | Assinatura ad-hoc local, dependente do motor e das dependências deste Mac |
 
-## Próximas etapas ainda não entregues
+## Limites que continuam abertos
 
-- Fluxo de transcrição, criação de EDL e render final operável inteiramente pela interface.
-- Timeline completa com todas as operações do aplicativo comercial, desfazer/refazer e testes de intercâmbio.
-- Integrações de geração de vídeo, imagem e trilha com autenticação individual.
-- Instagram, Metricool e Meta com agendamento, prevenção de duplicações e confirmação de publicação.
-- Biblioteca de estilos aprendidos a partir de referências, com proveniência.
-- Editor de imagens integrado aos helpers existentes e integração autenticada com Canva.
-- Empacotamento independente, Developer ID, notarização e atualizador assinado.
-- Auditoria comparativa completa das funções comerciais e testes de desempenho em projetos grandes.
+- O roteiro é armazenado; ainda não guia seleção semântica. A proposta por pausas não escolhe os melhores trechos pela narrativa.
+- O corte gerado é um preview técnico. O pipeline novo não substitui todos os gates de áudio, cor/LUT, acabamento e revisão integral exigidos pela skill para entrega final.
+- Ajustes cobrem textCuts e histórico de EDL; trim genérico, remoções e notas ainda não têm execução completa nesse pipeline.
+- Legendas, textos, efeitos, tela dividida, inserts, trilha na mixagem e exportação final permanecem no motor/preview existente, sem todo o fluxo conectado aos novos controles.
+- Geração Treblo está integrada, mas uma geração paga real não foi executada nesta validação. Consulta autenticada de saldo funcionou; geração/download foram testados com respostas simuladas.
+- Chat Codex/Claude/Gemini, outros provedores de imagem/vídeo, Canva, publicação/agendamento social e biblioteca de estilos ainda exigem implementação/autenticação próprias.
+- Developer ID, notarização, instalador independente e atualizador assinado permanecem pendentes. O usuário escolheu continuar com instalação local.
 
-O proxy é uma cópia leve para navegação, não o vídeo final de máxima qualidade. Não substitui o original nem comprova SDR Rec.709 de entrega. As regras de cor, áudio, aprovação e revisão de qualidade da skill continuam valendo para o render final.
+## Evidência e referências
 
-## Verificação desta entrega
+Os testes cobrem contratos de API/fila, aprovação, troca da fonte, caminhos confinados, staging e recuperação de música. Os testes de codec com padrões sintéticos foram bloqueados pelos gates visuais/de cor: isso valida o bloqueio, não uma entrega final bem-sucedida. A revisão visual é dos controles do Studio, não de um vídeo final do usuário.
 
-- Build Swift compilado e assinatura ad-hoc verificada.
-- 25 testes Python passaram, com ResourceWarning tratado como erro: inclui os testes existentes de projetos e os novos testes do Studio.
-- Verificação visual na janela normal e na janela mínima de 820 px: biblioteca, seletor Finder, preview vertical e controles de fila.
-- Teste manual de fechar/reabrir preservou projeto e análise concluída; análise real com ffprobe e proxy real com FFmpeg foram executados em vídeo sintético de três segundos.
-- Revisão independente de código corrigiu recuperação de mídia por projeto, sobrevivência da fila a falha de limpeza e descarregamento de mídia ao trocar projeto.
-- Os testes não equivalem à revisão de um vídeo final do usuário nem à validação de todas as funções do editor legado.
+Consulte [PARIDADE.md](PARIDADE.md) para a matriz comercial, [BASELINE-ORIGINAL.md](BASELINE-ORIGINAL.md) para os comportamentos anteriores que devem ser preservados e [TREBLO.md](TREBLO.md) para uso e recuperação de música.
+
+Validação desta ampliação: 70 testes passaram com ResourceWarning tratado como erro. Layout dos novos controles conferido no navegador em 1280 px e 820 px, incluindo os intervalos de aprovação e Treblo. Consulta de saldo pela interface autenticou sem geração paga. Revisão independente corrigiu EDL após J-cut, taxa de quadros real, ciclo de aprovação e cancelamento de música.

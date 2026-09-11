@@ -52,6 +52,39 @@
         </div>
         <p id="job-error" class="error" role="alert"></p>
         <video id="raw-preview" controls hidden></video>
+        <section class="pipeline-panel" aria-labelledby="pipeline-title">
+          <div class="section-title"><div><span class="eyebrow">Fase 1</span><h2 id="pipeline-title">Corte técnico</h2></div><span id="pipeline-state" class="pill">sem estado</span></div>
+          <p class="muted">A proposta encontra blocos de fala e pausas. Ela é técnica: não escolhe trechos pela narrativa nem decide o que deve entrar no vídeo.</p>
+          <label for="pipeline-script">Roteiro de referência (opcional)</label>
+          <textarea id="pipeline-script" maxlength="100000" placeholder="Cole o roteiro para guardar junto do projeto."></textarea>
+          <div class="pipeline-actions"><button id="pipeline-save-brief" class="secondary" type="button">Salvar roteiro</button><label for="pipeline-language">Idioma<select id="pipeline-language"><option value="pt" selected>Português</option><option value="en">Inglês</option><option value="es">Espanhol</option></select></label><button id="pipeline-transcribe" type="button">Transcrever vídeo</button><button id="pipeline-propose" type="button">Propor corte por pausas</button></div>
+          <p id="pipeline-source" class="muted">Fonte: escolha um vídeo acima.</p>
+          <article id="pipeline-plan" class="plan-card" hidden>
+            <div class="section-title"><strong>Plano proposto</strong><span id="pipeline-plan-id"></span></div>
+            <p id="pipeline-plan-summary"></p><div id="pipeline-ranges" class="range-list"></div>
+            <label class="check"><input id="pipeline-approve-check" type="checkbox"> Revisei este plano técnico e aprovo exatamente esta revisão.</label>
+            <div class="pipeline-actions"><button id="pipeline-approve" type="button" disabled>Aprovar plano</button><button id="pipeline-render" type="button" disabled>Renderizar corte aprovado</button></div>
+          </article>
+          <div class="pipeline-actions history-actions"><button id="pipeline-apply-preview" class="secondary" type="button">Aplicar ajustes do preview</button><button id="pipeline-undo" class="text-button" type="button">Desfazer</button><button id="pipeline-redo" class="text-button" type="button">Refazer</button></div>
+          <p class="muted">Aplicar ajustes do preview cria uma nova revisão e invalida a aprovação anterior. Revise e aprove o novo plano antes de renderizar.</p>
+          <p id="pipeline-error" class="error" role="alert"></p>
+        </section>
+        <section class="music-panel" aria-labelledby="music-title">
+          <div class="section-title">
+            <div><span class="eyebrow">Treblo</span><h2 id="music-title">Gerar trilha instrumental</h2></div>
+            <div class="provider-state"><span id="treblo-config" class="pill">verificando configuração</span><button id="treblo-check" class="text-button" type="button">Testar conexão</button></div>
+          </div>
+          <label for="music-prompt">Como a música deve soar?</label>
+          <textarea id="music-prompt" maxlength="2000" placeholder="Ex.: piano e cordas suaves, andamento lento, acolhedora e discreta, sem voz"></textarea>
+          <div class="duration-fields">
+            <div><label for="music-min">Duração mínima</label><select id="music-min"><option value="0">0 s</option><option value="30" selected>30 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120">120 s</option><option value="150">150 s</option><option value="180">180 s</option><option value="210">210 s</option><option value="240">240 s</option><option value="270">270 s</option></select></div>
+            <div><label for="music-max">Duração máxima</label><select id="music-max"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="90">90 s</option><option value="120">120 s</option><option value="150">150 s</option><option value="180">180 s</option><option value="210">210 s</option><option value="240">240 s</option><option value="270">270 s</option><option value="300">300 s</option></select></div>
+          </div>
+          <label class="check credit-confirm"><input id="music-confirm" type="checkbox"> Autorizo usar créditos da Treblo para esta geração.</label>
+          <div class="music-actions"><p id="music-status" class="muted" aria-live="polite">Configurada não significa autenticada. Use “Testar conexão” quando quiser conferir.</p><button id="generate-music" type="button" disabled>Gerar música</button></div>
+          <p id="music-error" class="error" role="alert"></p>
+          <p class="muted cancel-note">Cancelar no Studio interrompe apenas o processo local. Isso não garante o cancelamento na Treblo nem o estorno de créditos.</p>
+        </section>
       </div>
       <div class="lower-grid">
         <section><div class="section-title"><h2>Fila</h2><span>uma tarefa por vez</span></div><div id="jobs"></div></section>
@@ -61,5 +94,6 @@
   </main>
   <script>history.replaceState(null, "", location.pathname);</script>
   <script src="/studio/app.js"></script>
+  <script src="/studio/pipeline.js"></script>
 </body>
 </html>

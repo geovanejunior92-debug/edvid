@@ -110,6 +110,237 @@ class StudioServerTests(unittest.TestCase):
         saved = json.loads((self.data / "queue.json").read_text())
         self.assertEqual(saved["jobs"][0]["id"], job["id"])
 
+    def test_music_job_requires_explicit_credit_confirmation_and_valid_fields(self):
+        cookie = self.login()
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        project = self.workspace / "Trilha"
+        _, item, _ = self.request("POST", "/api/projects", {"path": str(project), "create": True}, cookie, origin)
+        valid = {"projectId": item["id"], "kind": "music", "prompt": "piano leve", "lengthMin": 30, "lengthMax": 60}
+        for update in [
+            {},
+            {"confirmed": False},
+            {"confirmed": True, "prompt": ""},
+            {"confirmed": True, "lengthMin": 31},
+            {"confirmed": True, "lengthMin": 60, "lengthMax": 60},
+            {"confirmed": True, "lengthMax": 330},
+        ]:
+            status, _payload, _ = self.request("POST", "/api/jobs", {**valid, **update}, cookie, origin)
+            self.assertEqual(status, 400, update)
+
+    def test_music_direct_enqueue_requires_boolean_true_confirmation(self):
+        project = self.workspace / "Confirmação estrita"
+        project.mkdir()
+        registry = studio.ProjectRegistry(self.base / "strict-confirm-data")
+        item = registry.add(project)
+        manager = studio.JobQueue(self.base / "strict-confirm-data", registry)
+        self.addCleanup(manager.close)
+        with self.assertRaisesRegex(ValueError, "Confirme"):
+            manager.enqueue_music(item["id"], "piano", 30, 60, 1)
+
+    def test_pipeline_dispatch_validates_source_and_builds_fixed_command(self):
+        data = self.base / "pipeline-command-data"
+        project = self.workspace / "Pipeline"
+        project.mkdir()
+        source = project / "aula.mp4"
+        source.write_bytes(b"video")
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
+        self.addCleanup(manager.close)
+        job = manager.enqueue_pipeline(item["id"], "transcribe", {"source": str(source), "language": "pt"})
+        command = manager._build_command(job)
+        self.assertEqual(command[:5], [sys.executable, str(Path(studio.__file__).with_name("studio_pipeline.py")),
+                                      "--root", str(project.resolve()), "--action"])
+        self.assertEqual(command[5:9], ["transcribe", "--source", "aula.mp4", "--language"])
+        self.assertEqual(command[9:], ["pt", "--model", "large-v3-turbo"])
+        self.assertNotIn("shell", " ".join(command))
+        with self.assertRaisesRegex(ValueError, "dentro do projeto"):
+            manager.enqueue_pipeline(item["id"], "transcribe", {"source": "/etc/passwd", "language": "pt"})
+        with self.assertRaisesRegex(ValueError, "Ação"):
+            manager.enqueue_pipeline(item["id"], "publish", {})
+
+    def test_pipeline_approval_requires_displayed_revision_hash_and_explicit_true(self):
+        data = self.base / "pipeline-approval-data"
+        project = self.workspace / "Approval"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
+        self.addCleanup(manager.close)
+        base = {"revision": 2, "planHash": "a" * 64}
+        for update in [{}, {"approve": 1}, {"approve": True, "revision": 0}, {"approve": True, "planHash": "bad"}]:
+            with self.assertRaises(ValueError, msg=update):
+                manager.enqueue_pipeline(item["id"], "approve-plan", {**base, **update})
+        job = manager.enqueue_pipeline(item["id"], "approve-plan", {**base, "approve": True})
+        command = manager._build_command(job)
+        self.assertEqual(command[-5:], ["--revision", "2", "--plan-hash", "a" * 64, "--approve"])
+
+    def test_pipeline_job_captures_structured_result_and_blocks_duplicate_project_write(self):
+        data = self.base / "pipeline-result-data"
+        project = self.workspace / "Structured"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        source = project / "source.mp4"; source.write_bytes(b"x")
+        command = [sys.executable, "-c", "import json,time; time.sleep(.2); print(json.dumps({'revision':3,'planHash':'abc','ranges':[]}))"]
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: command)
+        self.addCleanup(manager.close)
+        first = manager.enqueue_pipeline(item["id"], "propose-cut", {"source": str(source)})
+        with self.assertRaisesRegex(ValueError, "já tem uma ação"):
+            manager.enqueue_pipeline(item["id"], "undo", {})
+        deadline = time.time() + 5
+        while time.time() < deadline and manager.get(first["id"])["status"] not in manager.FINAL:
+            time.sleep(0.03)
+        self.assertEqual(manager.get(first["id"])["result"], {"revision": 3, "planHash": "abc", "ranges": []})
+
+    def test_pipeline_api_never_autoapproves_or_renders(self):
+        cookie = self.login()
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        project = self.workspace / "API Pipeline"
+        _, item, _ = self.request("POST", "/api/projects", {"path": str(project), "create": True}, cookie, origin)
+        status, payload, _ = self.request("POST", "/api/jobs", {
+            "projectId": item["id"], "kind": "pipeline", "action": "approve-plan",
+            "revision": 1, "planHash": "b" * 64}, cookie, origin)
+        self.assertEqual(status, 400)
+        self.assertNotIn("approve", [job.get("action") for job in self.app.queue.list()])
+        self.assertFalse((project / "edit" / "studio-pipeline" / "state.json").exists())
+
+    def test_pipeline_status_reads_project_state_without_enqueuing_work(self):
+        cookie = self.login()
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        project = self.workspace / "Status Pipeline"
+        _, item, _ = self.request("POST", "/api/projects", {"path": str(project), "create": True}, cookie, origin)
+        state_path = project / "edit" / "studio-pipeline" / "state.json"
+        state_path.parent.mkdir(parents=True)
+        state_path.write_text('{"version":1,"history":[{"action":"propose-cut","ok":true,"revision":2}]}')
+        before = len(self.app.queue.list())
+        status, payload, _ = self.request("GET", f"/api/pipeline/{item['id']}", cookie=cookie)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["state"]["history"][0]["revision"], 2)
+        self.assertEqual(len(self.app.queue.list()), before)
+
+    def test_music_provider_reports_configuration_without_exposing_key(self):
+        cookie = self.login()
+        with patch.object(studio.treblo_music, "load_api_key", return_value="top-secret"):
+            status, payload, _ = self.request("GET", "/api/providers/treblo", cookie=cookie)
+        self.assertEqual((status, payload), (200, {"configured": True}))
+        self.assertNotIn("top-secret", json.dumps(payload))
+        with patch.object(studio.treblo_music, "load_api_key", side_effect=RuntimeError("missing top-secret")):
+            status, payload, _ = self.request("GET", "/api/providers/treblo", cookie=cookie)
+        self.assertEqual((status, payload), (200, {"configured": False}))
+
+    def test_music_enqueue_rejects_missing_local_configuration(self):
+        cookie = self.login()
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        project = self.workspace / "Sem chave"
+        _, item, _ = self.request("POST", "/api/projects", {"path": str(project), "create": True}, cookie, origin)
+        with patch.object(studio.treblo_music, "load_api_key", side_effect=RuntimeError("secret path")):
+            status, payload, _ = self.request("POST", "/api/jobs", {
+                "projectId": item["id"], "kind": "music", "prompt": "piano", "lengthMin": 30,
+                "lengthMax": 60, "confirmed": True}, cookie, origin)
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["error"], "A Treblo ainda não está configurada neste computador.")
+        self.assertNotIn("secret path", json.dumps(payload))
+
+    def test_music_connection_check_returns_only_safe_balance_fields(self):
+        cookie = self.login()
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        with patch.object(studio.treblo_music, "load_api_key", return_value="hidden-key"), \
+             patch.object(studio.treblo_music, "check_connection", return_value={
+                 "num_credits": 12, "num_credits_payg": 3, "token": "must-not-leak"}):
+            status, payload, _ = self.request("POST", "/api/providers/treblo/check", {}, cookie, origin)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, {"authenticated": True, "balance": {"num_credits": 12, "num_credits_payg": 3}})
+        self.assertNotIn("hidden-key", json.dumps(payload))
+        self.assertNotIn("must-not-leak", json.dumps(payload))
+
+    def test_music_command_has_manifest_and_no_secret_argument(self):
+        data = self.base / "music-command-data"
+        project = self.workspace / "Command"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
+        self.addCleanup(manager.close)
+        with patch.object(studio.treblo_music, "load_api_key", return_value="never-on-command-line"):
+            job = manager.enqueue_music(item["id"], "violão calmo", 30, 90, True)
+        command = manager._build_command(job)
+        self.assertEqual(command[:3], [sys.executable, str(Path(studio.__file__).with_name("treblo_music.py")), "violão calmo"])
+        self.assertEqual(command[command.index("--length-min") + 1], "30")
+        self.assertEqual(command[command.index("--length-max") + 1], "90")
+        self.assertEqual(command[command.index("--manifest") + 1], job["manifest"])
+        self.assertEqual(command[command.index("-o") + 1], job["output"])
+        self.assertNotIn("never-on-command-line", command)
+        self.assertTrue(Path(job["output"]).is_relative_to(project.resolve() / "edit" / "music"))
+
+    def test_music_job_completes_with_audio_and_manifest_metadata(self):
+        data = self.base / "music-fake-data"
+        project = self.workspace / "Fake Music"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        def fake_command(job):
+            script = ("from pathlib import Path; import json,sys; "
+                      "Path(sys.argv[1]).write_bytes(b'ID3fake'); "
+                      "Path(sys.argv[2]).write_text(json.dumps({'task_id':'task-123','status':'SUCCESS'}))")
+            return [sys.executable, "-c", script, job["output"], job["manifest"]]
+        manager = studio.JobQueue(data, registry, command_builder=fake_command)
+        self.addCleanup(manager.close)
+        with patch.object(studio.treblo_music, "load_api_key", return_value="configured"):
+            job = manager.enqueue_music(item["id"], "cordas discretas", 30, 60, True)
+        deadline = time.time() + 5
+        while time.time() < deadline and manager.get(job["id"])["status"] not in manager.FINAL:
+            time.sleep(0.03)
+        finished = manager.get(job["id"])
+        self.assertEqual(finished["status"], "completed", finished.get("error"))
+        self.assertEqual(Path(finished["output"]).read_bytes(), b"ID3fake")
+        self.assertEqual(finished["provider"], {"taskId": "task-123", "status": "SUCCESS"})
+
+    def test_music_manifest_survives_restart_without_replaying_job(self):
+        data = self.base / "music-restart-data"
+        project = self.workspace / "Restart Music"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manifest = project / "edit" / "music" / "existing.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text('{"task_id":"remote-existing","status":"PROCESSING"}')
+        state = {"version": 1, "jobs": [{"id": "music-before-restart", "projectId": item["id"], "kind": "music",
+                 "prompt": "ambient", "lengthMin": 30, "lengthMax": 60, "manifest": str(manifest),
+                 "output": str(manifest.with_suffix(".mp3")), "status": "running", "createdAt": 1, "updatedAt": 1}]}
+        studio.atomic_json(data / "queue.json", state)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: self.fail("job replayed"))
+        self.addCleanup(manager.close)
+        restored = manager.get("music-before-restart")
+        self.assertEqual(restored["status"], "interrupted")
+        self.assertEqual(restored["provider"], {"taskId": "remote-existing", "status": "PROCESSING"})
+
+    def test_cancelled_music_preserves_downloaded_output_and_manifest(self):
+        data = self.base / "music-cancel-data"
+        project = self.workspace / "Cancelled Music"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        def command(job):
+            script = ("from pathlib import Path; import json,sys,time; "
+                      "Path(sys.argv[1]).write_bytes(b'ID3paid'); "
+                      "Path(sys.argv[2]).write_text(json.dumps({'task_id':'paid-1','status':'downloaded','output':sys.argv[1]})); time.sleep(30)")
+            return [sys.executable, "-c", script, job["output"], job["manifest"]]
+        manager = studio.JobQueue(data, registry, command_builder=command)
+        self.addCleanup(manager.close)
+        with patch.object(studio.treblo_music, "load_api_key", return_value="configured"):
+            job = manager.enqueue_music(item["id"], "piano", 30, 60, True)
+        output = Path(job["output"]); manifest = Path(job["manifest"])
+        deadline = time.time() + 3
+        while time.time() < deadline and not (output.exists() and manifest.exists()):
+            time.sleep(0.02)
+        self.assertTrue(manager.cancel(job["id"]))
+        deadline = time.time() + 3
+        while time.time() < deadline and manager.get(job["id"])["status"] != "cancelled":
+            time.sleep(0.02)
+        self.assertEqual(output.read_bytes(), b"ID3paid")
+        self.assertTrue(manifest.is_file())
+
     def test_cancel_running_job_and_restart_marks_running_interrupted(self):
         data = self.base / "queue-data"
         project = self.workspace / "Aula"
@@ -120,8 +351,9 @@ class StudioServerTests(unittest.TestCase):
         (project / "input.mp4").write_bytes(b"test")
         job = manager.enqueue(item["id"], "probe", project / "input.mp4")
         deadline = time.time() + 3
-        while time.time() < deadline and manager.get(job["id"])["status"] != "running":
+        while time.time() < deadline and manager.process is None:
             time.sleep(0.02)
+        self.assertIsNotNone(manager.process)
         self.assertTrue(manager.cancel(job["id"]))
         deadline = time.time() + 3
         while time.time() < deadline and manager.get(job["id"])["status"] != "cancelled":
@@ -135,6 +367,51 @@ class StudioServerTests(unittest.TestCase):
         self.addCleanup(restarted.close)
         self.assertEqual(restarted.get(job["id"])["status"], "interrupted")
         self.assertEqual(restarted.get(queued["id"])["status"], "interrupted")
+
+    def test_cancel_kills_pipeline_descendants(self):
+        data = self.base / "process-group-data"
+        project = self.workspace / "Process Group"
+        project.mkdir()
+        marker = project / "child-survived"
+        ready = project / "child-started"
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        child = f"import time; from pathlib import Path; time.sleep(.8); Path({str(marker)!r}).write_text('alive')"
+        parent = f"import subprocess,sys,time; from pathlib import Path; subprocess.Popen([sys.executable,'-c',sys.argv[1]]); Path({str(ready)!r}).write_text('ready'); time.sleep(30)"
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", parent, child])
+        self.addCleanup(manager.close)
+        source = project / "source.mp4"; source.write_bytes(b"x")
+        job = manager.enqueue(item["id"], "probe", source)
+        deadline = time.time() + 3
+        while time.time() < deadline and not ready.exists():
+            time.sleep(0.02)
+        self.assertTrue(ready.exists())
+        self.assertTrue(manager.cancel(job["id"]))
+        time.sleep(1.1)
+        self.assertFalse(marker.exists(), "o subprocesso filho continuou após o cancelamento")
+
+    def test_cancel_kills_descendants_after_group_leader_exits(self):
+        data = self.base / "exited-leader-data"
+        project = self.workspace / "Exited Leader"
+        project.mkdir()
+        marker = project / "orphan-survived"
+        ready = project / "orphan-started"
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        child = f"import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).write_text('alive')"
+        leader = f"import subprocess,sys; from pathlib import Path; subprocess.Popen([sys.executable,'-c',sys.argv[1]]); Path({str(ready)!r}).write_text('ready')"
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", leader, child])
+        self.addCleanup(manager.close)
+        source = project / "source.mp4"; source.write_bytes(b"x")
+        job = manager.enqueue(item["id"], "probe", source)
+        deadline = time.time() + 3
+        while time.time() < deadline and (not ready.exists() or manager.process is None or manager.process.poll() is None):
+            time.sleep(0.02)
+        self.assertIsNotNone(manager.process)
+        self.assertIsNotNone(manager.process.poll(), "o líder do grupo ainda não encerrou")
+        self.assertTrue(manager.cancel(job["id"]))
+        time.sleep(1.2)
+        self.assertFalse(marker.exists(), "o descendente órfão continuou após o cancelamento")
 
     def test_failed_partial_cleanup_does_not_kill_queue_worker(self):
         data = self.base / "cleanup-data"
@@ -236,6 +513,15 @@ class StudioServerTests(unittest.TestCase):
 
 
 class StudioProcessTests(unittest.TestCase):
+    def test_pipeline_ui_selects_latest_job_for_current_project_only(self):
+        script = Path(__file__).resolve().parents[1] / "assets" / "studio" / "pipeline.js"
+        program = f"""const model=require({json.dumps(str(script))});
+const jobs=[{{id:'other',kind:'pipeline',projectId:'b'}},{{id:'mine',kind:'pipeline',projectId:'a'}}];
+console.log(model.latestJobForProject(jobs,'a').id);"""
+        run = subprocess.run(["node", "-e", program], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.stdout.strip(), "mine")
+
     def test_first_stdout_line_is_json_url_and_sigterm_exits_cleanly(self):
         with tempfile.TemporaryDirectory() as directory:
             script = Path(__file__).resolve().parents[1] / "helpers" / "studio_server.py"

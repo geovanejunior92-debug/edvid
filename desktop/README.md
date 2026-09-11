@@ -23,4 +23,4 @@ Para usar um checkout de desenvolvimento, executar o binário com `EDVID_ROOT=/c
 
 Consultar esta documentação e `helpers/studio_server.py` antes de operar o aplicativo. Não abrir um segundo escritor no mesmo projeto nem alterar arquivos enquanto houver processamento. Continuar usando o lock compartilhado para alterações na skill. Não registrar a URL com token em memória ou logs compartilhados.
 
-A fila desta versão cobre operações locais explicitamente disponíveis na interface. Transcrição, render final, geração paga, publicação social e paridade integral com o aplicativo comercial ainda não fazem parte desta primeira entrega desktop. O editor existente continua sendo a interface de revisão dos projetos edvid.
+A fila cobre inspeção/proxy, transcrição WhisperX, proposta técnica por pausas, aprovação por revisão, preview do corte e geração instrumental Treblo com confirmação por geração. Consulte `docs/STUDIO-STATUS.md` para os limites: seleção narrativa, acabamento e entrega final ainda dependem do fluxo da skill. O editor existente continua sendo a interface de revisão. A trilha gerada fica no projeto; não é inserida automaticamente na mixagem.
