@@ -205,6 +205,65 @@ class StudioServerTests(unittest.TestCase):
         self.assertNotIn("approve", [job.get("action") for job in self.app.queue.list()])
         self.assertFalse((project / "edit" / "studio-pipeline" / "state.json").exists())
 
+    def test_finish_dispatch_builds_fixed_commands_and_requires_exact_approval(self):
+        data = self.base / "finish-command-data"
+        project = self.workspace / "Finish"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
+        self.addCleanup(manager.close)
+        settings = {"version": 1, "platform": "reels", "captions": {"mode": "none"},
+                    "headline": {"enabled": False}, "inserts": [], "music": {"enabled": False}}
+        job = manager.enqueue_finish(item["id"], "save", {"settings": settings})
+        command = manager._build_command(job)
+        self.assertEqual(command[:6], [sys.executable, str(Path(studio.__file__).with_name("studio_finish.py")),
+                                      "--root", str(project.resolve()), "--action", "save"])
+        self.assertEqual(json.loads(command[command.index("--settings-json") + 1]), settings)
+        deadline = time.time() + 2
+        while time.time() < deadline and manager.get(job["id"])["status"] not in manager.FINAL:
+            time.sleep(0.01)
+        with self.assertRaisesRegex(ValueError, "aprovação"):
+            manager.enqueue_finish(item["id"], "approve", {"revision": 1, "settingsHash": "a" * 64})
+        approved = manager.enqueue_finish(item["id"], "approve", {
+            "revision": 1, "settingsHash": "a" * 64, "approve": True})
+        self.assertEqual(manager._build_command(approved)[-5:],
+                         ["--revision", "1", "--settings-hash", "a" * 64, "--approve"])
+
+    def test_finish_rejects_unknown_actions_and_review_without_exact_hash_confirmation(self):
+        data = self.base / "finish-review-data"
+        project = self.workspace / "Finish review"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
+        self.addCleanup(manager.close)
+        for action, options in [
+            ("publish", {}),
+            ("review-approve", {"outputHash": "b" * 64}),
+            ("review-approve", {"outputHash": "short", "fullReview": True}),
+        ]:
+            with self.assertRaises(ValueError, msg=action):
+                manager.enqueue_finish(item["id"], action, options)
+        reviewed = manager.enqueue_finish(item["id"], "review-approve", {
+            "outputHash": "b" * 64, "fullReview": True})
+        self.assertEqual(manager._build_command(reviewed)[-3:], ["--output-hash", "b" * 64, "--full-review"])
+
+    def test_finish_status_is_project_scoped_and_read_only(self):
+        cookie = self.login()
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        project = self.workspace / "Finish status"
+        _, item, _ = self.request("POST", "/api/projects", {"path": str(project), "create": True}, cookie, origin)
+        state_path = project / "edit" / "studio-finish" / "state.json"
+        state_path.parent.mkdir(parents=True)
+        state_path.write_text('{"version":1,"latest":{"revision":3},"render":{"deliveryStatus":"awaiting-visual-review"}}')
+        before = len(self.app.queue.list())
+        status, payload, _ = self.request("GET", f"/api/finish/{item['id']}", cookie=cookie)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["state"]["latest"]["revision"], 3)
+        self.assertEqual(payload["state"]["render"]["deliveryStatus"], "awaiting-visual-review")
+        self.assertEqual(len(self.app.queue.list()), before)
+
     def test_pipeline_status_reads_project_state_without_enqueuing_work(self):
         cookie = self.login()
         origin = f"http://127.0.0.1:{self.server.server_port}"
@@ -513,6 +572,21 @@ class StudioServerTests(unittest.TestCase):
 
 
 class StudioProcessTests(unittest.TestCase):
+    def test_finish_ui_filters_jobs_by_project_and_requires_empty_qc_failures(self):
+        script = Path(__file__).resolve().parents[1] / "assets" / "studio" / "finish.js"
+        program = f"""const model=require({json.dumps(str(script))});
+const jobs=[{{id:'other',kind:'finish',projectId:'b'}},{{id:'mine',kind:'finish',projectId:'a'}}];
+const draft=model.draftFromSettings({{platform:'shorts',captions:{{mode:'import',cues:[{{start:0,end:1,text:'Oi'}}]}},headline:{{enabled:true,text:'Título',start:0,end:2}},inserts:[],music:{{enabled:false}}}});
+console.log(JSON.stringify([model.latestJobForProject(jobs,'a').id,
+  model.qcPassed({{fails:[]}}), model.qcPassed({{fails:['black']}}), model.qcPassed({{ok:true}}),
+  model.canUseRevision({{latest:{{}},approved:true,dirty:false}}),
+  model.canUseRevision({{latest:{{}},approved:true,dirty:true}}),
+  draft['finish-platform'],draft['finish-caption-mode'],draft['finish-headline-text']]));"""
+        run = subprocess.run(["node", "-e", program], capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(json.loads(run.stdout),
+                         ["mine", True, False, False, True, False, "shorts", "manual", "Título"])
+
     def test_pipeline_ui_selects_latest_job_for_current_project_only(self):
         script = Path(__file__).resolve().parents[1] / "assets" / "studio" / "pipeline.js"
         program = f"""const model=require({json.dumps(str(script))});

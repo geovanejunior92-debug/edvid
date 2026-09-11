@@ -9,6 +9,8 @@ description: Conversation-driven video editing for short-form vertical (Reels, T
 
 Para abrir, compilar ou diagnosticar o aplicativo local do usuário, leia `desktop/README.md`. O Studio usa este mesmo motor compartilhado entre Astra e Claude; não confundir com o aplicativo comercial Edvid. A versão inicial oferece apenas as operações expostas e testadas na interface. Não declarar paridade integral nem geração/publicação integrada. Antes de alterar um projeto, conferir a fila do Studio e evitar dois escritores simultâneos.
 
+Para finalizar pelo painel local do Studio, leia `docs/STUDIO-FINISH.md` e `docs/STUDIO-STATUS.md`. O perfil manual não substitui o Formato 1/Remotion; QC aprovado não comprova revisão visual integral.
+
 Para gerar música no Studio ou recuperar uma tarefa Treblo, leia `docs/TREBLO.md`. Confirmar o uso de créditos por geração; cancelamento local não garante cancelamento remoto. Não repetir automaticamente uma solicitação de resultado incerto.
 
 ## Principle

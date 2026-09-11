@@ -69,6 +69,25 @@
           <p class="muted">Aplicar ajustes do preview cria uma nova revisão e invalida a aprovação anterior. Revise e aprove o novo plano antes de renderizar.</p>
           <p id="pipeline-error" class="error" role="alert"></p>
         </section>
+        <section class="finish-panel" aria-labelledby="finish-title">
+          <div class="section-title"><div><span class="eyebrow">Fase 2</span><h2 id="finish-title">Finalização</h2></div><span id="finish-state" class="pill">sem ajustes</span></div>
+          <p class="muted">Configure o acabamento do corte aprovado. Salvar cria uma revisão própria; a entrega só é liberada após os gates e a revisão visual integral do arquivo exportado.</p>
+          <div class="finish-grid">
+            <label for="finish-platform">Plataforma<select id="finish-platform"><option value="reels">Reels</option><option value="tiktok">TikTok</option><option value="shorts">Shorts</option></select></label>
+            <label for="finish-caption-mode">Legendas<select id="finish-caption-mode"><option value="none">Sem legendas</option><option value="manual">Cues manuais</option><option value="import">Importar arquivo</option></select></label>
+          </div>
+          <div id="finish-caption-manual" hidden><div class="section-title"><label>Trechos de legenda</label><button id="finish-caption-add" class="text-button" type="button">Adicionar trecho</button></div><div id="finish-caption-cues" class="caption-cues"></div></div>
+          <div id="finish-caption-import" hidden><label for="finish-caption-file">Arquivo JSON de legendas dentro do projeto</label><div class="field-row"><input id="finish-caption-file" autocomplete="off"><button class="secondary picker finish-picker" data-target="finish-captions" type="button" hidden>Escolher</button></div></div>
+          <label class="check"><input id="finish-caption-burn" type="checkbox" checked> Gravar legendas no vídeo</label>
+          <div class="finish-grid"><label for="finish-caption-size">Tamanho da fonte<input id="finish-caption-size" type="number" min="16" max="160" value="48"></label></div>
+          <fieldset><legend>Texto de abertura</legend><label class="check"><input id="finish-headline-enabled" type="checkbox"> Exibir texto</label><input id="finish-headline-text" maxlength="180" placeholder="Título"><div class="finish-grid"><label for="finish-headline-start">Início (s)<input id="finish-headline-start" type="number" min="0" step="0.1" value="0"></label><label for="finish-headline-end">Fim (s)<input id="finish-headline-end" type="number" min="0" step="0.1" value="3"></label></div></fieldset>
+          <fieldset><legend>Insert local</legend><div class="field-row"><input id="finish-insert-file" autocomplete="off" placeholder="Imagem ou vídeo dentro do projeto"><button class="secondary picker finish-picker" data-target="finish-insert" type="button" hidden>Escolher</button></div><div class="finish-grid"><label for="finish-insert-start">Início (s)<input id="finish-insert-start" type="number" min="0" step="0.1" value="0"></label><label for="finish-insert-end">Fim (s)<input id="finish-insert-end" type="number" min="0" step="0.1" value="3"></label><label for="finish-insert-layout">Layout<select id="finish-insert-layout"><option value="fullscreen">Tela cheia</option><option value="split">Divisão simples</option></select></label></div></fieldset>
+          <fieldset><legend>Trilha local</legend><label class="check"><input id="finish-music-enabled" type="checkbox"> Usar trilha</label><div class="field-row"><input id="finish-music-file" autocomplete="off" placeholder="Áudio dentro do projeto"><button class="secondary picker finish-picker" data-target="finish-music" type="button" hidden>Escolher</button></div><div class="finish-grid"><label for="finish-music-gain">Ganho (dB)<input id="finish-music-gain" type="number" step="0.5" value="-18"></label><label for="finish-music-fade-in">Fade in (s)<input id="finish-music-fade-in" type="number" min="0" step="0.1" value="1"></label><label for="finish-music-fade-out">Fade out (s)<input id="finish-music-fade-out" type="number" min="0" step="0.1" value="1"></label><label for="finish-music-ducking">Ducking (dB)<input id="finish-music-ducking" type="number" max="0" step="0.5" value="-10"></label></div></fieldset>
+          <div class="finish-actions"><button id="finish-save" class="secondary" type="button">Salvar revisão</button></div>
+          <article id="finish-approval" class="plan-card" hidden><div class="section-title"><strong>Aprovação dos ajustes</strong><span id="finish-revision"></span></div><p id="finish-fingerprint" class="muted"></p><label class="check"><input id="finish-approve-check" type="checkbox"> Revisei o corte e estes ajustes e aprovo exatamente esta revisão.</label><div class="finish-actions"><button id="finish-approve" type="button" disabled>Aprovar ajustes</button><button id="finish-render" type="button" disabled>Exportar preview final</button></div></article>
+          <article id="finish-review" class="plan-card" hidden><div class="section-title"><strong>Controle de qualidade</strong><span id="finish-delivery-status"></span></div><p id="finish-qc-summary"></p><div id="finish-qc-reports" class="report-links"></div><p class="muted">A folha de contato mostra apenas amostras. Ela não comprova a revisão do vídeo inteiro.</p><video id="finish-preview" controls preload="metadata"></video><p id="finish-output-hash" class="muted"></p><label class="check"><input id="finish-review-check" type="checkbox"> Assisti ao arquivo exportado inteiro e aprovo esta versão visualmente.</label><button id="finish-review-approve" type="button" disabled>Aprovar revisão visual</button></article>
+          <p id="finish-error" class="error" role="alert"></p>
+        </section>
         <section class="music-panel" aria-labelledby="music-title">
           <div class="section-title">
             <div><span class="eyebrow">Treblo</span><h2 id="music-title">Gerar trilha instrumental</h2></div>
@@ -95,5 +114,6 @@
   <script>history.replaceState(null, "", location.pathname);</script>
   <script src="/studio/app.js"></script>
   <script src="/studio/pipeline.js"></script>
+  <script src="/studio/finish.js"></script>
 </body>
 </html>

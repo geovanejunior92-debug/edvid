@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -16,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
@@ -64,6 +66,26 @@ def _file_fingerprint(path: Path) -> dict:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return {"sha256": digest.hexdigest(), "size": path.stat().st_size}
+
+
+def _same_range(a: dict, b: dict, tolerance: float = 0.001) -> bool:
+    try:
+        return (a.get("source") == b.get("source") and a.get("beat", "") == b.get("beat", "")
+                and abs(float(a["start"]) - float(b["start"])) <= tolerance
+                and abs(float(a["end"]) - float(b["end"])) <= tolerance)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _parse_saved_at(value: Any) -> int | None:
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(datetime.strptime(value, "%Y-%m-%d %H:%M:%S").timestamp())
+        except ValueError:
+            return None
+    return None
 
 
 def _parse_fps(raw: str) -> float:
@@ -362,22 +384,26 @@ class StudioPipeline:
             cut_stage.unlink(missing_ok=True)
             raise PipelineError((fps_probe.stderr or "não foi possível medir o frame rate da saída").strip()[-2000:])
         output_fps = _parse_fps(fps_probe.stdout)
+        verified_edl = _read_json(edl_stage)
+        if not isinstance(verified_edl, dict) or not isinstance(verified_edl.get("ranges"), list):
+            cut_stage.unlink(missing_ok=True)
+            raise PipelineError("o render produziu um EDL inválido")
+        preview_state_path = self.edit / "state.json"
+        preview_state = _read_json(preview_state_path) if preview_state_path.exists() else {}
+        if not isinstance(preview_state, dict):
+            cut_stage.unlink(missing_ok=True)
+            raise PipelineError("edit/state.json precisa conter um objeto")
+        rendered_at = int(time.time())
+        preview_state.update({"video": "cut.mp4", "edl": "edl.json", "fps": output_fps,
+                              "renderedAt": rendered_at})
         live_edl, live_cut = self.edit / "edl.json", self.edit / "cut.mp4"
         if live_cut.exists():
             history = self.data / "renders"
             history.mkdir(parents=True, exist_ok=True)
-            old_hash = hashlib.sha256(live_cut.read_bytes()).hexdigest()[:12]
+            old_hash = _file_fingerprint(live_cut)["sha256"][:12]
             os.replace(live_cut, history / f"cut-{int(time.time())}-{old_hash}.mp4")
-        verified_edl = _read_json(edl_stage)
         _atomic_json(live_edl, verified_edl)
         os.replace(cut_stage, live_cut)
-        rendered_at = int(time.time())
-        preview_state_path = self.edit / "state.json"
-        preview_state = _read_json(preview_state_path) if preview_state_path.exists() else {}
-        if not isinstance(preview_state, dict):
-            raise PipelineError("edit/state.json precisa conter um objeto")
-        preview_state.update({"video": "cut.mp4", "edl": "edl.json", "fps": output_fps,
-                              "renderedAt": rendered_at})
         _atomic_json(preview_state_path, preview_state)
         event = self._record("render-cut", True, revision=revision, planHash=plan_hash,
                              output=str(live_cut.relative_to(self.root)), verified=True,
@@ -393,6 +419,148 @@ class StudioPipeline:
         value = _read_json(path)
         return {"edl": value, "hash": _digest(value), "at": int(time.time())}
 
+    def _speech_regions(self, edl: dict) -> dict[str, list[tuple[float, float]]]:
+        regions: dict[str, list[tuple[float, float]]] = {}
+        for name, raw in (edl.get("sources") or {}).items():
+            source = self.confined(raw, must_exist=True)
+            run = self.runner([sys.executable, str(HELPERS_DIR / "speech_regions.py"), str(source)],
+                              capture_output=True, text=True)
+            if run.returncode:
+                raise PipelineError((run.stderr or run.stdout or "a validação acústica falhou").strip()[-2000:])
+            found = [(float(a), float(b)) for a, b in re.findall(r"([\d.]+)\s*->\s*([\d.]+)", run.stdout or "")]
+            if not found:
+                raise PipelineError(f"speech_regions.py não encontrou fala em {source.name}")
+            regions[str(name)] = found
+        return regions
+
+    def _source_durations(self, edl: dict) -> dict[str, float]:
+        durations: dict[str, float] = {}
+        for name, raw in (edl.get("sources") or {}).items():
+            source = self.confined(raw, must_exist=True)
+            run = self.runner(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                               "-of", "default=noprint_wrappers=1:nokey=1", str(source)],
+                              capture_output=True, text=True)
+            try:
+                duration = float((run.stdout or "").strip())
+            except ValueError as exc:
+                raise PipelineError(f"não foi possível medir a duração de {source.name}") from exc
+            if run.returncode or not math.isfinite(duration) or duration <= 0:
+                raise PipelineError(f"não foi possível medir a duração de {source.name}")
+            durations[str(name)] = duration
+        return durations
+
+    @staticmethod
+    def _outside_speech(value: float, regions: list[tuple[float, float]], tolerance: float = 0.015) -> bool:
+        return not any(a + tolerance < value < b - tolerance for a, b in regions)
+
+    def _manual_ranges(self, before: dict, payload: dict) -> tuple[list[dict], dict[int, dict]]:
+        spec = payload.get("edl")
+        if spec is None:
+            return [dict(r) for r in before["ranges"]], {}
+        if not isinstance(spec, dict) or not all(isinstance(spec.get(k, []), list)
+                                                for k in ("ranges", "changes", "removed")):
+            raise PipelineError("ajustes manuais malformados")
+        saved, changes, removed = spec.get("ranges", []), spec.get("changes", []), spec.get("removed", [])
+        if len(saved) + len(removed) != len(before["ranges"]):
+            raise PipelineError("o preview não corresponde mais à timeline atual")
+        used: set[int] = set()
+        changed: dict[int, dict] = {}
+        matched_order: list[int] = []
+        result: list[dict] = []
+        for item in saved:
+            if not isinstance(item, dict):
+                raise PipelineError("range salvo malformado")
+            try:
+                item_start, item_end = float(item["start"]), float(item["end"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise PipelineError("trim inválido ou curto demais") from exc
+            if not math.isfinite(item_start) or not math.isfinite(item_end):
+                raise PipelineError("trim inválido ou curto demais")
+            matches = []
+            for index, original in enumerate(before["ranges"]):
+                if index in used:
+                    continue
+                for change in changes:
+                    change_from = ({"source": change.get("source"), "beat": change.get("beat", ""),
+                                    **(change.get("from") or {})} if isinstance(change, dict) else {})
+                    change_to = ({"source": change.get("source"), "beat": change.get("beat", ""),
+                                  **(change.get("to") or {})} if isinstance(change, dict) else {})
+                    if (isinstance(change, dict) and _same_range(change_from, original)
+                            and item.get("source") == original.get("source")
+                            and item.get("beat", "") == original.get("beat", "")
+                            and _same_range(item, change_to)):
+                        matches.append((index, change))
+                if _same_range(item, original):
+                    matches.append((index, None))
+            unique = {index for index, _ in matches}
+            if len(unique) != 1:
+                raise PipelineError("range ambíguo ou obsoleto no preview")
+            index = unique.pop()
+            chosen_change = next((c for i, c in matches if i == index and c is not None), None)
+            rebuilt = dict(before["ranges"][index])
+            rebuilt["start"], rebuilt["end"] = item_start, item_end
+            if (not math.isfinite(rebuilt["start"]) or not math.isfinite(rebuilt["end"])
+                    or rebuilt["start"] < 0 or rebuilt["end"] - rebuilt["start"] < 0.05):
+                raise PipelineError("trim inválido ou curto demais")
+            if chosen_change is not None:
+                changed[index] = rebuilt
+            used.add(index)
+            matched_order.append(index)
+            result.append(rebuilt)
+        removed_indexes: set[int] = set()
+        for item in removed:
+            matches = [i for i, original in enumerate(before["ranges"])
+                       if i not in used and _same_range(item, original)] if isinstance(item, dict) else []
+            if len(matches) != 1:
+                raise PipelineError("remoção ambígua ou obsoleta no preview")
+            used.add(matches[0]); removed_indexes.add(matches[0])
+        if used != set(range(len(before["ranges"]))) or len(changes) != len(changed):
+            raise PipelineError("ranges/changes/removed são inconsistentes")
+        original_order = [i for i in range(len(before["ranges"])) if i not in removed_indexes]
+        if matched_order != original_order:
+            raise PipelineError("o preview não pode reordenar ranges")
+        return result, changed
+
+    @staticmethod
+    def _map_text_cuts(before: dict, cuts: Any) -> list[dict]:
+        if cuts is None:
+            return []
+        if not isinstance(cuts, list):
+            raise PipelineError("textCuts precisa ser uma lista")
+        jt = before.get("jcut_timeline") or []
+        if jt and len(jt) != len(before.get("ranges") or []):
+            raise PipelineError("a timeline J-cut está obsoleta")
+        slots = []
+        offset = 0.0
+        for index, r in enumerate(before["ranges"]):
+            speed = float(r.get("speed", 1) or 1)
+            if speed <= 0:
+                raise PipelineError("velocidade inválida no EDL")
+            if jt:
+                start, duration = float(jt[index]["video_start_in_output"]), float(jt[index]["video_duration"])
+            else:
+                start, duration = offset, (float(r["end"]) - float(r["start"])) / speed
+                offset += duration + float(r.get("freeze_end", 0) or 0)
+            slots.append((start, start + duration, index, speed))
+        mapped = []
+        for cut in cuts:
+            try:
+                a = float(cut["renderedStart"] if "renderedStart" in cut else cut["start"])
+                b = float(cut["renderedEnd"] if "renderedEnd" in cut else cut["end"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise PipelineError("textCut malformado ou sem posição renderizada") from exc
+            if not math.isfinite(a) or not math.isfinite(b) or not 0 <= a < b:
+                raise PipelineError("textCut possui intervalo inválido")
+            hits = [slot for slot in slots if a >= slot[0] - 0.001 and b <= slot[1] + 0.001]
+            if len(hits) != 1:
+                raise PipelineError("textCut cruza takes ou possui mapeamento ambíguo")
+            o0, _, index, speed = hits[0]
+            r = before["ranges"][index]
+            mapped.append({"index": index, "source": r["source"],
+                           "start": float(r["start"]) + (a - o0) * speed,
+                           "end": float(r["start"]) + (b - o0) * speed})
+        return mapped
+
     def apply_preview_edits(self, raw: str = "edit/preview_edits.json") -> dict:
         self._prepare_writes()
         preview = self.confined(raw, must_exist=True)
@@ -400,23 +568,88 @@ class StudioPipeline:
         if not edl_path.exists():
             raise PipelineError("não há edl.json para ajustar")
         before = self._snapshot_edl()
+        payload = _read_json(preview)
+        if not isinstance(payload, dict) or payload.get("type") not in (None, "timeline-edits"):
+            raise PipelineError("preview_edits.json não contém ajustes de timeline")
+        payload_hash = _digest(payload)
+        consumed_path = self.data / "consumed-preview.json"
+        consumed = _read_json(consumed_path) if consumed_path.exists() else []
+        if not isinstance(consumed, list):
+            raise PipelineError("registro de previews consumidos inválido")
+        if payload_hash in consumed:
+            raise PipelineError("estes ajustes de preview já foram aplicados")
+        expected_hash = payload.get("edlHash") or payload.get("timelineFingerprint")
+        if expected_hash and expected_hash != before["hash"]:
+            raise PipelineError("o preview foi salvo sobre outra revisão da timeline")
+        saved_at = _parse_saved_at(payload.get("savedAt"))
+        state = _read_json(self.edit / "state.json") if (self.edit / "state.json").exists() else {}
+        if saved_at is not None and isinstance(state, dict) and saved_at < int(state.get("renderedAt", 0)):
+            raise PipelineError("o preview é anterior ao render atual")
+        manual, changed = self._manual_ranges(before["edl"], payload)
+        mapped_cuts = self._map_text_cuts(before["edl"], payload.get("textCuts"))
+        if not changed and not mapped_cuts and len(manual) == len(before["edl"]["ranges"]):
+            raise PipelineError("os ajustes não contêm trims, remoções ou textCuts")
+        acoustic = self._speech_regions(before["edl"])
+        durations = self._source_durations(before["edl"])
+        if any(float(item["end"]) > durations[item["source"]] + 0.001 for item in manual):
+            raise PipelineError("um trim ultrapassa a duração física da fonte")
+        for item in changed.values():
+            if (not self._outside_speech(float(item["start"]), acoustic[item["source"]])
+                    or not self._outside_speech(float(item["end"]), acoustic[item["source"]])):
+                raise PipelineError("o trim cai dentro de fala; ajuste a borda para uma pausa acústica")
+        for cut in mapped_cuts:
+            # Expand a selected word interval to the enclosing acoustic speech block,
+            # then keep the Edvid 30 ms safety pad outside speech.
+            overlaps = [(a, b) for a, b in acoustic[cut["source"]] if b >= cut["start"] and a <= cut["end"]]
+            if not overlaps:
+                raise PipelineError("textCut não coincide com fala detectada")
+            if cut["start"] - (overlaps[0][0] - 0.03) > 0.15 or (overlaps[-1][1] + 0.03) - cut["end"] > 0.15:
+                raise PipelineError("a seleção de texto exigiria remover fala vizinha; selecione uma frase com bordas em pausas")
+            original = before["edl"]["ranges"][cut["index"]]
+            cut["start"] = max(float(original["start"]), overlaps[0][0] - 0.03)
+            cut["end"] = min(float(original["end"]), overlaps[-1][1] + 0.03)
+        for cut in sorted(mapped_cuts, key=lambda x: (x["index"], x["start"]), reverse=True):
+            original = before["edl"]["ranges"][cut["index"]]
+            candidates = [i for i, r in enumerate(manual) if r.get("source") == original.get("source")
+                          and r.get("beat", "") == original.get("beat", "")
+                          and float(r["start"]) <= cut["start"] + 0.001
+                          and float(r["end"]) >= cut["end"] - 0.001]
+            if len(candidates) != 1:
+                raise PipelineError("textCut não cabe de forma inequívoca após os trims/removals")
+            pos = candidates[0]; item = manual.pop(pos)
+            pieces = []
+            if cut["start"] - float(item["start"]) >= 0.05:
+                pieces.append({**item, "end": round(cut["start"], 3)})
+            if float(item["end"]) - cut["end"] >= 0.05:
+                tail = {**item, "start": round(cut["end"], 3)}
+                if pieces and tail.get("beat"):
+                    tail["beat"] = f"{tail['beat']} (2)"
+                pieces.append(tail)
+            manual[pos:pos] = pieces
+        if not manual:
+            raise PipelineError("os ajustes removeriam todo o corte")
+        staged = dict(before["edl"])
+        staged["ranges"] = manual
+        staged.pop("jcut_timeline", None)
+        staged["total_duration_s"] = round(sum(float(r["end"]) - float(r["start"]) for r in manual), 3)
+        after = {"edl": staged, "hash": _digest(staged), "at": int(time.time())}
+        if after["hash"] == before["hash"]:
+            raise PipelineError("os ajustes não produziram uma alteração de EDL")
         undo = self.data / "undo.json"
         stack = _read_json(undo) if undo.exists() else []
         if not isinstance(stack, list):
             raise PipelineError("histórico de desfazer inválido")
-        cmd = [sys.executable, str(HELPERS_DIR / "fillers.py"), str(edl_path), "--from-preview", str(preview), "--apply"]
-        run = self.runner(cmd, capture_output=True, text=True)
-        if run.returncode:
-            raise PipelineError((run.stderr or run.stdout or "não foi possível aplicar os ajustes").strip()[-2000:])
-        after = self._snapshot_edl()
-        if after["hash"] == before["hash"]:
-            raise PipelineError("os ajustes não produziram uma alteração de EDL")
+        _atomic_json(edl_path, staged)
         stack = (stack + [before])[-50:]
         _atomic_json(undo, stack)
         _atomic_json(self.data / "redo.json", [])
         proposal = self._new_revision(after["edl"], "ajuste de timeline pendente de aprovação")
+        archive = self.data / "consumed-previews" / f"{payload_hash}.json"
+        _atomic_json(archive, payload)
+        preview.unlink()
+        _atomic_json(consumed_path, (consumed + [payload_hash])[-200:])
         event = self._record("apply-preview-edits", True, beforeHash=before["hash"], afterHash=after["hash"],
-                             log=(run.stdout or "")[-2000:], **proposal)
+                             previewHash=payload_hash, **proposal)
         return {"ok": True, **event}
 
     def restore(self, direction: str) -> dict:

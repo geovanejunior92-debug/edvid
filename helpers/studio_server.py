@@ -90,6 +90,7 @@ class JobQueue:
     FINAL = {"completed", "failed", "cancelled", "interrupted"}
     PIPELINE_ACTIONS = {"status", "save-brief", "transcribe", "propose-cut", "approve-plan",
                         "render-cut", "apply-preview-edits", "undo", "redo"}
+    FINISH_ACTIONS = {"save", "approve", "render", "review-approve"}
 
     def __init__(self, data_dir: Path, projects: ProjectRegistry, command_builder=None):
         self.path = data_dir / "queue.json"
@@ -254,6 +255,54 @@ class JobQueue:
             self.condition.notify()
         return dict(job)
 
+    @staticmethod
+    def _valid_hash(value: object) -> bool:
+        return (isinstance(value, str) and len(value) == 64
+                and all(char in "0123456789abcdef" for char in value.lower()))
+
+    def enqueue_finish(self, project_id: str, action: str, options: dict) -> dict:
+        project = self.projects.get(project_id)
+        if not project:
+            raise ValueError("Projeto não encontrado.")
+        if action not in self.FINISH_ACTIONS:
+            raise ValueError("Ação de finalização não permitida.")
+        now = time.time()
+        job = {"id": uuid.uuid4().hex, "projectId": project_id, "kind": "finish",
+               "action": action, "status": "queued", "createdAt": now, "updatedAt": now}
+        if action == "save":
+            settings = options.get("settings")
+            if not isinstance(settings, dict):
+                raise ValueError("As configurações de finalização são obrigatórias.")
+            encoded = json.dumps(settings, ensure_ascii=False, separators=(",", ":"))
+            if len(encoded.encode("utf-8")) > 1024 * 1024:
+                raise ValueError("As configurações de finalização excedem o limite permitido.")
+            job["settings"] = settings
+        elif action in {"approve", "render"}:
+            revision = options.get("revision")
+            settings_hash = options.get("settingsHash")
+            if (isinstance(revision, bool) or not isinstance(revision, int) or revision < 1
+                    or not self._valid_hash(settings_hash)):
+                raise ValueError("A revisão e o hash das configurações exibidas são obrigatórios.")
+            if action == "approve" and options.get("approve") is not True:
+                raise ValueError("A aprovação das configurações precisa ser confirmada explicitamente.")
+            job.update(revision=revision, settingsHash=settings_hash)
+            if action == "approve":
+                job["approve"] = True
+        else:
+            output_hash = options.get("outputHash")
+            if not self._valid_hash(output_hash) or options.get("fullReview") is not True:
+                raise ValueError("O hash do arquivo e a revisão visual integral precisam ser confirmados explicitamente.")
+            job.update(outputHash=output_hash, fullReview=True)
+        with self.condition:
+            if any(x.get("projectId") == project_id and x.get("status") in {"queued", "running"}
+                   and x.get("kind") in {"pipeline", "finish"} and x.get("action") != "status"
+                   for x in self.jobs):
+                raise ValueError("Este projeto já tem uma ação de edição na fila.")
+            self.jobs.append(job)
+            self._save()
+            self.condition.notify()
+        return dict(job)
+
     def cancel(self, job_id: str) -> bool:
         process = None
         with self.condition:
@@ -324,6 +373,23 @@ class JobQueue:
             if job["action"] == "apply-preview-edits":
                 command.extend(["--preview-edits", job["previewEdits"]])
             return command
+        if job["kind"] == "finish":
+            project = self.projects.get(job["projectId"])
+            if not project:
+                raise ValueError("Projeto removido da biblioteca.")
+            command = [sys.executable, str(Path(__file__).with_name("studio_finish.py")),
+                       "--root", str(Path(project["path"]).resolve()), "--action", job["action"]]
+            if job["action"] == "save":
+                command.extend(["--settings-json", json.dumps(job["settings"], ensure_ascii=False,
+                                                               separators=(",", ":"))])
+            if job["action"] in {"approve", "render"}:
+                command.extend(["--revision", str(job["revision"]),
+                                "--settings-hash", job["settingsHash"]])
+            if job["action"] == "approve":
+                command.append("--approve")
+            if job["action"] == "review-approve":
+                command.extend(["--output-hash", job["outputHash"], "--full-review"])
+            return command
         source = job["input"]
         if job["kind"] == "probe":
             return ["ffprobe", "-v", "error", "-show_entries", "format=duration,size,format_name",
@@ -375,16 +441,17 @@ class JobQueue:
                         job.update(status="cancelled", error="Tarefa cancelada.")
                     elif process.returncode == 0:
                         job.update(status="completed")
-                        if job["kind"] in {"probe", "pipeline"}:
+                        if job["kind"] in {"probe", "pipeline", "finish"}:
                             job["result"] = json.loads(stdout or "{}")
                     else:
-                        if job["kind"] == "pipeline":
+                        if job["kind"] in {"pipeline", "finish"}:
                             try:
                                 failure = json.loads(stdout or "{}")
                             except (ValueError, TypeError):
                                 failure = {}
                             detail = failure.get("error") if isinstance(failure, dict) else None
-                            message = detail if isinstance(detail, str) and 0 < len(detail) <= 500 else "A ação da Fase 1 não foi concluída."
+                            fallback = "A ação da Fase 1 não foi concluída." if job["kind"] == "pipeline" else "A finalização não foi concluída."
+                            message = detail if isinstance(detail, str) and 0 < len(detail) <= 500 else fallback
                         elif job["kind"] == "music":
                             message = "A operação local não terminou. Consulte o ID da tarefa antes de usar a recuperação pela linha de comando."
                         else:
@@ -622,6 +689,26 @@ class StudioHandler(preview_server.Handler):
                 self._json({"error": "O estado da Fase 1 não pôde ser lido."}, 400)
                 return
             self._json({"state": state})
+        elif path.startswith("/api/finish/"):
+            project_id = path[len("/api/finish/"):]
+            project = self.app.projects.get(project_id)
+            if not project:
+                self._json({"error": "Projeto não encontrado."}, 404)
+                return
+            state_path = Path(project.get("editPath") or Path(project["path"]) / "edit") / "studio-finish" / "state.json"
+            if not state_path.is_file():
+                self._json({"state": None})
+                return
+            try:
+                if state_path.stat().st_size > 2 * 1024 * 1024:
+                    raise ValueError
+                finish_state = _read_json(state_path, None)
+                if not isinstance(finish_state, dict):
+                    raise ValueError
+            except (OSError, ValueError):
+                self._json({"error": "O estado da finalização não pôde ser lido."}, 400)
+                return
+            self._json({"state": finish_state})
         elif path == "/api/providers/treblo":
             try:
                 treblo_music.load_api_key()
@@ -681,6 +768,9 @@ class StudioHandler(preview_server.Handler):
                 elif body.get("kind") == "pipeline":
                     job = self.app.queue.enqueue_pipeline(str(body.get("projectId", "")),
                                                           str(body.get("action", "")), body)
+                elif body.get("kind") == "finish":
+                    job = self.app.queue.enqueue_finish(str(body.get("projectId", "")),
+                                                        str(body.get("action", "")), body)
                 else:
                     job = self.app.queue.enqueue(str(body.get("projectId", "")), str(body.get("kind", "")), Path(str(body.get("input", ""))))
                 self._json(job, 202)

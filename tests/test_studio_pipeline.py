@@ -15,10 +15,13 @@ class FakeRunner:
     def __init__(self):
         self.calls = []
         self.fail_verify = False
+        self.fail_speech = False
 
     def __call__(self, command, **_kwargs):
         self.calls.append(command)
         if command[0] == "ffprobe":
+            if "format=duration" in command:
+                return subprocess.CompletedProcess(command, 0, "4.0\n", "")
             return subprocess.CompletedProcess(command, 0, "24/1\n", "")
         helper = Path(command[1]).name if len(command) > 1 else ""
         if helper == "transcribe.py":
@@ -34,6 +37,8 @@ class FakeRunner:
             write_json(edl_path, edl)
             Path(command[command.index("-o") + 1]).write_bytes(b"good-cut")
         elif helper == "speech_regions.py":
+            if self.fail_speech:
+                return subprocess.CompletedProcess(command, 1, "", "acoustic failure")
             return subprocess.CompletedProcess(command, 0, "speech regions:\n  0.90 -> 1.40\n  2.30 -> 3.30\n", "")
         elif helper == "detect_color.py":
             return subprocess.CompletedProcess(command, 0, json.dumps({"profile": "rec709", "confidence": "high"}), "")
@@ -210,6 +215,17 @@ class StudioPipelineTests(unittest.TestCase):
             self.pipe.render_cut(revision, digest)
         self.assertFalse(any(Path(call[1]).name == "render.py" for call in self.runner.calls))
 
+    def test_render_invalid_preview_state_does_not_move_previous_cut(self):
+        revision, digest = self._proposal()
+        self.pipe.approve_plan(revision, digest, True)
+        live = self.root / "edit" / "cut.mp4"
+        live.write_bytes(b"previous-good")
+        (self.root / "edit" / "state.json").write_text("[]")
+        with self.assertRaisesRegex(pipeline.PipelineError, "state.json"):
+            self.pipe.render_cut(revision, digest)
+        self.assertEqual(live.read_bytes(), b"previous-good")
+        self.assertFalse(list((self.pipe.data / "renders").glob("cut-*.mp4")))
+
     def test_render_blocks_log_source_without_approved_grade(self):
         revision, digest = self._proposal()
         self.pipe.approve_plan(revision, digest, True)
@@ -233,7 +249,7 @@ class StudioPipelineTests(unittest.TestCase):
         revision, digest = self._proposal()
         self.pipe.approve_plan(revision, digest, True)
         write_json(self.root / "edit" / "edl.json", json.loads((self.pipe.data / "approved.json").read_text())["edl"])
-        write_json(self.root / "edit" / "preview_edits.json", {"textCuts": [{"start": 1, "end": 1.1}]})
+        write_json(self.root / "edit" / "preview_edits.json", {"textCuts": [{"start": .03, "end": .53}]})
         initial = json.loads((self.root / "edit" / "edl.json").read_text())
         applied = self.pipe.apply_preview_edits()
         self.assertNotEqual(applied["beforeHash"], applied["afterHash"])
@@ -247,6 +263,124 @@ class StudioPipelineTests(unittest.TestCase):
         redone = self.pipe.restore("redo")
         self.assertTrue(redone["requiresApproval"])
         self.assertNotEqual(json.loads((self.root / "edit" / "edl.json").read_text()), initial)
+
+    def _published_edl(self):
+        revision, digest = self._proposal()
+        self.pipe.approve_plan(revision, digest, True)
+        edl = json.loads((self.pipe.data / "approved.json").read_text())["edl"]
+        edl["ranges"][0]["gain_db"] = -2.5
+        write_json(self.root / "edit" / "edl.json", edl)
+        return edl
+
+    def test_preview_manual_trim_and_removal_preserve_metadata(self):
+        edl = self._published_edl()
+        first, second = edl["ranges"]
+        saved_first = {"source": first["source"], "beat": first["beat"], "start": 0.8, "end": first["end"]}
+        payload = {"type": "timeline-edits", "edl": {
+            "ranges": [saved_first],
+            "removed": [{k: second[k] for k in ("source", "beat", "start", "end")}],
+            "changes": [{"source": first["source"], "beat": first["beat"],
+                         "from": {"start": first["start"], "end": first["end"]},
+                         "to": {"start": 0.8, "end": first["end"]}}],
+        }}
+        write_json(self.root / "edit" / "preview_edits.json", payload)
+        result = self.pipe.apply_preview_edits()
+        current = json.loads((self.root / "edit" / "edl.json").read_text())
+        self.assertEqual(len(current["ranges"]), 1)
+        self.assertEqual(current["ranges"][0]["gain_db"], -2.5)
+        self.assertEqual(current["ranges"][0]["start"], 0.8)
+        self.assertTrue(result["requiresApproval"])
+        self.assertFalse((self.root / "edit" / "preview_edits.json").exists())
+        self.assertTrue((self.pipe.data / "consumed-previews" / f"{result['previewHash']}.json").exists())
+
+    def test_preview_rejects_stale_malformed_and_duplicate_payloads(self):
+        edl = self._published_edl()
+        path = self.root / "edit" / "preview_edits.json"
+        write_json(path, {"type": "timeline-edits", "timelineFingerprint": "stale", "textCuts": [{"start": .1, "end": .2}]})
+        with self.assertRaisesRegex(pipeline.PipelineError, "outra revisão"):
+            self.pipe.apply_preview_edits()
+        write_json(path, {"type": "timeline-edits", "edl": {"ranges": "bad"}})
+        with self.assertRaisesRegex(pipeline.PipelineError, "malformados"):
+            self.pipe.apply_preview_edits()
+        payload = {"type": "timeline-edits", "textCuts": [{"renderedStart": .03, "renderedEnd": .53}]}
+        write_json(path, payload)
+        self.pipe.apply_preview_edits()
+        write_json(path, payload)
+        with self.assertRaisesRegex(pipeline.PipelineError, "já foram aplicados"):
+            self.pipe.apply_preview_edits()
+
+    def test_simultaneous_manual_trim_and_text_cut_use_original_rendered_mapping(self):
+        edl = self._published_edl()
+        first, second = edl["ranges"]
+        payload = {"type": "timeline-edits", "edl": {
+            "ranges": [
+                {"source": first["source"], "beat": first["beat"], "start": .8, "end": first["end"]},
+                {k: second[k] for k in ("source", "beat", "start", "end")},
+            ], "removed": [], "changes": [{"source": first["source"], "beat": first["beat"],
+                "from": {"start": first["start"], "end": first["end"]},
+                "to": {"start": .8, "end": first["end"]}}]},
+            "textCuts": [{"renderedStart": .62, "renderedEnd": 1.62, "text": "dois três"}]}
+        write_json(self.root / "edit" / "preview_edits.json", payload)
+        self.pipe.apply_preview_edits()
+        current = json.loads((self.root / "edit" / "edl.json").read_text())
+        self.assertEqual(current["ranges"][0]["start"], .8)
+        self.assertEqual(len(current["ranges"]), 1)
+
+    def test_preview_validation_failure_never_mutates_live_edl_or_history(self):
+        edl = self._published_edl()
+        before = (self.root / "edit" / "edl.json").read_bytes()
+        write_json(self.root / "edit" / "preview_edits.json",
+                   {"type": "timeline-edits", "textCuts": [{"renderedStart": .1, "renderedEnd": .2}]})
+        self.runner.fail_speech = True
+        with self.assertRaisesRegex(pipeline.PipelineError, "acoustic failure"):
+            self.pipe.apply_preview_edits()
+        self.assertEqual((self.root / "edit" / "edl.json").read_bytes(), before)
+        self.assertFalse((self.pipe.data / "undo.json").exists())
+        self.assertTrue((self.root / "edit" / "preview_edits.json").exists())
+
+    def test_preview_rejects_nonfinite_and_out_of_source_trims(self):
+        edl = self._published_edl()
+        first, second = edl["ranges"]
+        def payload(end):
+            return {"type": "timeline-edits", "edl": {"ranges": [
+                {"source": first["source"], "beat": first["beat"], "start": first["start"], "end": end},
+                {k: second[k] for k in ("source", "beat", "start", "end")},
+            ], "removed": [], "changes": [{"source": first["source"], "beat": first["beat"],
+                "from": {"start": first["start"], "end": first["end"]},
+                "to": {"start": first["start"], "end": end}}]}}
+        path = self.root / "edit" / "preview_edits.json"
+        write_json(path, payload(float("nan")))
+        with self.assertRaisesRegex(pipeline.PipelineError, "inválido"):
+            self.pipe.apply_preview_edits()
+        write_json(path, payload(4.5))
+        with self.assertRaisesRegex(pipeline.PipelineError, "duração física"):
+            self.pipe.apply_preview_edits()
+
+    def test_text_selection_cannot_silently_expand_over_neighboring_words(self):
+        edl = self._published_edl()
+        write_json(self.root / "edit" / "preview_edits.json", {
+            "type": "timeline-edits", "textCuts": [{"renderedStart": .1, "renderedEnd": .2}]})
+        with self.assertRaisesRegex(pipeline.PipelineError, "fala vizinha"):
+            self.pipe.apply_preview_edits()
+        self.assertEqual(json.loads((self.root / "edit" / "edl.json").read_text()), edl)
+        self.assertTrue((self.root / "edit" / "preview_edits.json").exists())
+
+    def test_same_beat_trims_validate_each_actual_range(self):
+        edl = self._published_edl()
+        for r in edl["ranges"]:
+            r["beat"] = ""
+        write_json(self.root / "edit" / "edl.json", edl)
+        first, second = edl["ranges"]
+        saved = [{k: r[k] for k in ("source", "beat", "start", "end")} for r in edl["ranges"]]
+        saved[1]["start"] = 2.8
+        write_json(self.root / "edit" / "preview_edits.json", {
+            "type": "timeline-edits", "edl": {"ranges": saved, "removed": [], "changes": [{
+                "source": second["source"], "beat": "",
+                "from": {"start": second["start"], "end": second["end"]},
+                "to": {"start": 2.8, "end": second["end"]}}]}})
+        with self.assertRaisesRegex(pipeline.PipelineError, "dentro de fala"):
+            self.pipe.apply_preview_edits()
+        self.assertEqual(json.loads((self.root / "edit" / "edl.json").read_text()), edl)
 
     def test_cli_errors_are_json_and_persisted(self):
         code = pipeline.main(["--root", str(self.root), "--action", "approve-plan",

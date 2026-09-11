@@ -114,12 +114,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if let body = message.body as? [String: Any], let path = body["projectPath"] as? String, !path.isEmpty {
             panel.directoryURL = URL(fileURLWithPath: path)
         }
+        let requestedTarget = (message.body as? [String: Any])?["target"] as? String
+        let finishingTargets: Set<String> = ["finish-music", "finish-insert", "finish-captions"]
+        let target = requestedTarget.flatMap { finishingTargets.contains($0) ? $0 : nil }
         panel.prompt = "Selecionar"
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let path = panel.url?.path,
-                  let data = try? JSONSerialization.data(withJSONObject: [path]),
+            guard response == .OK, let path = panel.url?.path else { return }
+            let event = target != nil ? "edvid-finish-media" : (message.name == "chooseFolder" ? "edvid-folder" : "edvid-media")
+            let detail: Any = target.map { ["path": path, "target": $0] } ?? path as Any
+            guard let data = try? JSONSerialization.data(withJSONObject: [detail]),
                   let literal = String(data: data, encoding: .utf8) else { return }
-            let event = message.name == "chooseFolder" ? "edvid-folder" : "edvid-media"
             self?.web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('\(event)', {detail: \(literal)[0]}));", completionHandler: nil)
         }
     }

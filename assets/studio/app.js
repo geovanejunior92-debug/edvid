@@ -31,6 +31,7 @@ function renderProjects() {
 }
 
 function selectProject(project) {
+  window.beforeProjectChange?.();
   const video = $("raw-preview");
   video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true;
   state.current = project;
@@ -42,6 +43,7 @@ function selectProject(project) {
   updateMusicButton();
   renderProjects();
   window.loadPipeline?.();
+  window.loadFinish?.();
 }
 
 async function loadProjects() {
@@ -53,6 +55,7 @@ async function loadProjects() {
 async function loadJobs() {
   const { jobs } = await api("/api/jobs");
   window.renderPipelineJobs?.(jobs);
+  window.renderFinishJobs?.(jobs);
   const signature = JSON.stringify(jobs);
   if (signature === state.jobsSignature) return;
   state.jobsSignature = signature;
@@ -60,13 +63,14 @@ async function loadJobs() {
   if (!jobs.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Nenhuma tarefa registrada."; root.append(p); return; }
   jobs.forEach((job) => {
     const row = document.createElement("article"); row.className = "job";
-    const names = { probe: "Análise", proxy: "Proxy", music: "Música Treblo", pipeline: "Fase 1" };
+    const names = { probe: "Análise", proxy: "Proxy", music: "Música Treblo", pipeline: "Fase 1", finish: "Finalização" };
     row.innerHTML = `<div><strong></strong><span class="pill"></span></div><p></p><small></small>`;
     row.querySelector("strong").textContent = names[job.kind] || job.kind;
     row.querySelector(".pill").textContent = ({queued:"na fila",running:"em andamento",completed:"concluída",failed:"falhou",cancelled:"cancelada",interrupted:"interrompida"})[job.status] || job.status;
     const format = job.result?.format;
     let summary = job.error || job.output || job.input;
     if (job.kind === "pipeline") summary = job.error || job.action;
+    if (job.kind === "finish") summary = job.error || job.action;
     if (job.status === "completed" && format) {
       const seconds = Number(format.duration || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
       const megabytes = (Number(format.size || 0) / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
