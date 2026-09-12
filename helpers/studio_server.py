@@ -19,6 +19,7 @@ from http.server import ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 import preview_server
+import preview_library
 import treblo_music
 
 
@@ -53,7 +54,8 @@ class ProjectRegistry:
 
     def list(self) -> list[dict]:
         with self.lock:
-            return sorted((dict(x) for x in self.items.values()), key=lambda x: x.get("updatedAt", 0), reverse=True)
+            items = [{**dict(x), **self.flags(x)} for x in self.items.values()]
+        return sorted(items, key=lambda x: (not x["pinned"], -x.get("updatedAt", 0)))
 
     def get(self, project_id: str) -> dict | None:
         with self.lock:
@@ -73,14 +75,39 @@ class ProjectRegistry:
         project_path = path.parent if is_edit else path
         edit.mkdir(exist_ok=True)
         now = time.time()
-        project_id = uuid.uuid5(uuid.NAMESPACE_URL, str(project_path)).hex[:20]
+        # Mesmo identificador da biblioteca web (preview_library.project_key):
+        # antes cada lado derivava o seu e as duas bibliotecas discordavam sobre
+        # o mesmo projeto — fixar num lado não aparecia no outro.
+        project_id = preview_library.project_key(edit)
+        legacy_id = uuid.uuid5(uuid.NAMESPACE_URL, str(project_path)).hex[:20]
         with self.lock:
-            item = self.items.get(project_id, {"id": project_id, "createdAt": now})
-            item.update({"name": project_path.name or str(project_path), "path": str(project_path),
-                         "editPath": str(edit), "updatedAt": now})
+            # migração: um projeto cadastrado com o id antigo é re-chaveado,
+            # preservando createdAt, em vez de virar uma segunda entrada
+            legacy = self.items.pop(legacy_id, None) if legacy_id != project_id else None
+            item = self.items.get(project_id) or legacy or {"id": project_id, "createdAt": now}
+            item.update({"id": project_id, "name": project_path.name or str(project_path),
+                         "path": str(project_path), "editPath": str(edit), "updatedAt": now})
             self.items[project_id] = item
             self._save()
             return dict(item)
+
+    def flags(self, item: dict) -> dict:
+        """Fixado/arquivado vêm do MESMO arquivo que a biblioteca web escreve."""
+        edit = Path(item.get("editPath") or Path(item["path"]) / "edit")
+        try:
+            entry = preview_library.load_registry(preview_library.library_root(edit)).get(item["id"], {})
+        except (OSError, ValueError):
+            entry = {}
+        return {"pinned": bool(entry.get("pinned")), "archived": bool(entry.get("archived"))}
+
+    def set_flags(self, project_id: str, *, pinned=None, archived=None) -> dict:
+        item = self.get(project_id)
+        if not item:
+            raise ValueError("Projeto não encontrado.")
+        edit = Path(item.get("editPath") or Path(item["path"]) / "edit")
+        preview_library.set_flags(preview_library.library_root(edit), project_id,
+                                  pinned=pinned, archived=archived)
+        return {**item, **self.flags(item)}
 
     def _save(self) -> None:
         atomic_json(self.path, {"version": 1, "projects": list(self.items.values())})
@@ -848,6 +875,22 @@ class StudioHandler(preview_server.Handler):
                 else:
                     job = self.app.queue.enqueue(str(body.get("projectId", "")), str(body.get("kind", "")), Path(str(body.get("input", ""))))
                 self._json(job, 202)
+            elif path == "/api/projects/flags":
+                # fixar/arquivar pelo aplicativo, gravando no MESMO arquivo que a
+                # biblioteca web lê — uma biblioteca, não duas
+                try:
+                    pinned = body.get("pinned") if "pinned" in body else None
+                    archived = body.get("archived") if "archived" in body else None
+                    if pinned is None and archived is None:
+                        raise ValueError("Informe pinned e/ou archived.")
+                    for value in (pinned, archived):
+                        if value is not None and not isinstance(value, bool):
+                            raise ValueError("pinned e archived precisam ser booleanos.")
+                    item = self.app.projects.set_flags(str(body.get("projectId", "")),
+                                                       pinned=pinned, archived=archived)
+                    self._json(item)
+                except ValueError as exc:
+                    self._json({"error": str(exc)}, 400)
             elif path == "/api/providers/treblo/check":
                 try:
                     key = treblo_music.load_api_key()

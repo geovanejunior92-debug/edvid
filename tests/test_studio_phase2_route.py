@@ -68,6 +68,33 @@ class Phase2RouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIsNone(json.loads(body)['state'])
 
+    def post(self, path, payload):
+        import json as _json
+        conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
+        conn.request('POST', path, body=_json.dumps(payload),
+                     headers={'Cookie': f'edvid_session={self.app.session}',
+                              'Content-Type': 'application/json',
+                              'Origin': f'http://127.0.0.1:{self.server.server_port}',
+                              'Host': f'127.0.0.1:{self.server.server_port}'})
+        response = conn.getresponse()
+        body = response.read()
+        conn.close()
+        return response.status, body
+
+    def test_the_app_can_pin_a_project_and_the_listing_follows(self):
+        status, body = self.post('/api/projects/flags',
+                                 {'projectId': self.item['id'], 'pinned': True})
+        self.assertEqual(status, 200, body)
+        self.assertTrue(json.loads(body)['pinned'])
+        self.assertTrue(self.app.projects.list()[0]['pinned'])
+
+    def test_flags_route_refuses_nonsense(self):
+        for payload in ({'projectId': self.item['id']},
+                        {'projectId': self.item['id'], 'pinned': 'sim'},
+                        {'projectId': 'naoexiste', 'pinned': True}):
+            status, _ = self.post('/api/projects/flags', payload)
+            self.assertEqual(status, 400)
+
     def test_without_the_session_the_route_refuses(self):
         conn = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
         conn.request('GET', f'/api/phase2/{self.item["id"]}')

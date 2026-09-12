@@ -67,6 +67,28 @@ def receive(root, filename, stream, length):
 REGISTRY = '.edvid-library.json'
 
 
+def project_key(edit_dir) -> str:
+    """O identificador de um projeto, em UM lugar só.
+
+    A biblioteca web e a nativa derivavam ids diferentes do MESMO projeto — a
+    web por sha256 do caminho de `edit`, a nativa por uuid5 do caminho do
+    projeto. Resultado: fixar ou arquivar num lado não aparecia no outro, e o
+    usuário via duas bibliotecas que discordavam. Unificado em 2026-09-11,
+    enquanto o registro nativo ainda estava vazio e a troca não custava
+    migração de dados reais.
+    """
+    return hashlib.sha256(str(Path(edit_dir).resolve()).encode()).hexdigest()[:16]
+
+
+def library_root(edit_dir) -> Path:
+    """Onde ficam as marcas (fixado/arquivado) de um projeto.
+
+    O web tem uma biblioteca só; o Studio registra pasta em qualquer lugar.
+    A regra que serve aos dois: as marcas moram ao lado do projeto, na pasta
+    que o contém — que no caso do web É a biblioteca."""
+    return Path(edit_dir).resolve().parent.parent
+
+
 def registry_path(library) -> Path:
     return Path(library).resolve() / REGISTRY
 

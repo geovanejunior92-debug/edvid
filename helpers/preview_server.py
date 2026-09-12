@@ -646,13 +646,13 @@ def _check_access(root: Path) -> None:
 
 def discover_projects(library: Path, active: Path) -> dict[str, Path]:
     library, active = library.resolve(), active.resolve()
-    projects = {hashlib.sha256(str(active).encode()).hexdigest()[:16]: active}
+    projects = {preview_library.project_key(active): active}
     for base, dirs, files in os.walk(library):
         dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'remotion', 'transcripts')]
         if 'state.json' in files:
             path = Path(base).resolve()
             if path.is_relative_to(library.resolve()):
-                projects[hashlib.sha256(str(path).encode()).hexdigest()[:16]] = path
+                projects[preview_library.project_key(path)] = path
             dirs[:] = []
     return projects
 
