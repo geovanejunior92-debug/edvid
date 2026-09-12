@@ -171,6 +171,18 @@ Interface:
 
 **New video is the default:** `/` opens the library and the “Criar projeto e adicionar vídeos” form, never C014 or another previous project automatically. Ask for a project name and let the user select MOV/MP4/M4V/WEBM files (up to 8 GiB each). The browser copies only the selected files into a new isolated folder under `--library`; it never moves or reorganizes Desktop/Downloads. With exactly one imported video, the browser immediately submits the fixed automatic Phase-1 strategy and the server starts transcription, technical cut, preview render and verification in its durable background queue. Multiple videos open the source sequence and wait for an editorial strategy. Existing projects remain accessible by explicit choice. To show an existing edit deliberately, get its link from `/api/projects` or `/projects` and open `/p/<id>/`.
 
+**Organizing the shelf (2026-09-11):** each card carries pin, rename and archive.
+Pinned projects sort above everything else; renaming rewrites `state.json`'s own
+`project` field (one project, one name — no second name to drift); archiving only
+hides the card, behind an "Arquivados (N)" disclosure that can restore it, and
+**never touches a file on disk**. Those two flags live in `<library>/.edvid-library.json`,
+which is shelf state, not project state — copy a project folder elsewhere and it
+carries its edit, not someone's ordering. `POST /api/projects/update` with
+`{id, pinned?, archived?, name?}` is the one route. A root passed as `--root` that
+has no `state.json` is no longer listed as a project: it is the placeholder the
+server was pointed at, and listing it produced a permanent "PRECISA DE ATENÇÃO"
+card that nothing could fix.
+
 **Project library and recovery:** pass `--library <videos-library>` to `preview_server.py` to list existing projects at `/projects`. The default library is the active edit directory's parent. Each project opens at `/p/<id>/`; those URLs keep simultaneous tabs independent. Never copy another project's state over the active project to switch projects.
 
 The preview distinguishes a first cut that does not exist yet, missing media in an existing project, processing and failures. Use "Buscar vídeos na biblioteca" to select an existing cut or final video, then "Localizar e recuperar". Recovery copies that file into the edit directory and backs up state; it does not edit or move the selected original. Never substitute raw footage for an approved cut. Recovery does not rebuild lost media. Pending edits and running work must finish before recovery.

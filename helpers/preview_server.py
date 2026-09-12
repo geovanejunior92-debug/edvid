@@ -249,19 +249,50 @@ class Handler(BaseHTTPRequestHandler):
 
     def _projects(self) -> None:
         items = []
+        flags = preview_library.load_registry(self.server.library)
+        active = getattr(self.server, 'default_root', None)
         for key, root in list(self.server.projects.items()):
+            # The active root is always in `projects` so /p/<id>/ can route to it,
+            # but a root with no state.json is not a project the user made — it is
+            # the placeholder the server was pointed at. Listing it produced a
+            # permanent "PRECISA DE ATENÇÃO — Projeto indisponível" card that
+            # nothing could fix, because there was nothing wrong.
+            if root == active and not (root / 'state.json').is_file():
+                continue
+            entry = flags.get(key, {})
+            mark = {'pinned': bool(entry.get('pinned')), 'archived': bool(entry.get('archived'))}
             try:
                 state = json.loads((root / 'state.json').read_text())
                 status = health(root, state)
                 thumbs = sorted((root / '.preview_cache' / 'thumbs').glob('*.jpg'))
+                # A frame from the MIDDLE of the filmstrip: frame one is
+                # routinely a slate, a black fade-in or a closed eye.
+                thumbs = thumbs[len(thumbs) // 2:] or thumbs
                 items.append({'id': key, 'name': state.get('project') or root.parent.name,
                               'updatedAt': (root / 'state.json').stat().st_mtime,
                               'status': status['code'], 'message': status['message'],
-                              'thumbnail': f'/p/{key}/media/.preview_cache/thumbs/{thumbs[0].name}' if thumbs else None})
+                              'thumbnail': f'/p/{key}/media/.preview_cache/thumbs/{thumbs[0].name}' if thumbs else None,
+                              **mark})
             except (OSError, ValueError, TypeError):
                 items.append({'id': key, 'name': root.parent.name, 'updatedAt': 0,
-                              'status': 'error', 'message': 'Projeto indisponível', 'thumbnail': None})
-        self._json({'projects': sorted(items, key=lambda x: x['updatedAt'], reverse=True)})
+                              'status': 'error', 'message': 'Projeto indisponível', 'thumbnail': None,
+                              **mark})
+        self._json({'projects': sorted(items, key=lambda x: (not x['pinned'], -x['updatedAt']))})
+
+    def _project_update(self, body: dict) -> None:
+        key = body.get('id')
+        root = self.server.projects.get(key) if isinstance(key, str) else None
+        if root is None:
+            raise ValueError('Projeto não encontrado')
+        result = {'ok': True, 'id': key}
+        if 'name' in body:
+            result['name'] = preview_library.rename(root, body.get('name'))
+        if 'pinned' in body or 'archived' in body:
+            result.update(preview_library.set_flags(
+                self.server.library, key,
+                pinned=body.get('pinned') if 'pinned' in body else None,
+                archived=body.get('archived') if 'archived' in body else None))
+        self._json(result)
 
     def _relink(self, body: dict) -> None:
         if health(self.root, {}).get('code') == 'processing' or (self.root / 'preview_edits.json').exists():
@@ -384,7 +415,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.close_connection = True
                 self._json({'error': str(e)}, 400)
             return
-        if self.path.split("?", 1)[0] not in ("/api/save", "/api/relink", "/api/requests", "/api/projects/create"):
+        if self.path.split("?", 1)[0] not in ("/api/save", "/api/relink", "/api/requests", "/api/projects/create", "/api/projects/update"):
             self._json({"error": "unknown route"}, 404)
             return
         try:
@@ -402,6 +433,12 @@ class Handler(BaseHTTPRequestHandler):
                 key, root = preview_library.create(self.server.library, body.get('name'))
                 self.server.projects[key] = root
                 self._json({'ok': True, 'id': key, 'url': f'/p/{key}/'})
+            except (ValueError, OSError) as e:
+                self._json({'error': str(e)}, 400)
+            return
+        if self.path.split('?', 1)[0] == '/api/projects/update':
+            try:
+                self._project_update(body)
             except (ValueError, OSError) as e:
                 self._json({'error': str(e)}, 400)
             return

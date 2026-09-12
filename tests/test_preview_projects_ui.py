@@ -31,6 +31,26 @@ console.log(JSON.stringify({expression}));
         })
         self.assertIsNone(multiple)
 
+    def test_library_view_pins_first_and_keeps_archived_apart(self):
+        view = self.run_model("projects-model.js", """model.libraryView([
+  {name:'Tireoide', updatedAt: 10},
+  {name:'Sono', updatedAt: 30, pinned: true},
+  {name:'Mounjaro', updatedAt: 20},
+  {name:'Antigo', updatedAt: 99, archived: true}
+], '')""")
+        # Pinned first, then most recently updated.
+        self.assertEqual([p["name"] for p in view["visible"]], ["Sono", "Mounjaro", "Tireoide"])
+        self.assertEqual([p["name"] for p in view["archived"]], ["Antigo"])
+
+    def test_library_search_filters_both_lists(self):
+        view = self.run_model("projects-model.js", """model.libraryView([
+  {name:'Tireoide — 4 hábitos', updatedAt: 10},
+  {name:'Sono e cérebro', updatedAt: 30},
+  {name:'Tireoide antigo', updatedAt: 5, archived: true}
+], 'TIREOIDE')""")
+        self.assertEqual([p["name"] for p in view["visible"]], ["Tireoide — 4 hábitos"])
+        self.assertEqual([p["name"] for p in view["archived"]], ["Tireoide antigo"])
+
     def test_pending_request_resumes_without_sources_query_parameter(self):
         values = self.run_model("requests-model.js", """[
   model.shouldRefreshSources('', {payload:{mode:'automatic'}}),

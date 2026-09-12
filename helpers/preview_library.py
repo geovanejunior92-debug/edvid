@@ -1,5 +1,6 @@
 """Create isolated preview projects and copy selected uploads without moving originals."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -50,3 +51,71 @@ def receive(root, filename, stream, length):
     finally:
         temp.unlink(missing_ok=True)
     return target.name
+
+
+# ---- library registry -------------------------------------------------------
+# Pin, archive and rename are LIBRARY state, not project state: they describe how
+# the shelf is organised, not what the edit is. They live in one small file next
+# to the projects so a project folder stays portable — copy it elsewhere and it
+# carries its edit, not someone's shelf preferences.
+#
+# Archiving NEVER touches files. It hides the card and nothing else; the acceptance
+# test for this is "remove only the library entry without deleting files". A
+# rename is the one flag that does reach the project, because the name shown on
+# the card IS state.json's `project` field — storing a second name here would give
+# one project two names that drift apart.
+REGISTRY = '.edvid-library.json'
+
+
+def registry_path(library) -> Path:
+    return Path(library).resolve() / REGISTRY
+
+
+def load_registry(library) -> dict:
+    """Never raises: a corrupt or missing registry means "no preferences yet"."""
+    try:
+        data = json.loads(registry_path(library).read_text())
+    except (OSError, ValueError):
+        return {}
+    entries = data.get('entries') if isinstance(data, dict) else None
+    if not isinstance(entries, dict):
+        return {}
+    clean = {}
+    for key, value in entries.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            clean[key] = {'pinned': bool(value.get('pinned')), 'archived': bool(value.get('archived'))}
+    return clean
+
+
+def set_flags(library, key, *, pinned=None, archived=None) -> dict:
+    if not isinstance(key, str) or not key:
+        raise ValueError('Projeto inválido')
+    entries = load_registry(library)
+    entry = entries.get(key, {'pinned': False, 'archived': False})
+    if pinned is not None:
+        entry['pinned'] = bool(pinned)
+    if archived is not None:
+        entry['archived'] = bool(archived)
+    entries[key] = entry
+    # A default entry carries no information — drop it so the file stays small
+    # and a project that was never touched never appears here.
+    entries = {k: v for k, v in entries.items() if v['pinned'] or v['archived']}
+    write_json(registry_path(library), {'version': 1, 'entries': entries})
+    return entry
+
+
+def rename(root, name) -> str:
+    """Rename the project by rewriting state.json's own `project` field."""
+    if not isinstance(name, str) or not name.strip() or len(name) > 100:
+        raise ValueError('Dê um nome ao projeto (até 100 caracteres)')
+    root = Path(root).resolve()
+    state_path = root / 'state.json'
+    try:
+        state = json.loads(state_path.read_text())
+    except (OSError, ValueError):
+        raise ValueError('Este projeto não tem estado legível para renomear')
+    if not isinstance(state, dict):
+        raise ValueError('Este projeto não tem estado legível para renomear')
+    state['project'] = name.strip()
+    write_json(state_path, state)
+    return state['project']

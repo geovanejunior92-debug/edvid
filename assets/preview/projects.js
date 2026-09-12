@@ -3,16 +3,63 @@ const notice = document.getElementById('notice');
 let items = [];
 const labels = {ready:'DISPONÍVEL PARA REVISÃO',missing:'LOCALIZAR VÍDEO',processing:'PROCESSANDO',waiting:'AGUARDANDO CORTE',error:'PRECISA DE ATENÇÃO'};
 function el(tag, text, cls) {const node=document.createElement(tag); if(text)node.textContent=text; if(cls)node.className=cls;return node;}
-function render(){
- const query=document.getElementById('search').value.toLocaleLowerCase();projects.replaceChildren();
- const visible=items.filter(p=>p.name.toLocaleLowerCase().includes(query));
- notice.textContent=visible.length ? `${visible.length} projeto(s)` : 'Nenhum projeto encontrado.';
- for(const p of visible){const card=el('article',null,'card');const poster=el('div',null,'poster');
+const ICON={
+ pin:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3l1.9 4 4.4.6-3.2 3.1.8 4.4L8 11.3l-3.9 2.1.8-4.4L1.7 5.9l4.4-.6z"/></svg>',
+ rename:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.6 1.9l2.5 2.5-8 8L3 13l.6-3.1zM2 14.6h12v1.1H2z"/></svg>',
+ archive:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 2.6h12.8v2.6H1.6zM2.8 6.4h10.4v7H2.8zm2.6 2.1h5.2v1.2H5.4z"/></svg>',
+ restore:'<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6a5.4 5.4 0 105.1 7.1h-1.7A3.8 3.8 0 118 4.2v2.1l3-2.8L8 .6z"/></svg>'};
+function iconButton(label,svg,on,pressed){
+ const b=el('button',null,'act');b.type='button';b.innerHTML=svg;b.title=label;b.setAttribute('aria-label',label);
+ if(pressed!==undefined)b.setAttribute('aria-pressed',String(!!pressed));
+ b.addEventListener('click',on);return b;}
+async function update(id,patch){
+ const response=await fetch('/api/projects/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,...patch})});
+ const result=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(result.error||'Não foi possível atualizar o projeto');
+ return result;}
+function apply(id,patch,onError){
+ const item=items.find(p=>p.id===id);if(!item)return;const before={...item};
+ Object.assign(item,patch);render();
+ update(id,patch).catch(error=>{Object.assign(item,before);render();notice.textContent=error.message;if(onError)onError(error);});}
+function startRename(card,project){
+ const heading=card.querySelector('h2');const input=el('input',null,'rename');input.value=project.name;input.maxLength=100;
+ const finish=(commit)=>{if(!input.isConnected)return;const name=input.value.trim();input.replaceWith(heading);
+  if(commit&&name&&name!==project.name)apply(project.id,{name});};
+ input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();finish(true);}else if(e.key==='Escape'){e.preventDefault();finish(false);}});
+ input.addEventListener('blur',()=>finish(true));
+ heading.replaceWith(input);input.focus();input.select();}
+function card(p){
+ const card=el('article',null,'card');if(p.pinned)card.classList.add('pinned');const poster=el('div',null,'poster');
  if(p.thumbnail){const img=el('img');img.src=p.thumbnail;img.alt='Prévia do projeto';img.loading='lazy';poster.append(img);}else poster.textContent='▶';
  const body=el('div',null,'body');const status=el('span',labels[p.status]||p.status,'status');status.dataset.status=p.status;
  body.append(status,el('h2',p.name),el('p',p.message));
- if(p.updatedAt){const time=el('time','Atualizado em '+new Date(p.updatedAt*1000).toLocaleDateString('pt-BR'));body.append(time);}
- const link=el('a','Continuar edição');link.href=`/p/${p.id}/`;body.append(link);card.append(poster,body);projects.append(card);}}
+ if(p.updatedAt){body.append(el('time','Atualizado em '+new Date(p.updatedAt*1000).toLocaleDateString('pt-BR')));}
+ const link=el('a','Continuar edição');link.href=`/p/${p.id}/`;body.append(link);
+ const acts=el('div',null,'acts');
+ if(p.archived){acts.append(iconButton('Tirar do arquivo',ICON.restore,()=>apply(p.id,{archived:false})));}
+ else{
+  acts.append(iconButton(p.pinned?'Desafixar projeto':'Fixar projeto no topo',ICON.pin,()=>apply(p.id,{pinned:!p.pinned}),p.pinned));
+  acts.append(iconButton('Renomear projeto',ICON.rename,()=>startRename(card,p)));
+  acts.append(iconButton('Arquivar — esconde o cartão, não apaga nenhum arquivo',ICON.archive,()=>archiveWithUndo(p)));}
+ body.append(acts);card.append(poster,body);return card;}
+// Archiving is reversible and touches no file, but it should not cost a hunt
+// through a disclosure to undo a mis-click: the way back is offered right where
+// the card disappeared from.
+function archiveWithUndo(p){
+ apply(p.id,{archived:true});
+ notice.replaceChildren(document.createTextNode(`“${p.name}” foi arquivado. Nenhum arquivo foi apagado. `));
+ const undo=el('button','Desfazer','undo');undo.type='button';
+ undo.addEventListener('click',()=>apply(p.id,{archived:false}));
+ notice.append(undo);}
+function render(){
+ const view=EdvidProjectsModel.libraryView(items,document.getElementById('search').value);
+ projects.replaceChildren();
+ notice.textContent=view.visible.length?`${view.visible.length} projeto(s)`:(view.archived.length?'Nenhum projeto ativo. Veja os arquivados abaixo.':'Nenhum projeto encontrado.');
+ for(const p of view.visible)projects.append(card(p));
+ const box=document.getElementById('archived');const list=document.getElementById('archived-list');
+ box.hidden=!view.archived.length;
+ document.getElementById('archived-count').textContent=`Arquivados (${view.archived.length})`;
+ list.replaceChildren();for(const p of view.archived)list.append(card(p));}
 document.getElementById('search').addEventListener('input',render);
 fetch('/api/projects').then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{items=data.projects;render();}).catch(()=>notice.textContent='Não foi possível carregar os projetos. Recarregue para tentar novamente.');
 const IMPORT_STATE = 'edvid-import-v1';
