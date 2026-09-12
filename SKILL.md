@@ -156,6 +156,13 @@ Trilha de IMAGEM (post, carrossel, capa, thumbnail — 2026-09-10). Leia **`refe
 Phase 2/3 helpers (captions, face tracking, image search, music) are listed in
 the track reference you load after the gate. One of them is not optional:
 
+- **`caption_fix.py <edit> [--targets …] [--apply]`** — aplica os `textFixes[]`
+  do preview a `transcripts/cut.json` e `remotion/public/captions.json`. Sem
+  `--apply` só mostra o que faria. Mesma contagem de palavras → tempos
+  intactos; contagem diferente → redistribuição por comprimento dentro do
+  intervalo original, declarada na saída como aproximação. Corrigir o texto
+  NUNCA move a legenda: o usuário está consertando o que foi ouvido, não
+  quando foi dito.
 - **`check_inserts.py <edit-data.json> [--min-motion 0.3]`** — **gate obrigatório
   antes de todo render da Fase 2.** Prova, por número, que cada insert de vídeo
   TOCA (não congelou por estar fora de uma `<Sequence>` ou por ser mais curto que
@@ -297,6 +304,15 @@ borda apontada com um clique.
   (jcut_timeline/segments.json), divida o range nas bordas das palavras com
   30 ms de folga e valide com `speech_regions.py` — exatamente o que o
   `fillers.py --apply` faz, e ele aceita a mesma lista via `--from-preview`.
+- `textFixes[]` (2026-09-11, correção de texto da legenda) — palavras que a
+  transcrição ouviu errado (nome de remédio, termo médico), cada uma
+  `{renderedStart, renderedEnd, start, end, from, to}`. **Aplique com
+  `caption_fix.py <edit> --apply`** — é correção de TEXTO, nunca de tempo:
+  mesma contagem de palavras preserva cada timing ao milissegundo, contagem
+  diferente redistribui dentro do MESMO intervalo e o helper diz que
+  redistribuiu. Depois disso, regenere as legendas e re-renderize a **Fase 2**
+  (o `cut.mp4` não muda — nada aqui mexe no EDL). Correção vazia é recusada:
+  apagar fala é corte (`fillers.py --from-preview`), não correção.
 - `notes[]` — free-text correction requests, each with `start`/`end` on the draft
   timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
   `phase` tab the user was on. Use the RENDERED pair to find the moment in the

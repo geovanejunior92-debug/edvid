@@ -1462,3 +1462,8 @@ body.drawer-open .diag-body { max-height: none; flex: 1 1 auto; min-height: 0; }
 @media(max-width: 700px) {.project-status {margin: 0 8px 8px;} #recoveryPanel {grid-template-columns: 1fr;} }
 
 #mediaCandidates {grid-column: 1 / -1;}
+
+/* correção de texto da legenda — a palavra corrigida fica marcada até o save */
+.chip.word.fixed{border-color:rgba(9,181,183,.9);box-shadow:inset 0 -2px 0 rgba(9,181,183,.9)}
+.word-bar-input{flex:1 1 260px;min-width:160px;padding:7px 10px;font:inherit;font-size:13px;color:#f4f1ed;background:rgba(0,0,0,.45);border:1px solid rgba(9,181,183,.9);border-radius:8px}
+.word-bar-input:focus-visible{outline:2px solid #d0aeff;outline-offset:2px}

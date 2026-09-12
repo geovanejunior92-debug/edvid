@@ -777,6 +777,8 @@ let S = {
   words: [], // [{text,start,end}] rendered seconds
   wordSel: null, // {a,b} índices da seleção em curso
   textCuts: [], // [{start,end,text}] rendered seconds — trechos riscados
+  textFixes: [], // [{start,end,from,to}] rendered seconds — texto corrigido
+  fixing: false, // campo de correção aberto na barra de palavras
   diag: null, // diagnostics.json (helpers/diagnostics.py)
   pendingIn: null, // an IN is open, waiting for its OUT
   editingNote: null, // id of the note the editor is bound to
@@ -932,6 +934,7 @@ function dirtyCount() {
   n += S.insertsDraft.filter((c) => c.start !== c.orig.start || c.end !== c.orig.end).length;
   n += S.notes.length; // each correction marker is an unsaved adjustment too
   n += S.textCuts.length; // cada trecho riscado no texto
+  n += S.textFixes.length; // cada correção de texto da legenda
   n += imageDirty() ? 1 : 0; // one grade change, however many sliders moved
   return n;
 }
@@ -1067,6 +1070,7 @@ async function applyState(data) {
   S.words = [];
   S.wordSel = null;
   S.textCuts = [];
+  S.textFixes = [];
   await loadWords();
   S.diag = null;
   try {
@@ -1280,6 +1284,8 @@ function renderWords() {
     chip.dataset.i = i;
     if (i >= lo && i <= hi) chip.classList.add('sel');
     if (S.textCuts.some((c) => w.start >= c.start - 1e-3 && w.end <= c.end + 1e-3)) chip.classList.add('cut');
+    const fix = S.textFixes.find((f) => w.start >= f.start - 1e-3 && w.end <= f.end + 1e-3);
+    if (fix) { chip.classList.add('fixed'); chip.title = `corrigido para «${fix.to}»`; }
   });
 }
 laneWords.addEventListener('click', (e) => {
@@ -1294,11 +1300,36 @@ laneWords.addEventListener('click', (e) => {
 });
 function renderWordBar() {
   const bar = $('wordBar');
-  if (!S.wordSel) { bar.classList.add('hidden'); return; }
+  if (!S.wordSel) { bar.classList.add('hidden'); S.fixing = false; return; }
   const lo = Math.min(S.wordSel.a, S.wordSel.b), hi = Math.max(S.wordSel.a, S.wordSel.b);
   const text = S.words.slice(lo, hi + 1).map((w) => w.text).join(' ');
   $('wordBarText').textContent = `«${text}»  ${fmt(S.words[lo].start)} → ${fmt(S.words[hi].end)}`;
+  // Correcting and cutting are different intents on the same selection, so the
+  // bar shows one or the other — never both half-armed.
+  $('wordBarFix').classList.toggle('hidden', !S.fixing);
+  $('wordBarText').classList.toggle('hidden', S.fixing);
+  $('wordBarCut').classList.toggle('hidden', S.fixing);
+  $('wordBarEdit').classList.toggle('hidden', S.fixing);
   bar.classList.remove('hidden');
+}
+// Fixing text NEVER moves a timing: the user is correcting what was heard, not
+// when it was said. caption_fix.py holds the other half of that contract.
+function commitFix() {
+  if (!S.wordSel || !S.fixing) return;
+  const lo = Math.min(S.wordSel.a, S.wordSel.b), hi = Math.max(S.wordSel.a, S.wordSel.b);
+  const from = S.words.slice(lo, hi + 1).map((w) => w.text).join(' ');
+  const to = $('wordBarFix').value.trim();
+  S.fixing = false;
+  if (!to) { toast('Apagar fala é corte, não correção — use "cortar este trecho"', 3400); renderWordBar(); return; }
+  if (to !== from) {
+    const start = S.words[lo].start, end = S.words[hi].end;
+    S.textFixes = S.textFixes.filter((f) => !(f.start >= start - 1e-3 && f.end <= end + 1e-3));
+    S.textFixes.push({ start, end, from, to });
+    S.textFixes.sort((a, b) => a.start - b.start);
+    toast('Texto corrigido — salve os ajustes para aplicar', 2600);
+  }
+  S.wordSel = null;
+  renderWords(); renderWordBar(); refreshHeader();
 }
 $('wordBarCut').addEventListener('click', () => {
   if (!S.wordSel) return;
@@ -1310,7 +1341,21 @@ $('wordBarCut').addEventListener('click', () => {
   renderWords(); renderWordBar(); refreshHeader();
   toast('Trecho marcado para cortar — salve os ajustes para aplicar', 2600);
 });
-$('wordBarCancel').addEventListener('click', () => { S.wordSel = null; renderWords(); renderWordBar(); });
+$('wordBarEdit').addEventListener('click', () => {
+  if (!S.wordSel) return;
+  const lo = Math.min(S.wordSel.a, S.wordSel.b), hi = Math.max(S.wordSel.a, S.wordSel.b);
+  S.fixing = true;
+  renderWordBar();
+  const input = $('wordBarFix');
+  input.value = S.words.slice(lo, hi + 1).map((w) => w.text).join(' ');
+  input.focus(); input.select();
+});
+$('wordBarFix').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); commitFix(); }
+  else if (e.key === 'Escape') { e.preventDefault(); S.fixing = false; renderWordBar(); }
+});
+$('wordBarFix').addEventListener('blur', commitFix);
+$('wordBarCancel').addEventListener('click', () => { S.fixing = false; S.wordSel = null; renderWords(); renderWordBar(); });
 
 // ---------- painel de diagnóstico ----------
 function renderDiag() {
@@ -2818,6 +2863,15 @@ $('btnSave').addEventListener('click', async () => {
       text: c.text,
     }));
   }
+  if (S.textFixes.length) {
+    // correção de TEXTO: mesma convenção de tempo dos textCuts, mas nada aqui
+    // move a linha do tempo — quem aplica é o helpers/caption_fix.py
+    payload.textFixes = S.textFixes.map((f) => ({
+      renderedStart: +f.start.toFixed(3), renderedEnd: +f.end.toFixed(3),
+      start: +renderedToDraft(f.start).toFixed(3), end: +renderedToDraft(f.end).toFixed(3),
+      from: f.from, to: f.to,
+    }));
+  }
   if (imageDirty()) {
     // Fase-1 grade controls (per-segment ffmpeg grade at extraction, Hard
     // Rule 7) — a non-default value here means the skill re-renders the CUT,
@@ -2833,6 +2887,7 @@ $('btnSave').addEventListener('click', async () => {
     S.notes = [];
     S.pendingIn = null;
     S.textCuts = [];
+    S.textFixes = [];
     S.wordSel = null;
     renderWordBar();
     S.draft.forEach((r) => { r.orig = { start: r.start, end: r.end }; if (r.removed) r.hardRemoved = true; });
@@ -2852,7 +2907,9 @@ $('btnDiscard').addEventListener('click', () => {
   S.notes = [];
   S.pendingIn = null;
   S.textCuts = [];
+  S.textFixes = [];
   S.wordSel = null;
+  S.fixing = false;
   renderWordBar();
   S.editingNote = null;
   $('noteEditor').classList.add('hidden');
