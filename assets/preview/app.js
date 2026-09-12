@@ -2153,9 +2153,12 @@ video.addEventListener('loadedmetadata', () => LUT_ENGINE.syncRect());
 function updateImgDrawerHint() {
   const hint = $('imgDrawerHint');
   if (!hint) return;
-  const moved = Object.entries(S.style.image || {}).filter(([k, v]) => k !== 'lut' && v).length;
-  const lut = S.style.image && S.style.image.lut && S.style.image.lut !== 'none'
-    ? styleLutName(S.style.image.lut) : null;
+  // renderAll() can run once from the drawer/resize wiring before the first
+  // state poll has populated S.style. Opening the editor should stay clean
+  // during that brief loading window, not log an exception and recover later.
+  const image = S.style?.image || {};
+  const moved = Object.entries(image).filter(([k, v]) => k !== 'lut' && v).length;
+  const lut = image.lut && image.lut !== 'none' ? styleLutName(image.lut) : null;
   const bits = [];
   if (moved) bits.push(`${moved} ajuste${moved > 1 ? 's' : ''}`);
   if (lut) bits.push(`filtro ${lut}`);

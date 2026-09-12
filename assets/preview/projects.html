@@ -1,12 +1,54 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Edvid — Projetos</title><link rel="icon" href="/assets/edvid-logo.png"><link rel="stylesheet" href="/assets/projects.css"></head>
-<body><header><img src="/assets/edvid-logo-white.png" alt="Edvid"><span>Seu espaço de edição</span></header>
-<main><p class="eyebrow">BIBLIOTECA LOCAL</p><h1>Comece um vídeo novo.</h1><p class="intro">Seus cortes, escolhas e próximos passos, organizados por projeto.</p>
-<form id="new-project" class="new-project">
-<label>Nome do projeto<input id="new-name" maxlength="100" required placeholder="Ex.: Reels sobre tireoide"></label>
-<label>Vídeos<input id="new-videos" type="file" accept=".mp4,.mov,.m4v,.webm" multiple required></label>
-<p>Selecione arquivos do Mac. Eles serão copiados para uma nova pasta na biblioteca; os originais permanecem onde estão.</p>
-<button id="new-submit" type="submit">Criar projeto e adicionar vídeos</button>
-<p id="import-status" role="status" aria-live="polite"></p><a id="import-continue" hidden>Continuar com os vídeos já importados</a>
-</form><h2>Seus projetos</h2><label class="search">Buscar projeto<input id="search" type="search" placeholder="Nome do vídeo ou projeto"></label><p id="notice" role="status">Carregando projetos…</p><section id="projects" aria-label="Projetos"></section><details id="archived" hidden><summary id="archived-count">Arquivados (0)</summary><p class="archived-note">Arquivar esconde o cartão da lista. Nenhum arquivo do projeto é apagado.</p><section id="archived-list" aria-label="Projetos arquivados"></section></details></main>
-<script src="/assets/projects-model.js"></script><script src="/assets/projects.js"></script></body></html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Edvid — Projetos</title>
+  <link rel="icon" href="/assets/edvid-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/projects.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/projects" aria-label="Biblioteca do Edvid">
+      <img src="/assets/edvid-logo-white.png" alt="Edvid">
+      <span>Seu espaço de edição</span>
+    </a>
+    <span class="web-status">Edvid web</span>
+  </header>
+
+  <main class="library-view">
+    <section class="library-intro" aria-labelledby="library-title">
+      <p class="eyebrow">BIBLIOTECA LOCAL</p>
+      <h1 id="library-title">Comece um vídeo novo.</h1>
+      <p class="intro">Seus cortes, escolhas e próximos passos, organizados por projeto.</p>
+
+      <form id="new-project" class="new-project">
+        <label>Nome do projeto<input id="new-name" maxlength="100" required placeholder="Ex.: Reels sobre tireoide"></label>
+        <label>Vídeos<input id="new-videos" type="file" accept=".mp4,.mov,.m4v,.webm" multiple required></label>
+        <p>Selecione arquivos do Mac. Eles serão copiados para uma nova pasta na biblioteca; os originais permanecem onde estão.</p>
+        <button id="new-submit" type="submit">Criar projeto e adicionar vídeos</button>
+        <p id="import-status" role="status" aria-live="polite"></p>
+        <a id="import-continue" hidden>Continuar com os vídeos já importados</a>
+      </form>
+    </section>
+
+    <section class="library-list" aria-labelledby="projects-title">
+      <h2 id="projects-title">Seus projetos</h2>
+      <label class="search">Buscar projeto<input id="search" type="search" placeholder="Nome do vídeo ou projeto"></label>
+      <p id="notice" role="status">Carregando projetos…</p>
+      <section id="projects" aria-label="Projetos"></section>
+      <details id="archived" hidden>
+        <summary id="archived-count">Arquivados (0)</summary>
+        <p class="archived-note">Arquivar esconde o cartão da lista. Nenhum arquivo do projeto é apagado.</p>
+        <section id="archived-list" aria-label="Projetos arquivados"></section>
+      </details>
+    </section>
+  </main>
+
+  <script src="/assets/projects-model.js"></script>
+  <script src="/assets/projects.js"></script>
+</body>
+</html>
