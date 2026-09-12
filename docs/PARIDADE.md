@@ -151,3 +151,89 @@ As seis capturas de 11/09/2026 mostram organização em projeto/timeline/preview
 O usuário confirmou que não possui Apple Developer e quer continuar com instalação local. Developer ID e notarização ficam fora da entrega local atual; não impedem as melhorias de edição.
 
 A referência detalhada de preservação está em `BASELINE-ORIGINAL.md`, baseada no Mapa do Edvid enviado pelo usuário.
+
+---
+
+# Auditoria 2026-09-11 — Studio 0.2 (Claude)
+
+Refeita contra o CÓDIGO, os TESTES e o comportamento real, não contra nomes de
+função. Substitui a leitura de estado da seção anterior, que retratava a 0.1.
+
+## Linha de base medida
+
+| | |
+|---|---|
+| Motor | commit `1503f53`, `main` = `origin/main`, árvore limpa |
+| Suíte completa | **191 testes, todos passando** (29s) |
+| Testes do Studio | **70** — `test_studio` 32, `test_studio_pipeline` 24, `test_studio_finish` 13, `test_studio_pipeline_ui` 1 |
+| App instalado | `~/Applications/Edvid Studio.app`, versão 0.2.0, ad-hoc |
+| Código do app | `EdvidStudio.swift` **146 linhas** — casca WebKit. A lógica é Python |
+| Lógica do Studio | `studio_server.py` 833 · `studio_pipeline.py` 732 · `studio_finish.py` 602 |
+
+O relatório anterior mencionava "95 testes específicos do aplicativo". A contagem
+real hoje é **70**. Não achei os 25 restantes; pode ser contagem de outra data ou
+incluir testes que não são do Studio.
+
+## O que o Studio realmente faz
+
+**Fase 1, completa e sólida.** `studio_pipeline.py` cobre: salvar roteiro,
+transcrever (WhisperX), propor corte por pausas, aprovar vinculado a
+revisão+hash, renderizar com gates (`detect_color`, `shot_check`, `verify_cut`),
+aplicar ajustes do preview com validação acústica das bordas, e desfazer/refazer
+por histórico de EDL. Isso é real e está testado.
+
+**Acabamento manual, que NÃO é a Fase 2.** `studio_finish.py` monta um comando
+**ffmpeg** com cartões de texto em PNG e legenda queimada. O próprio arquivo
+declara que não substitui o projeto Remotion.
+
+## A lacuna estrutural, e é uma só
+
+**O Studio não executa a Fase 2.** Nenhum helper do Studio invoca o Remotion — a
+única menção nos 2.167 linhas é a frase que diz que o acabamento manual não o
+substitui. Consequência direta:
+
+> **O Formato 1 — o formato de entrega do usuário — não roda dentro do
+> aplicativo.** Ele exige Remotion: legenda karaokê, tela dividida com matte,
+> zoom e flash da linguagem aprovada, logo, encerramento, efeitos sonoros.
+> O caminho de acabamento do Studio produz outro tipo de vídeo.
+
+Isso também colide com a **Hard Rule 10** da skill ("PHASE 2 is Remotion-only —
+no ffmpeg/PIL burned text or overlays"). O acabamento manual é legítimo como
+perfil próprio e está documentado como tal, mas chamá-lo de paridade seria
+errado.
+
+Não é um botão faltando. É a metade de cima do produto.
+
+## Reclassificação das 17 funções da matriz
+
+Motor = existe helper. Studio = o usuário consegue fazer PELA INTERFACE, do
+começo ao fim, sem Terminal.
+
+| # | Função | Motor | Studio | Observação medida |
+|---:|---|---|---|---|
+| 1 | Corte limpo por IA | sim | **sim** | fluxo completo com gates e histórico |
+| 2 | Roteiro guia o corte | parcial | **não** | roteiro é salvo, não alinha nem escolhe tomada |
+| 3 | J-cut | sim | **não** | padrão no `render.py`; sem controle na interface |
+| 4 | Zoom automático | sim | **não** | vive no `edit-data.json`, que o Studio não escreve |
+| 5 | Zoom nos cortes | sim | **não** | idem |
+| 6 | Flash na transição | sim | **não** | idem |
+| 7 | Legendas com presets | sim | **parcial** | o Studio queima legenda por ffmpeg; os 9 presets são do Remotion |
+| 8 | Headline e texto | sim | **parcial** | cartão PNG por ffmpeg, não os 5 estilos do template |
+| 9 | Tela dividida | sim | **não** | `splitInserts`/matte são Remotion |
+| 10 | Trilha por arquivo | sim | **sim** | ganho, fades, ducking |
+| 11 | Trilha por IA (Treblo) | sim | **parcial** | saldo autenticado OK; geração paga real nunca executada |
+| 12 | Inserir imagem/vídeo | sim | **parcial** | insert local simples; busca e proveniência fora da UI |
+| 13 | Vídeo por IA | sim | **não** | sem rota no Studio |
+| 14 | Marcações na timeline | sim | **parcial** | marca e aplica; sem estado pendente/aplicada visível |
+| 15 | Renderizar | sim | **parcial** | corte e acabamento manual; Fase 2 não |
+| 16 | Biblioteca de projetos | sim | **sim** | fixar/renomear/arquivar/desfazer entregues hoje no web |
+| 17 | Chaves de API | parcial | **não** | sem tela de contas; sem Keychain |
+
+**Placar honesto: 3 de 17 completas no Studio**, 6 parciais, 8 ausentes. A
+contagem anterior ("motor cobre 15 de 17") continua verdadeira e continua não
+sendo paridade de uso — é exatamente a distinção que a própria matriz definiu.
+
+## Ordem que isso impõe
+
+A Fase 2 no Studio não é mais um item da lista: é o **pré-requisito** dos itens
+4, 5, 6, 7, 8, 9 e 15. Fazer qualquer um deles antes é construir duas vezes.

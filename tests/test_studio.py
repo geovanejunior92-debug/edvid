@@ -205,6 +205,58 @@ class StudioServerTests(unittest.TestCase):
         self.assertNotIn("approve", [job.get("action") for job in self.app.queue.list()])
         self.assertFalse((project / "edit" / "studio-pipeline" / "state.json").exists())
 
+    def test_phase2_dispatch_builds_fixed_commands_and_guards_the_queue(self):
+        """A Fase 2 entra na fila com a MESMA disciplina do finish.
+
+        O que este teste protege: um projeto não pode ter corte e Fase 2 na fila
+        ao mesmo tempo (os dois escrevem em edit/), e aprovar exige a flag."""
+        data = self.base / "phase2-command-data"
+        project = self.workspace / "Phase2"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
+        self.addCleanup(manager.close)
+
+        job = manager.enqueue_phase2(item["id"], "save", {"editData": "edit/edit-data.json"})
+        command = manager._build_command(job)
+        self.assertEqual(command[:6], [sys.executable, str(Path(studio.__file__).with_name("studio_phase2.py")),
+                                       "--root", str(project.resolve()), "--action", "save"])
+        self.assertEqual(command[-2:], ["--edit-data", "edit/edit-data.json"])
+
+        # enquanto essa tarefa está na fila, o ACABAMENTO tem que ser recusado:
+        # os dois escrevem em edit/ e a guarda do finish agora enxerga a Fase 2
+        with self.assertRaisesRegex(ValueError, "já tem uma ação de edição"):
+            manager.enqueue_finish(item["id"], "save", {"settings": {
+                "version": 1, "platform": "reels", "captions": {"mode": "none"},
+                "headline": {"enabled": False}, "inserts": [], "music": {"enabled": False}}})
+
+        deadline = time.time() + 2
+        while time.time() < deadline and manager.get(job["id"])["status"] not in manager.FINAL:
+            time.sleep(0.01)
+
+        with self.assertRaisesRegex(ValueError, "confirmada explicitamente"):
+            manager.enqueue_phase2(item["id"], "approve", {"revision": 1, "dataHash": "b" * 64})
+        approved = manager.enqueue_phase2(item["id"], "approve", {
+            "revision": 1, "dataHash": "b" * 64, "approve": True})
+        self.assertEqual(manager._build_command(approved)[-5:],
+                         ["--revision", "1", "--data-hash", "b" * 64, "--approve"])
+
+    def test_phase2_refuses_unknown_action_and_bad_hash(self):
+        data = self.base / "phase2-guard-data"
+        project = self.workspace / "Phase2Guard"
+        project.mkdir()
+        registry = studio.ProjectRegistry(data)
+        item = registry.add(project)
+        manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
+        self.addCleanup(manager.close)
+        with self.assertRaisesRegex(ValueError, "não permitida"):
+            manager.enqueue_phase2(item["id"], "apagar-tudo", {})
+        with self.assertRaisesRegex(ValueError, "revisão e o hash"):
+            manager.enqueue_phase2(item["id"], "render", {"revision": 1, "dataHash": "curto"})
+        with self.assertRaisesRegex(ValueError, "caminho do edit-data"):
+            manager.enqueue_phase2(item["id"], "save", {})
+
     def test_finish_dispatch_builds_fixed_commands_and_requires_exact_approval(self):
         data = self.base / "finish-command-data"
         project = self.workspace / "Finish"

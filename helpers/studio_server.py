@@ -260,6 +260,43 @@ class JobQueue:
         return (isinstance(value, str) and len(value) == 64
                 and all(char in "0123456789abcdef" for char in value.lower()))
 
+    PHASE2_ACTIONS = ("status", "scaffold", "save", "approve", "render")
+
+    def enqueue_phase2(self, project_id: str, action: str, options: dict) -> dict:
+        """Fase 2 (Remotion). Mesma disciplina do finish: uma ação de edição por
+        projeto de cada vez, aprovação explícita, hash do que está na tela."""
+        project = self.projects.get(project_id)
+        if not project:
+            raise ValueError("Projeto não encontrado.")
+        if action not in self.PHASE2_ACTIONS:
+            raise ValueError("Ação de Fase 2 não permitida.")
+        now = time.time()
+        job = {"id": uuid.uuid4().hex, "projectId": project_id, "kind": "phase2",
+               "action": action, "status": "queued", "createdAt": now, "updatedAt": now}
+        if action == "save":
+            raw = options.get("editData")
+            if not isinstance(raw, str) or not raw.strip():
+                raise ValueError("O caminho do edit-data dentro do projeto é obrigatório.")
+            job["editData"] = raw.strip()
+        elif action in {"approve", "render"}:
+            revision, data_hash = options.get("revision"), options.get("dataHash")
+            if (isinstance(revision, bool) or not isinstance(revision, int) or revision < 1
+                    or not self._valid_hash(data_hash)):
+                raise ValueError("A revisão e o hash exibidos são obrigatórios.")
+            if action == "approve" and options.get("approve") is not True:
+                raise ValueError("A aprovação da Fase 2 precisa ser confirmada explicitamente.")
+            job.update(revision=revision, dataHash=data_hash)
+            if action == "approve":
+                job["approve"] = True
+        with self.condition:
+            if any(x.get("projectId") == project_id and x.get("status") in {"queued", "running"}
+                   and x.get("kind") in {"pipeline", "finish", "phase2"} and x.get("action") != "status"
+                   for x in self.jobs):
+                raise ValueError("Este projeto já tem uma ação de edição na fila.")
+            self.jobs.append(job)
+            self.condition.notify_all()
+        return job
+
     def enqueue_finish(self, project_id: str, action: str, options: dict) -> dict:
         project = self.projects.get(project_id)
         if not project:
@@ -295,7 +332,7 @@ class JobQueue:
             job.update(outputHash=output_hash, fullReview=True)
         with self.condition:
             if any(x.get("projectId") == project_id and x.get("status") in {"queued", "running"}
-                   and x.get("kind") in {"pipeline", "finish"} and x.get("action") != "status"
+                   and x.get("kind") in {"pipeline", "finish", "phase2"} and x.get("action") != "status"
                    for x in self.jobs):
                 raise ValueError("Este projeto já tem uma ação de edição na fila.")
             self.jobs.append(job)
@@ -373,6 +410,19 @@ class JobQueue:
             if job["action"] == "apply-preview-edits":
                 command.extend(["--preview-edits", job["previewEdits"]])
             return command
+        if job["kind"] == "phase2":
+            project = self.projects.get(job["projectId"])
+            if not project:
+                raise ValueError("Projeto removido da biblioteca.")
+            command = [sys.executable, str(Path(__file__).with_name("studio_phase2.py")),
+                       "--root", str(Path(project["path"]).resolve()), "--action", job["action"]]
+            if job["action"] == "save":
+                command.extend(["--edit-data", job["editData"]])
+            if job["action"] in {"approve", "render"}:
+                command.extend(["--revision", str(job["revision"]), "--data-hash", job["dataHash"]])
+            if job["action"] == "approve":
+                command.append("--approve")
+            return command
         if job["kind"] == "finish":
             project = self.projects.get(job["projectId"])
             if not project:
@@ -441,10 +491,10 @@ class JobQueue:
                         job.update(status="cancelled", error="Tarefa cancelada.")
                     elif process.returncode == 0:
                         job.update(status="completed")
-                        if job["kind"] in {"probe", "pipeline", "finish"}:
+                        if job["kind"] in {"probe", "pipeline", "finish", "phase2"}:
                             job["result"] = json.loads(stdout or "{}")
                     else:
-                        if job["kind"] in {"pipeline", "finish"}:
+                        if job["kind"] in {"pipeline", "finish", "phase2"}:
                             try:
                                 failure = json.loads(stdout or "{}")
                             except (ValueError, TypeError):
@@ -689,6 +739,27 @@ class StudioHandler(preview_server.Handler):
                 self._json({"error": "O estado da Fase 1 não pôde ser lido."}, 400)
                 return
             self._json({"state": state})
+        elif path.startswith("/api/phase2/"):
+            project_id = path[len("/api/phase2/"):]
+            project = self.app.projects.get(project_id)
+            if not project:
+                self._json({"error": "Projeto não encontrado."}, 404)
+                return
+            state_path = (Path(project.get("editPath") or Path(project["path"]) / "edit")
+                          / "studio-phase2" / "state.json")
+            if not state_path.is_file():
+                self._json({"state": None})
+                return
+            try:
+                if state_path.stat().st_size > 2 * 1024 * 1024:
+                    raise ValueError
+                phase2_state = _read_json(state_path, None)
+                if not isinstance(phase2_state, dict):
+                    raise ValueError
+            except (OSError, ValueError):
+                self._json({"state": None})
+                return
+            self._json({"state": phase2_state})
         elif path.startswith("/api/finish/"):
             project_id = path[len("/api/finish/"):]
             project = self.app.projects.get(project_id)
@@ -770,6 +841,9 @@ class StudioHandler(preview_server.Handler):
                                                           str(body.get("action", "")), body)
                 elif body.get("kind") == "finish":
                     job = self.app.queue.enqueue_finish(str(body.get("projectId", "")),
+                                                        str(body.get("action", "")), body)
+                elif body.get("kind") == "phase2":
+                    job = self.app.queue.enqueue_phase2(str(body.get("projectId", "")),
                                                         str(body.get("action", "")), body)
                 else:
                     job = self.app.queue.enqueue(str(body.get("projectId", "")), str(body.get("kind", "")), Path(str(body.get("input", ""))))
