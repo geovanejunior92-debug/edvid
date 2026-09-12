@@ -230,6 +230,44 @@ class StudioPipeline:
                 rows.append({"start": start, "end": end, "text": str(item["text"]).strip()})
         return sorted(rows, key=lambda row: (row["start"], row["end"]))
 
+    def align_script(self, min_score: float = 0.62) -> dict:
+        """Casa o roteiro salvo com as transcrições e PROPÕE as tomadas.
+
+        Proposta, não decisão: a regra do Studio é revisão humana antes de o
+        corte técnico virar editorial. Linha regravada volta com todas as
+        tomadas; linha que não foi encontrada volta marcada; fala que existe e
+        não está no roteiro volta como improviso. Nada disso vira EDL sozinho.
+        """
+        self._prepare_writes()
+        import script_align
+        brief_path = self.data / "brief.json"
+        if not brief_path.is_file():
+            raise PipelineError("salve o roteiro antes de alinhar")
+        brief = _read_json(brief_path)
+        script = (brief or {}).get("script") if isinstance(brief, dict) else None
+        if not script:
+            raise PipelineError("o roteiro salvo está vazio")
+        folder = self.edit / "transcripts"
+        sources = {}
+        for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+            if path.stem == "cut":
+                continue  # é o resultado, não a matéria-prima
+            data = _read_json(path)
+            rows = self._word_rows(data) if isinstance(data, dict) else []
+            if rows:
+                sources[path.stem] = rows
+        if not sources:
+            raise PipelineError("transcreva ao menos uma fonte antes de alinhar")
+        try:
+            alignment = script_align.align(script, sources, min_score)
+        except ValueError as exc:
+            raise PipelineError(str(exc)) from exc
+        out = self.data / "alignment.json"
+        _atomic_json(out, alignment)
+        event = self._record("align-script", True, alignment=str(out.relative_to(self.root)),
+                             summary=alignment["summary"])
+        return {"ok": True, **event, "summary": alignment["summary"]}
+
     def propose_cut(self, source_raw: str, pause: float = 0.65) -> dict:
         self._prepare_writes()
         if pause < 0.25 or pause > 10:
@@ -675,7 +713,7 @@ class StudioPipeline:
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", required=True, type=Path)
-    ap.add_argument("--action", required=True, choices=["status", "save-brief", "transcribe", "propose-cut",
+    ap.add_argument("--action", required=True, choices=["status", "save-brief", "transcribe", "align-script", "propose-cut",
                                                           "approve-plan", "render-cut", "apply-preview-edits", "undo", "redo"])
     ap.add_argument("--source")
     ap.add_argument("--script")
@@ -683,6 +721,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--language")
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--pause", type=float, default=0.65)
+    ap.add_argument("--min-score", type=float, default=0.62)
     ap.add_argument("--revision", type=int)
     ap.add_argument("--plan-hash")
     ap.add_argument("--approve", action="store_true")
@@ -708,6 +747,7 @@ def dispatch(args: argparse.Namespace, runner: Runner = subprocess.run) -> dict:
         if args.action == "render-cut":
             if args.revision is None or not args.plan_hash: raise PipelineError("--revision e --plan-hash são obrigatórios")
             return pipe.render_cut(args.revision, args.plan_hash, args.preview)
+        if args.action == "align-script": return pipe.align_script(args.min_score)
         if args.action == "apply-preview-edits": return pipe.apply_preview_edits(args.preview_edits)
         return pipe.restore(args.action)
 

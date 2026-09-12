@@ -392,3 +392,62 @@ class StudioPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AlignScriptTests(unittest.TestCase):
+    """A ação de alinhamento dentro do Studio.
+
+    O que ela NÃO pode fazer é decidir: linha regravada tem que voltar com as
+    tomadas para o usuário escolher, e linha não gravada tem que voltar
+    marcada. É a regra de revisão humana antes do corte virar editorial.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "proj"
+        (self.root / "edit" / "transcripts").mkdir(parents=True)
+        self.pipe = pipeline.StudioPipeline(self.root)
+
+    def _words(self, frase, inicio=0.0):
+        out, t = [], inicio
+        for palavra in frase.split():
+            out.append({"text": palavra, "start": round(t, 3), "end": round(t + 0.4, 3)})
+            t += 0.4
+        return out, t
+
+    def _transcript(self, nome, palavras):
+        path = self.root / "edit" / "transcripts" / f"{nome}.json"
+        path.write_text(json.dumps({"words": palavras}))
+
+    def test_align_refuses_without_a_brief(self):
+        with self.assertRaisesRegex(pipeline.PipelineError, "salve o roteiro"):
+            self.pipe.align_script()
+
+    def test_align_refuses_without_any_transcript(self):
+        self.pipe.save_brief("uma linha qualquer do roteiro", None)
+        with self.assertRaisesRegex(pipeline.PipelineError, "transcreva"):
+            self.pipe.align_script()
+
+    def test_align_reports_retakes_and_omissions_without_deciding(self):
+        a, t = self._words("o implante hormonal nao engorda")
+        b, _ = self._words("o implante hormonal nao engorda", t + 1)
+        self._transcript("C001", a + b)
+        self.pipe.save_brief("O implante hormonal não engorda.\n"
+                             "A reposição precisa de acompanhamento médico.", None)
+        result = self.pipe.align_script()
+        self.assertEqual(result["summary"]["multiple"], 1)
+        self.assertEqual(result["summary"]["missing"], 1)
+        saved = json.loads((self.root / "edit" / "studio-pipeline" / "alignment.json").read_text())
+        self.assertEqual(len(saved["lines"][0]["candidates"]), 2,
+                         "as duas tomadas têm que chegar ao usuário")
+        self.assertEqual(saved["lines"][1]["status"], "missing")
+        # nada disso pode ter virado EDL
+        self.assertFalse((self.root / "edit" / "edl.json").exists())
+
+    def test_the_cut_transcript_is_not_used_as_raw_material(self):
+        a, _ = self._words("o implante hormonal nao engorda")
+        self._transcript("cut", a)          # resultado, não matéria-prima
+        self.pipe.save_brief("O implante hormonal não engorda.", None)
+        with self.assertRaisesRegex(pipeline.PipelineError, "transcreva"):
+            self.pipe.align_script()
