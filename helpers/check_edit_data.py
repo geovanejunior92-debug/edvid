@@ -204,11 +204,13 @@ def checar_com_studio(edit_dir: Path, data: dict) -> list[Achado]:
 def resolver(alvo: Path) -> tuple[Path, Path]:
     """Aceita o edit-dir ou o próprio edit-data.json; devolve (edit_dir, arquivo)."""
     alvo = alvo.expanduser().resolve()
-    if alvo.is_dir():
-        arquivo = alvo / "remotion" / "public" / "edit-data.json"
-        return alvo, arquivo
-    # .../<edit>/remotion/public/edit-data.json
-    return alvo.parent.parent.parent, alvo
+    # Decidir pelo SUFIXO, não pela existência: um edit-dir com erro de digitação
+    # não é um diretório, e tratá-lo como arquivo dava uma mensagem sobre um
+    # caminho que o usuário nunca escreveu.
+    if alvo.suffix.lower() == ".json":
+        # .../<edit>/remotion/public/edit-data.json
+        return alvo.parent.parent.parent, alvo
+    return alvo, alvo / "remotion" / "public" / "edit-data.json"
 
 
 def main() -> None:

@@ -210,6 +210,30 @@ the track reference you load after the gate. One of them is not optional:
   a janela) e que ele cabe na faixa sem ser ampliado. Os dois defeitos são
   silenciosos e atravessaram um render inteiro até o usuário apontar
   (2026-08-16); ele pediu a verificação como tarefa fixa. Exit ≠ 0 = não renderize.
+- **`check_edit_data.py <edit-dir>`** — **o `verify_cut.py` da Fase 2: mede o
+  ARQUIVO, antes de gastar o render.** Roda junto do `check_inserts.py` (que olha
+  movimento e proporção dos clipes) e cobre o que ninguém media: janela fora do
+  vídeo, janela invertida, duas janelas do mesmo tipo no mesmo instante (uma
+  cobre a outra em silêncio), flash ou som depois do fim, capa/logo/encerramento
+  fora do corte, e efeito sonoro sem par visual — a regra dele de 2026-08-17.
+  Também traz para a linha de comando as invariantes que só rodavam por dentro
+  do Studio (`studio_phase2.validate`: fps e dimensões contra o `cut.mp4`,
+  `durationSec` contra corte + encerramento, legenda via `caption_edit`, asset
+  ausente em `public/`) — quem escreve o `edit-data.json` na mão e chama
+  `npx remotion render` direto nunca passava por elas. ERRO bloqueia (exit ≠ 0),
+  AVISO é escolha editorial e deixa passar.
+- **`phase2_still.py <edit-dir> [--at t1 t2 …] [--max 8]`** — **ver a Fase 2 num
+  QUADRO, sem renderizar o vídeo inteiro.** Todo defeito que já atravessou um
+  render completo desta skill aparece numa imagem parada: costura virando faixa
+  reta, legenda empurrada para fora pela faixa, frase da capa em cima do rosto,
+  insert ampliado, bloco de legenda vazio. Sem `--at`, os instantes saem do
+  próprio `edit-data.json` (meio da capa, saída da capa, começo de cada janela,
+  primeira legenda, encerramento). Sai em `<edit>/verify/phase2_still/`: um PNG
+  por instante e a folha `sheet.png`, uma Read só. **Medido em projeto real**
+  (55,73s, 1080×1920, 24fps): primeiro quadro ~8s, os seguintes ~4–6s porque o
+  bundle fica em cache — seis quadros em 26s, contra o render dos 1337 frames.
+  É a ferramenta de ITERAR; o `review_final.py` continua sendo o passo do fim,
+  que assiste o vídeo inteiro.
 
 Interface:
 - **`opencut_bridge.py serve --edit-dir <edit> [--port 4840]`** — abre o corte numa timeline do OpenCut e recebe os ajustes de volta no `edl.json` (com backup e resumo do que mudou). `status --edit-dir <edit>` mostra a última devolução. Detalhes e limites: `references/opencut.md`.
@@ -951,7 +975,7 @@ Remotion components, render.py flags), not just prose — the reference file
 has the exact pointers. Don't re-derive this style from scratch each time;
 read the file.
 
-**Gráficos de dado** (`graphics` no edit-data: lower third, número que conta, lista, antes/depois, citação, barra, callout) estão em `references/shortform.md` → "Biblioteca de gráficos"; use antes de escrever qualquer JSX no `CustomGraphics.tsx`. Both tracks: scaffold with one `cp -R` of the template, describe the video in `public/edit-data.json`, verify with montage stills, render, loudnorm, deliver `edit/final.mp4`. **Antes de entregar, `qc_final.py final.mp4` (e `--platform` do destino): só entrega com exit 0, e o que falhar volta para a camada que causou.** Load the `remotion-best-practices` skill when writing any Remotion code (CustomGraphics).
+**Gráficos de dado** (`graphics` no edit-data: lower third, número que conta, lista, antes/depois, citação, barra, callout) estão em `references/shortform.md` → "Biblioteca de gráficos"; use antes de escrever qualquer JSX no `CustomGraphics.tsx`. Both tracks: scaffold with one `cp -R` of the template, describe the video in `public/edit-data.json`, verify with montage stills, render, loudnorm, deliver `edit/final.mp4`. **A ordem antes de cada render da Fase 2 é: `check_edit_data.py <edit>` (o tempo e as referências), `check_inserts.py` (movimento e proporção dos clipes) e `phase2_still.py <edit>` (os quadros-chave, ~5s cada).** Os três custam menos de um minuto somados e pegam, sem render, a classe de defeito que só aparecia depois dele. **Antes de entregar, `qc_final.py final.mp4` (e `--platform` do destino): só entrega com exit 0, e o que falhar volta para a camada que causou.** Load the `remotion-best-practices` skill when writing any Remotion code (CustomGraphics).
 
 ## Retenção — o laço com o público (2026-09-01)
 
