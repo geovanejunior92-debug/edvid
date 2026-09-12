@@ -16,6 +16,15 @@ Aplicativo local próprio sobre o motor compartilhado entre Astra e Claude. A ve
 | Claude e Astra | Mesma instalação canônica; não equivale a chat de IA dentro do aplicativo |
 | Instalação | Assinatura ad-hoc local, dependente do motor e das dependências deste Mac |
 
+## Acrescentado em 2026-09-11/12 (Claude)
+
+| Área | Disponível |
+|---|---|
+| Fase 2 (Remotion) | `studio_phase2.py`: scaffold sem sobrescrever, validação de `edit-data.json`, `check_inserts` como gate antes e `qc_final` depois, aprovação por revisão+hash. **Render real depende de `npm install` no projeto** |
+| Corte editorial | `align-script` casa roteiro e transcrição; propõe tomadas, marca linha não gravada e aponta improviso. Gaveta "Tomadas do roteiro" no editor para a escolha |
+| Tratamento técnico | `treat`: nível de voz, limpeza com gate próprio, estabilização por tremida medida, casamento de cor entre tomadas, e relatório do que ficou bloqueado |
+| Biblioteca | web e nativa passaram a usar o MESMO identificador e o mesmo arquivo de marcas; fixar/arquivar valem nos dois lados |
+
 ## Limites que continuam abertos
 
 - O roteiro é armazenado; ainda não guia seleção semântica. A proposta por pausas não escolhe os melhores trechos pela narrativa.

@@ -133,6 +133,14 @@ Phase 1:
 - **`reframe.py <final.mp4> --to 1:1 [--to 16:9] [--to 9:16] [--to 4:5] [--out-dir <edit>/formats] [--smooth 1.2] [--headroom 0.42]`** — **auto reframe**: o mesmo vídeo em outra proporção com a janela seguindo o rosto (YuNet a cada 4 quadros, caminho suavizado), não um crop central. De vertical para 16:9 a janela usa a largura toda e só sobe/desce; de 16:9 para vertical usa a altura toda e anda de lado. Roda DEPOIS da Fase 2 (legenda e capa viajam dentro da janela; um canto pode sair — confira com `contact_sheet.py`). Sai em `<edit>/formats/<stem>_1x1.mp4` etc.
 - **`qc_final.py <edit>/final.mp4 [--platform reels|tiktok|shorts] [--premium]`** — **QC de entrega, o último gate antes de enviar** (2026-09-01): loudness I/LRA/true peak contra o alvo, quadros pretos, quadros congelados (≥2 s falha, 0,5–2 s avisa), níveis ilegais (Y<8 / Y>245), cada cue do `captions.json` contra a fala do áudio final (cue em silêncio, adiantada >300 ms, atrasada >700 ms), e **zona segura**: compara `final.mp4` com `cut.mp4` para achar onde a Fase 2 desenhou e quanto disso cai onde a interface do app fica por cima (coluna de ícones, faixa inferior, topo). Exit ≠ 0 = não envie; escreve `verify/qc_final.json`. Roda junto com o `review_final.py`: um assiste, o outro mede.
 - **`retention.py <edit>/transcripts/cut.json [--candidates transcripts/<fonte>.json] [--ledger ~/Videos/retencao.jsonl --project X [--metrics …]]`** — **inteligência de retenção** (2026-09-01): gancho 0–10 com o porquê (densidade, ar morto antes da primeira palavra, número, pergunta, "você", contraste), ritmo por janela de 5 s contra a mediana do próprio vídeo (arrasto, silêncio), pausa mais longa, fecho (fala até o fim? CTA? frase completa?) e, com `--candidates`, as frases da FONTE que dariam gancho, pontuadas — para VOCÊ julgar e propor uma variante. `--ledger` grava as heurísticas do vídeo numa JSONL global; `--metrics` amarra a elas os números reais do Metricool.
+- **`studio_pipeline.py --root <projeto> --action treat`** — a cadeia técnica do
+  Studio sobre o EDL proposto: mede nível de voz, limpa o diálogo **com o gate
+  do `check_audio` mandando** (reprovou → renderiza SEM limpeza e diz por quê,
+  nunca com um WAV pior), liga estabilização só quando a tremida MEDIDA passa de
+  0,35 px/quadro, e casa a cor entre tomadas escrevendo `grade_pre`. Grava
+  `studio-pipeline/treatment.json` com o que foi aplicado e o que ficou
+  bloqueado, e abre revisão nova — tratar muda o plano, então a aprovação
+  anterior morre.
 - **`script_align.py --script <roteiro> --transcript <t1.json> [t2.json …]`** —
   casa cada LINHA do roteiro com a transcrição e PROPÕE as tomadas. Linha
   gravada mais de uma vez volta com todas, ordenadas por semelhança e depois

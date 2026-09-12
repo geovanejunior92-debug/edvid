@@ -451,3 +451,101 @@ class AlignScriptTests(unittest.TestCase):
         self.pipe.save_brief("O implante hormonal não engorda.", None)
         with self.assertRaisesRegex(pipeline.PipelineError, "transcreva"):
             self.pipe.align_script()
+
+
+class TreatTests(unittest.TestCase):
+    """Tratamento técnico: liga o que PASSOU no gate, e diz o que bloqueou.
+
+    O erro que isto evita é ligar tudo e torcer. Limpeza de áudio reprovada no
+    check_audio tem que render SEM limpeza — nunca com um WAV pior que o
+    original — e o motivo tem que chegar ao usuário.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "proj"
+        (self.root / "edit").mkdir(parents=True)
+        (self.root / "a.mp4").write_bytes(b"x" * 512)
+        (self.root / "edit" / "edl.json").write_text(json.dumps({
+            "version": 1, "sources": {"A": str(self.root / "a.mp4")}, "grade": "",
+            "ranges": [{"source": "A", "start": 0, "end": 2}, {"source": "A", "start": 3, "end": 5}],
+            "total_duration_s": 4}))
+        self.calls = []
+
+    def runner(self, codes):
+        """codes: nome do helper -> (returncode, stdout)."""
+        def run(argv, **kw):
+            nome = Path(argv[1]).name if len(argv) > 1 else argv[0]
+            self.calls.append(nome)
+            code, out = codes.get(nome, (0, ""))
+            return subprocess.CompletedProcess(argv, code, out, "")
+        return run
+
+    def pipe(self, codes):
+        return pipeline.StudioPipeline(self.root, runner=self.runner(codes))
+
+    def test_clean_audio_is_only_enabled_when_its_own_gate_passes(self):
+        p = self.pipe({"stabilize.py": (0, "0.10 px/quadro")})
+        r = p.treat()
+        edl = json.loads((self.root / "edit" / "edl.json").read_text())
+        self.assertTrue(edl["audio_clean"])
+        self.assertIn("audio_clean", [x["etapa"] for x in r["report"]["applied"]])
+
+    def test_a_failing_audio_gate_leaves_the_cut_unclean_and_says_why(self):
+        p = self.pipe({"check_audio.py": (1, "agudos abaixo do limite"),
+                       "stabilize.py": (0, "0.10")})
+        r = p.treat()
+        edl = json.loads((self.root / "edit" / "edl.json").read_text())
+        self.assertNotIn("audio_clean", edl, "áudio reprovado não pode entrar no render")
+        bloqueios = {x["etapa"]: x["detalhe"] for x in r["report"]["blocked"]}
+        self.assertIn("check_audio", bloqueios)
+        self.assertIn("agudos", bloqueios["check_audio"])
+
+    def test_stabilization_only_when_the_shake_is_measured_above_the_floor(self):
+        calmo = self.pipe({"stabilize.py": (0, "media 0.12 px/quadro")}).treat()
+        self.assertNotIn("stabilize", json.loads((self.root / "edit" / "edl.json").read_text()))
+        tremido = self.pipe({"stabilize.py": (0, "media 6.90 px/quadro")}).treat()
+        self.assertTrue(json.loads((self.root / "edit" / "edl.json").read_text())["stabilize"])
+        self.assertIn("6.90", str(tremido["report"]["applied"]))
+
+    def test_take_matching_writes_grade_pre_back_into_the_plan(self):
+        edl_path = self.root / "edit" / "edl.json"
+
+        def run(argv, **kw):
+            nome = Path(argv[1]).name if len(argv) > 1 else argv[0]
+            if nome == "match_takes.py":
+                doc = json.loads(edl_path.read_text())
+                doc["ranges"][0]["grade_pre"] = "exposure=exposure=+0.2"
+                edl_path.write_text(json.dumps(doc))
+            if nome == "stabilize.py":
+                return subprocess.CompletedProcess(argv, 0, "0.1", "")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        p = pipeline.StudioPipeline(self.root, runner=run)
+        p.treat()
+        edl = json.loads(edl_path.read_text())
+        self.assertEqual(edl["ranges"][0]["grade_pre"], "exposure=exposure=+0.2")
+
+    def test_treatment_creates_a_new_revision_and_drops_the_old_approval(self):
+        approved = self.root / "edit" / "studio-pipeline" / "approved.json"
+        approved.parent.mkdir(parents=True, exist_ok=True)
+        approved.write_text('{"revision": 1}')
+        r = self.pipe({"stabilize.py": (0, "0.1")}).treat()
+        self.assertTrue(r["requiresApproval"])
+        self.assertFalse(approved.exists(), "tratar muda o plano: a aprovação antiga morre")
+
+    def test_treat_refuses_without_a_plan_and_with_a_bad_denoise(self):
+        empty = Path(self.temp.name) / "vazio"
+        (empty / "edit").mkdir(parents=True)
+        with self.assertRaisesRegex(pipeline.PipelineError, "proponha um corte"):
+            pipeline.StudioPipeline(empty).treat()
+        with self.assertRaisesRegex(pipeline.PipelineError, "denoise"):
+            self.pipe({}).treat(denoise="mágico")
+
+    def test_disabling_steps_skips_their_helpers_entirely(self):
+        p = self.pipe({"stabilize.py": (0, "0.1")})
+        p.treat(denoise="off", stabilize=False, match_takes=False)
+        self.assertNotIn("audio_clean.py", self.calls)
+        self.assertNotIn("stabilize.py", self.calls)
+        self.assertNotIn("match_takes.py", self.calls)
+        self.assertIn("voice_levels.py", self.calls, "nível de voz é sempre medido")

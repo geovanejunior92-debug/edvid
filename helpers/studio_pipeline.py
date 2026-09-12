@@ -88,6 +88,13 @@ def _parse_saved_at(value: Any) -> int | None:
     return None
 
 
+def _first_float(text: str) -> float | None:
+    """O primeiro número da saída de um helper. Serve para ler a tremida que o
+    stabilize.py --report imprime sem acoplar ao formato da frase inteira."""
+    m = re.search(r"(\d+[.,]\d+|\d+)", text or "")
+    return float(m.group(1).replace(",", ".")) if m else None
+
+
 def _parse_fps(raw: str) -> float:
     try:
         numerator, denominator = raw.strip().split("/", 1)
@@ -267,6 +274,111 @@ class StudioPipeline:
         event = self._record("align-script", True, alignment=str(out.relative_to(self.root)),
                              summary=alignment["summary"])
         return {"ok": True, **event, "summary": alignment["summary"]}
+
+    # ---- tratamento técnico -------------------------------------------------
+    # O Studio renderizava sem limpeza de áudio e sem casamento de cor entre
+    # tomadas, enquanto o processo da skill diz que a limpeza é PADRÃO e não
+    # opção. Esta ação roda a cadeia técnica sobre o EDL aprovado em proposta,
+    # liga só o que passou no próprio gate, e devolve um relatório dizendo o
+    # que foi corrigido e o que continua bloqueado — em vez de ligar tudo e
+    # torcer.
+    def _probe_treat(self, argv: list[str]) -> tuple[int, str]:
+        run = self.runner(argv, capture_output=True, text=True)
+        saida = ((getattr(run, "stdout", "") or "") + (getattr(run, "stderr", "") or "")).strip()
+        return int(getattr(run, "returncode", 1)), saida
+
+    def treat(self, denoise: str = "rnnoise", stabilize: bool = True,
+              match_takes: bool = True) -> dict:
+        self._prepare_writes()
+        edl_path = self.edit / "edl.json"
+        if not edl_path.is_file():
+            raise PipelineError("proponha um corte antes de tratar")
+        edl = _read_json(edl_path)
+        if not isinstance(edl, dict) or not edl.get("ranges"):
+            raise PipelineError("o edl.json não tem ranges")
+        if denoise not in {"rnnoise", "demucs", "off"}:
+            raise PipelineError("denoise precisa ser rnnoise, demucs ou off")
+        fontes = {str(v) for v in (edl.get("sources") or {}).values()}
+        if not fontes:
+            raise PipelineError("o edl.json não declara fontes")
+
+        aplicado, bloqueado = [], []
+
+        # 1) NÍVEL de voz: o transcript é cego a volume. Um aparte sussurrado
+        # lê como fala normal e some no celular.
+        for fonte in sorted(fontes):
+            code, saida = self._probe_treat(
+                [sys.executable, str(HELPERS_DIR / "voice_levels.py"), fonte,
+                 "--edit-dir", str(self.edit), "--edl", str(edl_path)])
+            (aplicado if code == 0 else bloqueado).append(
+                {"etapa": "voice_levels", "fonte": Path(fonte).name,
+                 "detalhe": saida[-400:] or ("medido" if code == 0 else "falhou")})
+
+        # 2) LIMPEZA de diálogo, com gate próprio. Se o check_audio reprovar,
+        # renderiza SEM limpeza e diz por quê — nunca com um WAV pior.
+        if denoise != "off":
+            for fonte in sorted(fontes):
+                code, _ = self._probe_treat(
+                    [sys.executable, str(HELPERS_DIR / "audio_clean.py"), fonte,
+                     "--edit-dir", str(self.edit), "--denoise", denoise])
+                if code != 0:
+                    bloqueado.append({"etapa": "audio_clean", "fonte": Path(fonte).name,
+                                      "detalhe": "a limpeza falhou; render segue com o áudio original"})
+                    continue
+                gate, saida = self._probe_treat(
+                    [sys.executable, str(HELPERS_DIR / "check_audio.py"), fonte,
+                     "--edit-dir", str(self.edit)])
+                if gate == 0:
+                    edl["audio_clean"] = ({"denoise": denoise} if denoise != "rnnoise" else True)
+                    aplicado.append({"etapa": "audio_clean", "fonte": Path(fonte).name,
+                                     "detalhe": f"denoise {denoise}, aprovado no check_audio"})
+                else:
+                    edl.pop("audio_clean", None)
+                    bloqueado.append({"etapa": "check_audio", "fonte": Path(fonte).name,
+                                      "detalhe": saida[-400:] or "gate reprovou; render segue sem limpeza"})
+                    break
+
+        # 3) ESTABILIZAÇÃO só quando há tremida medida. Em tripé é zoom de graça.
+        if stabilize:
+            for fonte in sorted(fontes):
+                code, saida = self._probe_treat(
+                    [sys.executable, str(HELPERS_DIR / "stabilize.py"), fonte,
+                     "--edit-dir", str(self.edit), "--report"])
+                tremida = _first_float(saida)
+                if code != 0:
+                    bloqueado.append({"etapa": "stabilize", "fonte": Path(fonte).name,
+                                      "detalhe": "não consegui medir a tremida"})
+                elif tremida is not None and tremida >= 0.35:
+                    edl["stabilize"] = True
+                    aplicado.append({"etapa": "stabilize", "fonte": Path(fonte).name,
+                                     "detalhe": f"tremida {tremida:.2f} px/quadro, acima de 0,35"})
+                else:
+                    aplicado.append({"etapa": "stabilize", "fonte": Path(fonte).name,
+                                     "detalhe": f"fonte estável ({tremida if tremida is not None else '?'}) — não vale o zoom"})
+
+        # 4) CASAMENTO de cor entre tomadas, antes do look.
+        if match_takes and len(edl["ranges"]) > 1:
+            code, saida = self._probe_treat(
+                [sys.executable, str(HELPERS_DIR / "match_takes.py"), str(edl_path), "--apply"])
+            if code == 0:
+                atualizado = _read_json(edl_path)
+                if isinstance(atualizado, dict) and atualizado.get("ranges"):
+                    for antes, depois in zip(edl["ranges"], atualizado["ranges"]):
+                        if depois.get("grade_pre"):
+                            antes["grade_pre"] = depois["grade_pre"]
+                casados = sum(1 for r in edl["ranges"] if r.get("grade_pre"))
+                aplicado.append({"etapa": "match_takes",
+                                 "detalhe": f"{casados} de {len(edl['ranges'])} tomadas ganharam correção"})
+            else:
+                bloqueado.append({"etapa": "match_takes", "detalhe": saida[-400:] or "falhou"})
+
+        _atomic_json(edl_path, edl)
+        revision = self._new_revision(edl, "treat")
+        relatorio = {"version": 1, "applied": aplicado, "blocked": bloqueado,
+                     "flags": {k: edl.get(k) for k in ("audio_clean", "stabilize") if k in edl}}
+        _atomic_json(self.data / "treatment.json", relatorio)
+        event = self._record("treat", True, **revision, applied=len(aplicado), blocked=len(bloqueado))
+        return {"ok": True, **event, "report": relatorio}
 
     def propose_cut(self, source_raw: str, pause: float = 0.65) -> dict:
         self._prepare_writes()
@@ -713,7 +825,7 @@ class StudioPipeline:
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", required=True, type=Path)
-    ap.add_argument("--action", required=True, choices=["status", "save-brief", "transcribe", "align-script", "propose-cut",
+    ap.add_argument("--action", required=True, choices=["status", "save-brief", "transcribe", "align-script", "propose-cut", "treat",
                                                           "approve-plan", "render-cut", "apply-preview-edits", "undo", "redo"])
     ap.add_argument("--source")
     ap.add_argument("--script")
@@ -722,6 +834,9 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--pause", type=float, default=0.65)
     ap.add_argument("--min-score", type=float, default=0.62)
+    ap.add_argument("--denoise", default="rnnoise", choices=["rnnoise", "demucs", "off"])
+    ap.add_argument("--no-stabilize", action="store_true")
+    ap.add_argument("--no-match-takes", action="store_true")
     ap.add_argument("--revision", type=int)
     ap.add_argument("--plan-hash")
     ap.add_argument("--approve", action="store_true")
@@ -748,6 +863,8 @@ def dispatch(args: argparse.Namespace, runner: Runner = subprocess.run) -> dict:
             if args.revision is None or not args.plan_hash: raise PipelineError("--revision e --plan-hash são obrigatórios")
             return pipe.render_cut(args.revision, args.plan_hash, args.preview)
         if args.action == "align-script": return pipe.align_script(args.min_score)
+        if args.action == "treat":
+            return pipe.treat(args.denoise, not args.no_stabilize, not args.no_match_takes)
         if args.action == "apply-preview-edits": return pipe.apply_preview_edits(args.preview_edits)
         return pipe.restore(args.action)
 

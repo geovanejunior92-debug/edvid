@@ -116,7 +116,8 @@ class ProjectRegistry:
 class JobQueue:
     FINAL = {"completed", "failed", "cancelled", "interrupted"}
     PIPELINE_ACTIONS = {"status", "save-brief", "transcribe", "align-script", "propose-cut",
-                        "approve-plan", "render-cut", "apply-preview-edits", "undo", "redo"}
+                        "treat", "approve-plan", "render-cut", "apply-preview-edits",
+                        "undo", "redo"}
     FINISH_ACTIONS = {"save", "approve", "render", "review-approve"}
 
     def __init__(self, data_dir: Path, projects: ProjectRegistry, command_builder=None):
