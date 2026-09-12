@@ -628,7 +628,16 @@ fechado. Não são valores concorrentes: é a mesma regra com clipes de altura
 diferente. `focusY` não sai daí — depende de onde a cabeça está na FONTE e
 continua medido num still, e mexer em `bandH` obriga a recalculá-lo.
 
-### Tela dividida COM a pessoa na frente da faixa — o padrão deste usuário (2026-08-16)
+### Tela dividida COM a pessoa na frente da faixa — o padrão deste usuário (2026-08-16, reforçado em 2026-09-11)
+
+**Onde a costura tem que cair:** *"a divisão fica atrás da parte superior da
+minha cabeça como se eu estivesse na frente"*. Não é "em algum lugar da cabeça"
+— é no alto dela. `seam_check.py` mede isso e devolve a fração da altura da
+cabeça em que a costura cai; a calibragem aprovada é **~0.40**. Os três valores
+medidos num mesmo still: `focusY` 560 → 0.16 (só encosta), 640 → 0.28 (entra),
+720 → 0.40 (lê como a referência). O padrão do layout, 400, dá fração NEGATIVA:
+a cabeça inteira fica abaixo da costura e o resultado é uma faixa reta.
+
 
 **Isto, e não o `behindVideos[]` abaixo, é o que ele quer quando diz "atrás da
 cabeça".** As palavras dele, depois de eu ter trocado uma coisa pela outra:

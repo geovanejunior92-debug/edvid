@@ -163,6 +163,11 @@ the track reference you load after the gate. One of them is not optional:
   intervalo original, declarada na saída como aproximação. Corrigir o texto
   NUNCA move a legenda: o usuário está consertando o que foi ouvido, não
   quando foi dito.
+- **`seam_check.py <video> --at T --band-h N --focus-y N --zoom Z`** — a costura
+  cruza o alto da cabeça? Mede o topo da cabeça na fonte e aplica a
+  transformação do template (`(y_src − focusY) * zoom + bandH` — **o `+ bandH`
+  é o termo que inverte a conclusão se esquecido**). Exit ≠ 0 quando o efeito
+  não acontece. Só `layout: top`; o `bottom` é recusado em vez de chutado.
 - **`split_band.py <clipe…> [--frame-width N]`** — o `bandH` de cada clipe para
   a costura cair na borda inferior dele, que é o padrão de divisão do Formato 1
   generalizado para qualquer proporção. Avisa quando o valor sai do padrão (aí
@@ -340,6 +345,14 @@ borda apontada com um clique.
   `focusY` continua medido num still — ele depende de onde a cabeça está na
   FONTE, não no clipe, e mudar `bandH` obriga a recalculá-lo. A interface não
   pede número nenhum.
+  **E a costura tem que passar atrás do ALTO da cabeça dele** (regra repetida em
+  16/08 e 11/09: *"a divisão fica atrás da parte superior da minha cabeça como
+  se eu estivesse na frente"*). Ter `matte` não basta: com o `focusY` 400 do
+  layout padrão o cabelo para ABAIXO da faixa e o quadro fica idêntico a uma
+  faixa reta — o render conclui e o `check_inserts.py` aprova. Rode
+  **`seam_check.py <cut.mp4> --at <início da janela> --band-h N --focus-y N
+  --zoom Z`**: ele mede onde o topo da cabeça cai e devolve FAIXA RETA /
+  RASPANDO / OK / BAIXA DEMAIS. A fração aprovada por ele é ~0.40.
 - `notes[]` — free-text correction requests, each with `start`/`end` on the draft
   timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
   `phase` tab the user was on. Use the RENDERED pair to find the moment in the
