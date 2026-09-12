@@ -104,6 +104,18 @@
       <div class="setup-group">
         <div class="group-head"><span class="group-title">Estilo de headline</span></div>
         <div id="optHeadline" class="opt-grid"></div>
+        <div id="hlCustom" class="hl-custom" hidden>
+          <div id="hlCustomPreview" class="hl-custom-preview"><span class="l1">É assim que vai</span><span class="l2">ficar a sua headline</span></div>
+          <div class="hl-custom-grid">
+            <label>Cor da linha 1<input type="color" id="hlc_color"></label>
+            <label>Cor da linha 2<input type="color" id="hlc_accentColor"></label>
+            <label>Peso da linha 1<select id="hlc_weight1"><option>400</option><option>600</option><option>700</option><option>800</option><option>900</option></select></label>
+            <label>Peso da linha 2<select id="hlc_weight2"><option>400</option><option>600</option><option>700</option><option>800</option><option>900</option></select></label>
+            <label>Tamanho máximo<input type="number" id="hlc_maxFontPx" min="40" max="200" step="2"></label>
+            <label>Distância do topo<input type="number" id="hlc_paddingTop" min="0" max="1200" step="10"></label>
+          </div>
+          <p class="hint">O tamanho é um TETO: a frase sempre cabe em duas linhas, e encolhe sozinha se precisar.</p>
+        </div>
       </div>
 
       <div class="setup-group">

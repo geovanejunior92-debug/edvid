@@ -1472,3 +1472,14 @@ body.drawer-open .diag-body { max-height: none; flex: 1 1 auto; min-height: 0; }
 .note-editor label.check{display:flex;align-items:center;gap:8px;font-size:12px;color:#cfd4de;cursor:pointer}
 .note-editor label.check input{width:15px;height:15px;accent-color:#ff7713}
 .note-editor .hint{margin:4px 0 0;font-size:11px;line-height:1.45;color:#8d94a2}
+
+/* headline "Personalizada" — controles logo abaixo do grid de estilos */
+.hl-custom{margin-top:14px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.03)}
+.hl-custom-preview{display:flex;flex-direction:column;align-items:center;gap:2px;padding:16px 10px;margin-bottom:14px;border-radius:9px;background:#0b0e13;text-align:center;line-height:1.02;letter-spacing:-1px}
+.hl-custom-preview .l1{color:var(--c1,#fff);font-weight:var(--w1,800);font-size:22px}
+.hl-custom-preview .l2{color:var(--c2,#ff7713);font-weight:var(--w2,900);font-size:22px}
+.hl-custom-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+.hl-custom-grid label{display:grid;gap:5px;font-size:11px;color:#aeb3bc}
+.hl-custom-grid input,.hl-custom-grid select{padding:7px;font:inherit;font-size:12px;color:#f4f1ed;background:#151920;border:1px solid #3c414b;border-radius:7px}
+.hl-custom-grid input[type=color]{padding:2px;height:32px}
+.hl-custom .hint{margin:10px 0 0;font-size:11px;line-height:1.45;color:#8d94a2}

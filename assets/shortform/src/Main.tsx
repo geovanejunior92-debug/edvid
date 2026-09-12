@@ -81,7 +81,11 @@ export type EditData = {
     // "card": Poppins Black on a dark rounded card, UPPERCASE, optional logo row.
     // "realce": each line on its own solid orange marker block.
     // "misto": line 1 light white, line 2 heavy orange.
-    style?: 'outline' | 'card' | 'realce' | 'misto';
+    // "personalizada": mesma máquina de quebrar e ajustar tamanho, com a
+    // aparência vinda do DADO (cores, pesos) em vez de um preset. Existe para
+    // o template continuar UNIVERSAL: o estilo livre é descrito no
+    // edit-data.json do projeto, não editando este arquivo por vídeo.
+    style?: 'outline' | 'card' | 'realce' | 'misto' | 'personalizada';
     // Typeface, independent of `style` above — see HL_FONTS. Defaults to
     // "poppins" (the original, only, hardcoded look before 2026-08-15).
     font?: 'poppins' | 'bebas' | 'anton' | 'playfair';
@@ -91,6 +95,10 @@ export type EditData = {
     strokePx?: number;     // outline: black stroke width (default 12)
     paddingTop?: number;   // distance from top (per-style default)
     lineHeight?: number;
+    // Só "personalizada" lê os três abaixo; nos presets a aparência é o preset.
+    color?: string;        // cor da linha 1 (default #fff)
+    accentColor?: string;  // cor da linha 2 (default = color)
+    weights?: [number, number];  // peso de cada linha (default [800, 900])
   };
   captions: {
     enabled: boolean;
@@ -460,6 +468,9 @@ const HL_STYLES: Record<string, HlStyle> = {
   card: {weights: [900, 900], cap: 82, safeW: 820, lh: 1.06, top: 120},
   realce: {weights: [900, 900], cap: 86, safeW: 830, lh: 1.04, top: 300},
   misto: {weights: [400, 900], cap: 98, safeW: 900, lh: 0.98, top: 300},
+  // Base neutra da "personalizada": números de partida que o edit-data
+  // sobrescreve (cap, safeW, lh, top e weights já são todos sobrescrevíveis).
+  personalizada: {weights: [800, 900], cap: 92, safeW: 900, lh: 1.02, top: 300},
 };
 
 const hlWidth = (text: string, size: number, weight: number, fam: string) =>
@@ -507,7 +518,10 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   const y = interpolate(enter, [0, 1], [24, 0]);
 
   const styleId = H.style ?? 'outline';
-  const S = HL_STYLES[styleId] ?? HL_STYLES.outline;
+  const base = HL_STYLES[styleId] ?? HL_STYLES.outline;
+  // O peso entra ANTES da quebra: twoLines e fitHeadline medem no peso real,
+  // senão a linha é balanceada numa largura que não é a que vai à tela.
+  const S: HlStyle = H.weights ? {...base, weights: H.weights} : base;
   const hlFam = HL_FONTS[H.font ?? 'poppins'] ?? HL_FONTS.poppins;
   const raw = (H.text ?? (H.lines || []).join(' ')).trim();
   const lines = twoLines(styleId === 'card' ? raw.toUpperCase() : raw, S.weights, hlFam);
@@ -552,6 +566,20 @@ const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
               {l}
             </div>
           ))}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+
+  if (styleId === 'personalizada') {
+    const c1 = H.color ?? '#fff';
+    const c2 = H.accentColor ?? c1;
+    return (
+      <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: top}}>
+        <Sfx src="whoosh.mp3" volume={0.1} />
+        <div style={{...shell, filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.55))'}}>
+          <div style={{fontWeight: S.weights[0], fontSize: size, color: c1}}>{lines[0]}</div>
+          {lines[1] ? <div style={{fontWeight: S.weights[1], fontSize: size, color: c2}}>{lines[1]}</div> : null}
         </div>
       </AbsoluteFill>
     );

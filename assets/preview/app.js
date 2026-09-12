@@ -150,6 +150,10 @@ const STYLE_CATALOG = {
     {id: 'card', name: 'Cartão', hl: 'card'},
     {id: 'realce', name: 'Realce', hl: 'realce'},
     {id: 'misto', name: 'Misto', hl: 'misto'},
+    // A aparência vem dos controles abaixo do grid, não de um preset: o
+    // template ganhou um estilo `personalizada` que lê cor e peso do
+    // edit-data.json, para continuar universal em vez de ser editado por vídeo.
+    {id: 'personalizada', name: 'Personalizada', hl: 'personalizada'},
     // Last on purpose: defaultStyle() takes headlines[0]. `hlbox` only so the
     // card matches the height of its siblings in this row.
     {id: 'none', name: 'Nenhum', none: true, hlbox: true},
@@ -497,6 +501,8 @@ const HL_STYLES = {
   card: { weights: [900, 900], cap: 82, safeW: 820, lh: 1.06 },
   realce: { weights: [900, 900], cap: 86, safeW: 830, lh: 1.04 },
   misto: { weights: [400, 900], cap: 98, safeW: 900, lh: 0.98 },
+  // espelha a entrada nova do template; os pesos reais vêm de headlineCustom
+  personalizada: { weights: [800, 900], cap: 92, safeW: 900, lh: 1.02 },
 };
 // Headline typeface choices — mirrors HL_FONTS in the template's Main.tsx.
 // Bebas Neue / Anton ship weight 400 only; the CSS fontWeight the style asks
@@ -556,9 +562,13 @@ function hlFit(lines, S, family) {
   return Math.max(HL_MIN, Math.min(size, S.cap));
 }
 
-function buildHeadlineDemo(host, styleId, fontId, text = HEADLINE_TEXT) {
+// `custom` chega por PARÂMETRO: dentro desta função `S` é o estilo da headline,
+// não o estado do app — ler S.style aqui seria ReferenceError na zona morta do
+// const abaixo, e o cartão inteiro deixaria de desenhar.
+function buildHeadlineDemo(host, styleId, fontId, text = HEADLINE_TEXT, custom = null) {
   const s = host.clientWidth / 1080;
-  const S = HL_STYLES[styleId];
+  const base = HL_STYLES[styleId];
+  const S = custom ? {...base, weights: [custom.weight1, custom.weight2], cap: custom.maxFontPx} : base;
   const family = HL_FONT_FAMILIES[fontId] || HL_FONT_FAMILIES.poppins;
   host.innerHTML = '';
   const wrap = el('div', 'cap-demo', host);
@@ -596,6 +606,7 @@ function buildHeadlineDemo(host, styleId, fontId, text = HEADLINE_TEXT) {
     // var(), not a literal — an inline colour would beat the accent variable and
     // this preview would keep painting orange while the others followed the pick
     if (styleId === 'misto') d.style.color = i === 1 ? 'var(--hl-accent)' : '#fff';
+    if (custom) d.style.color = i === 1 ? custom.accentColor : custom.color;
     d.textContent = l;
   });
 }
@@ -807,6 +818,8 @@ function defaultStyle() {
   return {
     edit: STYLE_CATALOG.edits[0].id,
     headline: STYLE_CATALOG.headlines[0].id,
+    // só viajam quando `headline === 'personalizada'`
+    headlineCustom: {color: '#ffffff', accentColor: '#ff7713', weight1: 800, weight2: 900, maxFontPx: 92, paddingTop: 300},
     headlineFont: STYLE_CATALOG.headlineFonts[0].id,
     captions: STYLE_CATALOG.captions[0].id,
     accent: ACCENT_DEFAULT,
@@ -2184,11 +2197,13 @@ function renderSetup() {
       const kind = o.mock ? 'frame' : (o.hl || o.hlbox || o.font) ? 'cap hlbox' : 'cap';
       const prev = el('div', `opt-preview ${kind}`, card);
       if (o.demo) capAnims.push(CAP_BUILDERS[o.demo](prev));
-      else if (o.hl) buildHeadlineDemo(prev, o.hl, S.style.headlineFont, S.style.headlineText || HEADLINE_TEXT);
+      else if (o.hl) buildHeadlineDemo(prev, o.hl, S.style.headlineFont, S.style.headlineText || HEADLINE_TEXT,
+        o.hl === 'personalizada' ? S.style.headlineCustom : null);
       // font cards render the CURRENTLY chosen headline style in THIS font —
       // real type, not a generic "Aa" swatch, and it stays in sync when the
       // style above changes without needing a second render path.
-      else if (o.font) buildHeadlineDemo(prev, S.style.headline, o.font, S.style.headlineText || HEADLINE_TEXT);
+      else if (o.font) buildHeadlineDemo(prev, S.style.headline, o.font, S.style.headlineText || HEADLINE_TEXT,
+        S.style.headline === 'personalizada' ? S.style.headlineCustom : null);
       else if (o.stat) {
         const step = buildStaticDemo(prev, o.stat);
         if (step) capAnims.push(step);
@@ -2211,6 +2226,7 @@ function renderSetup() {
 
   radios($('optEdit'), 'edits', S.style.edit);
   radios($('optHeadline'), 'headlines', S.style.headline);
+  renderHeadlineCustom();
   radios($('optHeadlineFont'), 'headlineFonts', S.style.headlineFont);
   radios($('optCaptions'), 'captions', S.style.captions);
   renderAccents();
@@ -2258,6 +2274,34 @@ for (const key of ['voice', 'music', 'sfx']) $(key + 'Gain').addEventListener('i
   S.style.audioMix[key + 'Db'] = Number($(key + 'Gain').value);
   $(key + 'GainValue').textContent = `${$(key + 'Gain').value} dB`;
 });
+// Painel da headline "Personalizada" — aparece só quando ela está escolhida.
+const HL_CUSTOM_FIELDS = ['color', 'accentColor', 'weight1', 'weight2', 'maxFontPx', 'paddingTop'];
+function renderHeadlineCustom() {
+  const on = S.style.headline === 'personalizada';
+  $('hlCustom').hidden = !on;
+  if (!on) return;
+  for (const k of HL_CUSTOM_FIELDS) {
+    const el = $('hlc_' + k);
+    if (el && document.activeElement !== el) el.value = S.style.headlineCustom[k];
+  }
+  $('hlCustomPreview').style.setProperty('--c1', S.style.headlineCustom.color);
+  $('hlCustomPreview').style.setProperty('--c2', S.style.headlineCustom.accentColor);
+  $('hlCustomPreview').style.setProperty('--w1', S.style.headlineCustom.weight1);
+  $('hlCustomPreview').style.setProperty('--w2', S.style.headlineCustom.weight2);
+}
+for (const k of HL_CUSTOM_FIELDS) {
+  const el = $('hlc_' + k);
+  if (!el) continue;
+  el.addEventListener('input', () => {
+    const raw = el.type === 'color' ? el.value : +el.value;
+    S.style.headlineCustom[k] = el.type === 'color' ? raw : (Number.isFinite(raw) ? raw : S.style.headlineCustom[k]);
+    // Os cartões desenham a headline REAL, então eles mudam ao vivo junto.
+    // renderSetup() é quem reconstrói o grid — `radios` é local dela, não dá
+    // para chamar daqui. renderHeadlineCustom() não repõe o valor do campo em
+    // foco, então digitar continua funcionando durante o redesenho.
+    renderSetup();
+  });
+}
 $('setupGo').addEventListener('click', async () => {
   S.style.note = $('setupNote').value.trim();
   const rerender = !S.state.awaitingStyle;
@@ -2273,6 +2317,10 @@ $('setupGo').addEventListener('click', async () => {
     audioMix: S.style.audioMix || {voiceDb: 0, musicDb: 0, sfxDb: 0},
     headlineName: styleName('headlines', S.style.headline),
     headlineFont: S.style.headlineFont,
+    // Só quando a headline É personalizada: caso contrário a aparência é o
+    // preset e mandar números aqui convidaria o agente a inventar um lugar
+    // para eles — mesma lógica do `accentUsed`.
+    ...(S.style.headline === 'personalizada' ? {headlineCustom: {...S.style.headlineCustom}} : {}),
     headlineFontName: styleName('headlineFonts', S.style.headlineFont),
     captions: S.style.captions,
     captionsName: styleName('captions', S.style.captions),

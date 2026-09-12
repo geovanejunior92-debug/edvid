@@ -1036,8 +1036,17 @@ and the UI opens its own tab, sitting between FASE 1 and FASE 2:
   `stacked` caption paint an accent, so the save also carries **`accentUsed`**;
   when it is `false` the picked styles have none and the colour is not an
   instruction to invent a place for one.
-- **Estilo de headline** — `outline`, `card`, `realce`, `misto`. Always two
-  lines, size fitted to the text (see the track reference).
+- **Estilo de headline** — `outline`, `card`, `realce`, `misto`,
+  **`personalizada`** (2026-09-11). Always two lines, size fitted to the text
+  (see the track reference). Quando o pick é `personalizada`, o save traz
+  **`headlineCustom`** e ele mapeia direto para o `hook` do `edit-data.json`:
+  `color` → `hook.color` (linha 1), `accentColor` → `hook.accentColor`
+  (linha 2), `weight1`/`weight2` → `hook.weights: [w1, w2]`, `maxFontPx` →
+  `hook.maxFontPx`, `paddingTop` → `hook.paddingTop`, mais
+  `hook.style: "personalizada"`. O teto de tamanho continua sendo TETO: a
+  frase sempre cabe em duas linhas e encolhe sozinha. `headlineCustom` só
+  viaja quando a headline É personalizada — nos presets a aparência é o
+  preset, mesma lógica do `accentUsed`.
 - **Fonte da headline** (2026-08-15) — `poppins`/"Impacto" (default), `bebas`/
   "Condensada" (Bebas Neue), `anton`/"Cartaz" (Anton), `playfair`/"Editorial"
   (Playfair Display italic). Independent of the style above — every card in
