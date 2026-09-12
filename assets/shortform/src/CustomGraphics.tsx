@@ -90,6 +90,12 @@ type SplitInsert = {
   // mas quase não muda de frame. Subir aqui dá vida à faixa sem trocar o clipe
   // por outro fora do assunto (2026-08-20).
   artZoom?: number;
+  // Largura da dissolução na costura, em px. Padrão SEAM_BLEND (100) = Formato
+  // 1, onde a junção cai na borda do próprio clipe. O Formato 2 usa ~192: a
+  // dissolução é larga o bastante para ATRAVESSAR o alto da cabeça, e é isso
+  // que faz a pessoa "estar na frente" sem matte nenhum (medido no vídeo de
+  // referência, 2026-09-11). Por janela, não global: os dois formatos coexistem.
+  seamBlend?: number;
   // ProRes 4444 com alfa gerado por person_matte.py para ESTA janela — põe a
   // pessoa na frente da faixa (ver SplitFrame). Sem ele, faixa reta como antes.
   matte?: string;
@@ -873,6 +879,14 @@ const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
 // — that was never this rectangle's only source of contrast.
 const SEAM_BLEND = 100;
 
+// Largura da dissolução por LAYOUT. 'top' mantém os 100 do Formato 1, onde a
+// junção cai na borda do próprio clipe e a pessoa passa na frente por matte.
+// 'bottom' usa a divisão larga que ele pediu em 2026-09-11 ("para a arte em
+// baixo quero a divisão dessa forma", apontando o vídeo de referência): 192px,
+// medidos naquele vídeo. Um `seamBlend` explícito na janela vence os dois — é
+// assim que o Formato 2 usa 192 com a arte em CIMA.
+const LAYOUT_BLEND: Record<'top' | 'bottom', number> = {top: SEAM_BLEND, bottom: 192};
+
 const SplitFrame: React.FC<{
   src: string;
   kind: 'image' | 'video';
@@ -897,7 +911,9 @@ const SplitFrame: React.FC<{
   // vídeo passa dezenas de segundos sem variação nenhuma de enquadramento.
   zoomPulse?: number;
   artZoom?: number;
-}> = ({src, kind, loopFrames, bandH, fit, progress, layout, matte, artZoom, windowFrom, windowDur, zoomOverride, focusYOverride, zoomPulse}) => {
+  // Largura da dissolução DESTA janela; ver o campo homônimo em SplitInsert.
+  seamBlend?: number;
+}> = ({src, kind, loopFrames, bandH, fit, progress, layout, matte, artZoom, windowFrom, windowDur, zoomOverride, focusYOverride, zoomPulse, seamBlend}) => {
   // slow Ken-Burns so the band is not a dead still
   const artScale = 1 + 0.03 * progress;
   const zoomBase = zoomOverride ?? LAYOUT[layout].zoom;
@@ -909,9 +925,10 @@ const SplitFrame: React.FC<{
   // abaixo do focusY do enquadramento) a posição dele na tela não muda.
   const anchor = focusYBase + 260;
   const focusY = anchor - ((anchor - focusYBase) * zoomBase) / zoom;
-  const bandWithBlend = bandH + SEAM_BLEND;
+  const blend = seamBlend ?? LAYOUT_BLEND[layout];
+  const bandWithBlend = bandH + blend;
   const solidPct = (bandH / bandWithBlend) * 100;
-  const blendPct = (SEAM_BLEND / bandWithBlend) * 100;
+  const blendPct = (blend / bandWithBlend) * 100;
   // 'top': art at [0, bandH], fades out downward into the video below.
   // 'bottom': art at [1920-bandH, 1920], fades out upward into the video above.
   const bandTop = layout === 'top' ? 0 : 1920 - bandWithBlend;
@@ -1076,6 +1093,7 @@ export const SplitScreen: React.FC<{items: SplitInsert[]}> = ({items}) => {
       zoomOverride={active.zoom}
       focusYOverride={active.focusY}
       zoomPulse={active.zoomPulse}
+      seamBlend={active.seamBlend}
     />
   );
 };

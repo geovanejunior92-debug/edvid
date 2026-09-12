@@ -328,6 +328,9 @@ borda apontada com um clique.
   - `fullscreen` → insert full-bleed, como sempre.
   - `split-top` → `splitInserts[]` com `layout: "top"` (arte em cima).
   - `split-bottom` → `splitInserts[]` com `layout: "bottom"` (arte embaixo).
+    **A divisão aqui é a larga** (192px de dissolução, não 100) — pedido dele em
+    2026-09-11, medido do vídeo de referência. Já é o padrão do template para
+    `bottom`, não precisa passar `seamBlend`.
   - `behind` → `behindVideos[]`, B-roll no quadro inteiro atrás da pessoa —
     o caso RARO, não o que ele chama de "atrás da cabeça".
   Com `front: true` (padrão em `split-*`), gere o matte da janela com
@@ -876,6 +879,15 @@ The cut is approved and the user picked the style in the UI (`preview_style.json
 
 - **Vertical / Reels / TikTok / Shorts → read `references/shortform.md`.** Karaoke captions, static hook headline, dynamic camera, inserts, behind-the-subject, SFX, soundtrack.
 - **Horizontal / YouTube / tutorial / vlog → read `references/longform.md`.** Retention cut is there too (read it BEFORE Phase 1 on longform jobs), B-roll, lower-thirds, chapter cards, callouts, .srt + chapters, soundtrack.
+
+**"Tela dividida formato padrão 2" → `assets/presets/formato-2.json`.** Arte em
+cima com dissolução LARGA (bandH 874 + 192 de dissolução) e **sem matte**: a
+arte termina de sumir exatamente onde a cabeça começa, e é isso que põe a pessoa
+na frente. Não misture com o Formato 1, que chega ao mesmo efeito por outro
+caminho (dissolução de 100 + matte da pessoa). Calibre o `focusY` com
+`seam_check.py … --seam-blend 192`: o alvo é o topo da cabeça cair dentro da
+dissolução. O preset registra o que foi MEDIDO do vídeo de referência (geometria,
+cor, som) e o que continua sendo decisão dele (tipografia).
 
 **"Edição com tela dividida FORMATO 1" (ou só "formato 1") → leia
 `references/formato-1-tela-dividida.md` e siga à risca.** É um formato NOMEADO

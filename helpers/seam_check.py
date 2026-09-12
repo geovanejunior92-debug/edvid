@@ -43,8 +43,18 @@ UPPER_MAX = 0.50          # acima disto ela desce no rosto
 REFERENCE = 0.40          # o que ele aprovou
 
 
+# O Formato 2 (medido do vídeo de referência, 2026-09-11) não usa matte: a
+# dissolução é LARGA (~192px contra 100) e o topo da cabeça cai DENTRO dela.
+# É a largura da dissolução que faz a pessoa "estar na frente", porque a arte
+# termina de sumir exatamente onde a cabeça começa. Por isso há dois critérios,
+# e não um: com dissolução estreita importa onde a linha cruza a cabeça; com
+# dissolução larga importa se o topo da cabeça cai dentro da faixa que dissolve.
+BLEND_MIN, BLEND_MAX = 0.15, 0.85   # do referência: topo da cabeça em 0,24–0,74
+
+
 def seam_position(head_top: float, head_bottom: float, focus_y: float,
-                  zoom: float, band_h: float, layout: str = 'top') -> dict:
+                  zoom: float, band_h: float, layout: str = 'top',
+                  seam_blend: float = SEAM_BLEND) -> dict:
     """Onde a costura cai na cabeça, em fração da altura dela (0 = topo)."""
     if head_bottom <= head_top:
         raise ValueError('Caixa da cabeça inválida')
@@ -53,10 +63,26 @@ def seam_position(head_top: float, head_bottom: float, focus_y: float,
     if layout != 'top':
         raise ValueError("Só layout 'top' — a geometria do 'bottom' não foi medida")
     # + band_h: o termo do template. Sem ele a conclusão se inverte.
+    if seam_blend <= 0:
+        raise ValueError('Dissolução inválida')
     top_r = (head_top - focus_y) * zoom + band_h
     bottom_r = (head_bottom - focus_y) * zoom + band_h
     seam = band_h
     frac = (seam - top_r) / (bottom_r - top_r)
+    # onde o TOPO da cabeça cai dentro da faixa que dissolve (0 = borda sólida,
+    # 1 = fim da dissolução). Só é o critério quando a dissolução é larga.
+    blend_frac = (top_r - band_h) / seam_blend
+    wide = seam_blend > SEAM_BLEND * 1.4
+    if wide:
+        if blend_frac < BLEND_MIN:
+            verdict, why = 'ALTA DEMAIS', 'a cabeça entra antes da dissolução começar a sumir'
+        elif blend_frac > BLEND_MAX:
+            verdict, why = 'FAIXA RETA', 'a cabeça começa depois da dissolução — a arte não a atravessa'
+        else:
+            verdict, why = 'OK', 'o topo da cabeça cai dentro da dissolução'
+        return {'verdict': verdict, 'why': why, 'fraction': round(frac, 3),
+                'blendFraction': round(blend_frac, 3), 'criterion': 'dissolução larga',
+                'headTopRendered': round(top_r, 1), 'seamY': round(seam, 1)}
     if frac < 0:
         verdict, why = 'FAIXA RETA', 'a cabeça fica toda abaixo da costura — o recorte não aparece'
     elif frac < UPPER_MIN:
@@ -66,6 +92,7 @@ def seam_position(head_top: float, head_bottom: float, focus_y: float,
     else:
         verdict, why = 'BAIXA DEMAIS', 'a costura atravessa o rosto, não o alto da cabeça'
     return {'verdict': verdict, 'why': why, 'fraction': round(frac, 3),
+            'blendFraction': round(blend_frac, 3), 'criterion': 'costura estreita',
             'headTopRendered': round(top_r, 1), 'seamY': round(seam, 1)}
 
 
@@ -96,16 +123,19 @@ def main() -> None:
     ap.add_argument('--focus-y', type=float, required=True)
     ap.add_argument('--zoom', type=float, required=True)
     ap.add_argument('--layout', choices=['top', 'bottom'], default='top')
+    ap.add_argument('--seam-blend', type=float, default=SEAM_BLEND,
+                    help='192 no Formato 2; 100 (padrão) no Formato 1')
     args = ap.parse_args()
 
     try:
         top, bottom = head_box(args.video, args.at)
-        r = seam_position(top, bottom, args.focus_y, args.zoom, args.band_h, args.layout)
+        r = seam_position(top, bottom, args.focus_y, args.zoom, args.band_h,
+                          args.layout, args.seam_blend)
     except (OSError, ValueError, ImportError, subprocess.CalledProcessError) as e:
         print(f'✗ {e}')
         sys.exit(2)
 
-    print(f"{r['verdict']}: {r['why']}")
+    print(f"{r['verdict']} ({r['criterion']}): {r['why']}")
     print(f"  cabeça na fonte {top:.0f}–{bottom:.0f} · topo renderiza em {r['headTopRendered']:.0f} · "
           f"costura em {r['seamY']:.0f} · fração {r['fraction']}")
     if r['verdict'] != 'OK':

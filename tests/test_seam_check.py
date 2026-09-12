@@ -72,5 +72,65 @@ class SeamPositionTests(unittest.TestCase):
         self.assertIn(f'const SEAM_BLEND = {seam_check.SEAM_BLEND};', template)
 
 
+class WideBlendTests(unittest.TestCase):
+    """Formato 2: sem matte, quem faz o efeito é a largura da dissolução."""
+
+    BAND, BLEND = 874.0, 192.0
+
+    def wide(self, focus_y):
+        return seam_check.seam_position(HEAD_TOP, HEAD_BOTTOM, focus_y, ZOOM,
+                                        self.BAND, 'top', self.BLEND)
+
+    def test_head_top_inside_the_dissolve_is_the_criterion(self):
+        r = self.wide(400)
+        self.assertEqual(r['verdict'], 'OK')
+        self.assertEqual(r['criterion'], 'dissolução larga')
+        self.assertTrue(seam_check.BLEND_MIN <= r['blendFraction'] <= seam_check.BLEND_MAX)
+
+    def test_head_starting_after_the_dissolve_is_a_straight_band(self):
+        # cabeça baixa demais: a arte já sumiu antes de ela começar
+        r = seam_check.seam_position(HEAD_TOP, HEAD_BOTTOM, 250, ZOOM, self.BAND, 'top', self.BLEND)
+        self.assertEqual(r['verdict'], 'FAIXA RETA')
+
+    def test_head_entering_above_the_dissolve_is_flagged(self):
+        self.assertEqual(self.wide(600)['verdict'], 'ALTA DEMAIS')
+
+    def test_narrow_blend_keeps_the_old_criterion(self):
+        r = seam_check.seam_position(HEAD_TOP, HEAD_BOTTOM, 720, ZOOM, BAND_H, 'top', 100)
+        self.assertEqual(r['criterion'], 'costura estreita')
+        self.assertEqual(r['verdict'], 'OK')
+
+    def test_zero_blend_is_refused(self):
+        with self.assertRaises(ValueError):
+            seam_check.seam_position(HEAD_TOP, HEAD_BOTTOM, 400, ZOOM, self.BAND, 'top', 0)
+
+
+class PresetTests(unittest.TestCase):
+    def test_formato_2_preset_carries_the_measured_geometry(self):
+        import json
+        preset = json.loads((Path(__file__).resolve().parents[1] /
+                             'assets' / 'presets' / 'formato-2.json').read_text())
+        modelo = preset['_splitInserts_modelo']
+        self.assertEqual(modelo['bandH'], 874)
+        self.assertEqual(modelo['seamBlend'], 192)
+        self.assertEqual(modelo['layout'], 'top')
+        # o preset NÃO pode pedir matte: nele o efeito vem da dissolução
+        self.assertNotIn('matte', modelo)
+        self.assertIn('_sem_matte', modelo)
+
+    def test_bottom_layout_defaults_to_the_wide_division(self):
+        # pedido dele: "para a arte em baixo quero a divisão dessa forma"
+        template = (Path(__file__).resolve().parents[1] /
+                    'assets' / 'shortform' / 'src' / 'CustomGraphics.tsx').read_text()
+        self.assertIn("{top: SEAM_BLEND, bottom: 192}", template)
+        self.assertIn('const blend = seamBlend ?? LAYOUT_BLEND[layout];', template)
+
+    def test_template_accepts_a_per_window_blend(self):
+        template = (Path(__file__).resolve().parents[1] /
+                    'assets' / 'shortform' / 'src' / 'CustomGraphics.tsx').read_text()
+        self.assertIn('seamBlend?: number;', template)
+        self.assertIn('const blend = seamBlend ?? LAYOUT_BLEND[layout];', template)
+
+
 if __name__ == '__main__':
     unittest.main()

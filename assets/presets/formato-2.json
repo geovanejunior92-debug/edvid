@@ -1,0 +1,75 @@
+{
+  "_preset": "TELA DIVIDIDA FORMATO 2 — arte em cima, dissolução larga",
+  "_origem": "Derivado por MEDIÇÃO de um vídeo de referência que o usuário mandou em 2026-09-11 (marcondes.ai). Foram medidas geometria, cor e som; nada do arquivo dele foi copiado — nem arte, nem áudio, nem fonte. Os campos marcados _medido trazem o número e como saiu.",
+  "_diferenca_para_o_formato_1": "No Formato 1 a dissolução tem 100px e a junção cai na borda do próprio clipe; a pessoa passa na frente da faixa por MATTE. No Formato 2 a dissolução tem ~192px e a faixa é muito mais alta: a arte termina de sumir exatamente onde a cabeça começa, e é isso que faz a pessoa parecer estar na frente — SEM matte nenhum. São dois caminhos para o mesmo efeito; não misture os números.",
+
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "durationSec": "PREENCHER",
+
+  "_splitInserts_modelo": {
+    "kind": "video",
+    "fit": "cover",
+    "layout": "top",
+    "bandH": 874,
+    "seamBlend": 192,
+    "_medido": "Perfil de textura por linha nas margens laterais (sem legenda), média de 4 quadros: arte lisa até 0,455 da altura, vídeo cheio em 0,555. Em 1920 → sólido até 874, dissolução de 192, fim em 1066.",
+    "_focusY": "PREENCHER por vídeo — calibrar para o TOPO DA CABEÇA cair dentro da dissolução, entre 874 e 1066. Rode `seam_check.py <cut.mp4> --at <início da janela> --band-h 874 --seam-blend 192 --focus-y N --zoom Z`; o alvo é blendFraction entre 0,15 e 0,85 (na referência o topo da cabeça caiu em 0,24–0,74).",
+    "_sem_matte": "Não gere matte para este formato. A dissolução larga faz o trabalho; matte aqui é custo sem efeito visível.",
+    "_primeira_janela": "nunca antes de 4s — só depois que a capa some"
+  },
+
+  "camera": {
+    "enabled": true,
+    "zooms": "PREENCHER — o mesmo ciclo suave do Formato 1",
+    "pushIn": 0.04,
+    "targetX": 0.5,
+    "targetY": 0.4
+  },
+
+  "captions": {
+    "enabled": true,
+    "style": "stacked",
+    "maxWords": 3,
+    "paddingBottom": 1170,
+    "accent": "#e3ca76",
+    "_medido_posicao": "Bloco de legenda centrado em 0,37 da altura nos quadros com arte — ou seja, DENTRO da área escura, logo acima da dissolução, não sobre o vídeo. Em 1920 isso é ~710 do topo.",
+    "_medido_forma": "2 a 5 palavras, duas linhas escalonadas na horizontal, palavra corrente em branco vivo e as demais esmaecidas (karaokê). Uma palavra de destaque por legenda, em itálico: ora serifada dourada (conceito), ora da própria família, branca e maior (sigla).",
+    "_a_decidir_com_ele": "A família tipográfica da referência não foi identificada e não deve ser adivinhada. Manter a tipografia que ele já usa, ou ele indica outra."
+  },
+
+  "_arte": {
+    "fundo": "#2a2620",
+    "traco": "#e3ca76",
+    "_medido": "Fundo do painel entre #26231d e #3e3a33 conforme a cena; dourado vivo consistente em #e3ca76 (média dos 5% mais claros na faixa de matiz do ouro, 4 quadros).",
+    "_vocabulario": "Linha fina dourada sobre painel escuro: mostradores com marcações de escala, anéis concêntricos, curva exponencial, caixas de seleção, lista numerada que ACUMULA item a item. Rótulo de seção no topo à esquerda em maiúsculas muito espaçadas; contador ou fórmula no topo à direita em itálico serifado.",
+    "_nao_copiar": "O vocabulário acima é descrição do que foi visto, para inspirar arte PRÓPRIA. Não reproduzir os gráficos da referência."
+  },
+
+  "soundtrack": {
+    "enabled": true,
+    "file": "trilha.mp3",
+    "volume": 0.07,
+    "_medido": "A referência tem trilha CONTÍNUA, sem respiro digital (o segundo mais quieto ainda marca −26 dBFS), ~121 BPM, muito grave: energia média 12,3 no grave contra 0,12 no agudo. Integrado −17,7 LUFS, pico −0,8, LRA 7,0.",
+    "_nosso_alvo_continua_sendo_outro": "Entregar em −10 LUFS, como ele já pediu. O −17,7 é o número da referência, não a meta."
+  },
+
+  "sfxCues": [],
+  "_sfx": "A referência NÃO usa efeitos soltos: a varredura de transientes achou 28 eventos fortes e todos são a batida da trilha (70–95% da energia abaixo de 250 Hz); na banda de 5–16 kHz não há clique nem whoosh isolado. O ritmo vem da trilha, não de uma biblioteca. Se for acrescentar efeito, vale a regra dele: todo som precisa cair num flash ou corte, e riser e whoosh-rev seguem banidos.",
+
+  "hookStacked": "PREENCHER — a capa segue o padrão dele (altura, logo nos 5s, fonte)",
+  "logo": {"enabled": true, "src": "brand/logo-transparente.png", "endSec": 4.0, "width": 520, "bottom": 120},
+  "inserts": [],
+  "behind": [],
+  "behindVideos": [],
+  "splitInserts": "PREENCHER",
+  "transitions": "PREENCHER — {at: start, variant: 'corte'} por janela + {at: end, variant: 'saida'} onde a faixa realmente sai",
+  "outro": {
+    "enabled": true,
+    "startSec": "PREENCHER",
+    "durationSec": 2.6,
+    "lines": ["Dr. Geovane Júnior", "CRM - PE 28037 / RQE 13075"],
+    "bg": "#071d33"
+  }
+}
