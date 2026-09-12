@@ -1510,3 +1510,71 @@ body.embedded-studio{background:#080b0f}
 body.embedded-studio>header{display:none}
 body.embedded-studio>.tabs{margin:8px 8px 0}
 body.embedded-studio>main{padding:8px;gap:8px}
+
+/* ---------- Costura da tela dividida (2026-09-12) ----------
+   O palco cobre exatamente a caixa do vídeo, como o lutCanvas. As três camadas
+   reproduzem o que o template compõe: a arte no topo com a dissolução dos
+   últimos SEAM_BLEND px, a pessoa transformada por (y-focusY)*zoom+bandH, e o
+   matte da pessoa por cima, que é o que a põe na frente da arte.
+   O frame interno tem o tamanho REAL do vídeo (1080x1920) e é escalado inteiro
+   por --seam-scale, para as contas em px do template valerem sem conversão. */
+.seam-stage { position: absolute; inset: 0; overflow: hidden;
+              background: #05070b; z-index: 3; }
+/* O frame tem o tamanho REAL do vídeo (1080x1920) para as contas em px do
+   template valerem sem conversão, e é encolhido por scale. Mas `scale` não
+   reduz o espaço de LAYOUT: centralizar por grid posicionava um elemento de
+   1920px de altura e o desenho ia parar fora do palco (medido no navegador:
+   frame em x=932 com o palco em x=472). Ancorar no centro por position+translate
+   não depende do tamanho de layout. */
+.seam-frame { position: absolute; left: 50%; top: 50%;
+              width: var(--seam-w, 1080px); height: var(--seam-h, 1920px);
+              transform: translate(-50%, -50%) scale(var(--seam-scale, 0.3));
+              transform-origin: center center; overflow: hidden; background: #000; }
+/* Seletor longo de propósito: `.player-frame video` (o player principal) já
+   impõe max-height:100% e width:auto, e o palco vive DENTRO dele. Com um
+   seletor curto o vídeo de 1920px de layout era espremido para a altura do
+   player e as três camadas saíam em escalas diferentes — visível só no
+   navegador, porque nada erra. Isto precisa vencer também
+   `body.portrait .player-frame video`, daí os três níveis. */
+.seam-stage .seam-frame video.seam-layer {
+  position: absolute; left: 0; top: 0; display: block;
+  /* !important aqui é deliberado: o palco vive DENTRO de `.player-frame`, cujo
+     `max-height:100%` existe para o player principal caber na janela e continuou
+     vencendo mesmo com seletor mais específico (medido no navegador: width já
+     obedecia 1080px, max-height seguia em 402px e achatava as três camadas).
+     Estas quatro são as únicas com `!important` no palco; o resto é cascata
+     normal. */
+  width: 100% !important; height: auto !important;
+  max-width: none !important; max-height: none !important;
+  border-radius: 0; object-fit: fill; }
+.seam-stage .seam-frame video.seam-person { transform-origin: top left; }
+.seam-stage .seam-frame video.seam-matte  { transform-origin: top left; pointer-events: none; }
+.seam-stage .seam-frame video.seam-art { height: var(--seam-band, 960px) !important;
+  object-fit: cover; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0,
+           #000 calc(100% - var(--seam-blend, 100px)), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0,
+           #000 calc(100% - var(--seam-blend, 100px)), transparent 100%); }
+/* a linha fica em bandH: é a costura, e ela NÃO se move — quem desliza é a
+   pessoa. A alça só existe para dizer onde pegar. */
+.seam-line { position: absolute; left: 0; right: 0; top: var(--seam-y, 860px); height: 0;
+             border-top: 2px dashed rgba(255,255,255,.75); pointer-events: none; }
+.seam-handle { position: absolute; right: 24px; top: -26px; width: 96px; height: 48px;
+               border-radius: 24px; background: rgba(255,255,255,.18);
+               border: 2px solid rgba(255,255,255,.8); }
+.seam-stage.dragging { cursor: grabbing; }
+.seam-stage { cursor: grab; }
+.seam-hud { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 10px;
+            align-items: center; font-size: 13px; pointer-events: none; }
+.seam-verdict { padding: 4px 10px; border-radius: 999px; font-weight: 600;
+                background: rgba(0,0,0,.55); color: #fff; }
+.seam-verdict.ok   { background: rgba(34,160,90,.85); }
+.seam-verdict.warn { background: rgba(200,140,30,.85); }
+.seam-verdict.bad  { background: rgba(190,60,50,.9); }
+.seam-hint { color: rgba(255,255,255,.65); }
+.seam-panel .seam-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; flex-wrap: wrap; }
+.seam-panel .seam-row label { min-width: 62px; color: var(--dim, #9aa4b2); font-size: 13px; }
+.seam-panel select { flex: 1 1 160px; min-width: 0; }
+.seam-panel input[type=range] { flex: 1 1 120px; min-width: 0; }
+.seam-panel .seam-actions { justify-content: flex-end; }
+.seam-note { display: block; color: var(--dim, #9aa4b2); font-size: 12px; line-height: 1.45; padding-top: 4px; }

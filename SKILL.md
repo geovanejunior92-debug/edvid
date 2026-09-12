@@ -200,6 +200,13 @@ the track reference you load after the gate. One of them is not optional:
   transformação do template (`(y_src − focusY) * zoom + bandH` — **o `+ bandH`
   é o termo que inverte a conclusão se esquecido**). Exit ≠ 0 quando o efeito
   não acontece. Só `layout: top`; o `bottom` é recusado em vez de chutado.
+- **`seam_apply.py <edit-dir> [--apply] [--force]`** — grava no `edit-data.json`
+  a altura de costura que ele ajustou com o mouse no preview (`seam[]` dentro de
+  `preview_edits.json`). Mede cada janela com o mesmo detector do
+  `seam_check.py` e **recusa gravar o que o gate reprova** sem `--force`: o
+  preview já mostrava o veredito ao vivo, e gravar um valor reprovado desfaria o
+  sentido de ter o gate. Só mexe em `focusY`, nunca em `bandH` (preso ao clipe),
+  e nunca no corte — só a Fase 2 re-renderiza.
 - **`split_band.py <clipe…> [--frame-width N]`** — o `bandH` de cada clipe para
   a costura cair na borda inferior dele, que é o padrão de divisão do Formato 1
   generalizado para qualquer proporção. Avisa quando o valor sai do padrão (aí
@@ -412,6 +419,20 @@ borda apontada com um clique.
   **`seam_check.py <cut.mp4> --at <início da janela> --band-h N --focus-y N
   --zoom Z`**: ele mede onde o topo da cabeça cai e devolve FAIXA RETA /
   RASPANDO / OK / BAIXA DEMAIS. A fração aprovada por ele é ~0.40.
+- `seam[]` (2026-09-12, **a costura ajustada com o mouse**) — ele abre a gaveta
+  "Costura da tela dividida", escolhe a janela, clica em "Ajustar no player" e
+  **arrasta a própria imagem** sob a linha até ela cruzar onde quiser (Shift =
+  fino, ↑↓ = 1px). O palco recria as três camadas que o template compõe — arte no
+  topo com a dissolução, pessoa transformada por `(y − focusY) * zoom + bandH`,
+  matte por cima — e o veredito (`ok`/`raspando`/`baixa demais`) aparece ao vivo,
+  medido pelo servidor com o MESMO detector do `seam_check.py` (rota
+  `/api/seam-head`). "Aplicar em todas" leva a **fração**, não o número: a cabeça
+  está em altura diferente em cada janela, e copiar `focusY` cru repetiria o erro.
+  Aplique com **`seam_apply.py <edit> --apply`**; depois re-renderize só a Fase 2.
+  **Por que se arrasta a pessoa e não a linha:** a fração onde a costura cruza a
+  cabeça é `(focusY − topo) ÷ altura da cabeça` — `bandH` e `zoom` se cancelam.
+  Não existe subir a costura sem descer a pessoa; é o mesmo movimento, e `focusY`
+  é a única alavanca honesta.
 - `takeChoices[]` (2026-09-12) — a tomada que ELE escolheu para cada linha do
   roteiro, na gaveta "Tomadas do roteiro": `{line, text, take, source, start,
   end, score}`. A gaveta lê `studio-pipeline/alignment.json` (escrito pelo

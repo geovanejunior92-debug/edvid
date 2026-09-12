@@ -236,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _select_project(self) -> bool:
         self.root = self.server.default_root
-        path = self.path.split('?', 1)[0]
+        path, sep, query = self.path.partition('?')
         self.project_scoped = path.startswith('/p/')
         if self.project_scoped:
             parts = path.split('/', 3)
@@ -244,7 +244,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({'error': 'Projeto não encontrado'}, 404)
                 return False
             self.root = self.server.projects[parts[2]]
-            self.path = '/' + parts[3]
+            # A query TEM que sobreviver à reescrita: até 2026-09-12 ela era
+            # descartada aqui, e toda rota sob /p/<id>/ que dependesse de
+            # parâmetro recebia o valor padrão em silêncio. Ninguém notou porque
+            # nenhuma rota antiga usava query — a primeira que usou (seam-head)
+            # respondia sempre pelo segundo 0, e a medida saía plausível.
+            self.path = '/' + parts[3] + sep + query
         return True
 
     def _projects(self) -> None:
@@ -358,6 +363,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/projects':
             self._projects()
             return
+        if path == '/api/seam-head':
+            self._seam_head()
+            return
         if path == '/projects':
             self._send_file(APP_DIR / 'projects.html')
             return
@@ -390,6 +398,36 @@ class Handler(BaseHTTPRequestHandler):
             self._state()
         else:
             self._json({"error": "unknown route"}, 404)
+
+    def _seam_head(self) -> None:
+        """A caixa da cabeça no cut.mp4, para a interface medir a costura.
+
+        A fração que o ajuste de costura mostra ao vivo é a MESMA do
+        `seam_check.py` — por isso ela é calculada aqui, com o mesmo detector,
+        em vez de estimada no navegador. Sem o detector disponível o ajuste
+        continua funcionando: a interface some com o número e mantém a linha.
+        """
+        query = parse_qs(urlsplit(self.path).query)
+        try:
+            at = float((query.get('at') or ['0'])[0])
+        except (TypeError, ValueError):
+            self._json({'error': 'at inválido'}, 400)
+            return
+        video = self.root / 'cut.mp4'
+        if not video.is_file():
+            self._json({'error': 'cut.mp4 não encontrado'}, 404)
+            return
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import seam_check
+            top, bottom = seam_check.head_box(video, max(0.0, at))
+        except Exception as exc:  # noqa: BLE001 — detector ausente não pode derrubar o preview
+            self._json({'error': str(exc)[:200]}, 503)
+            return
+        self._json({'top': top, 'bottom': bottom, 'at': at,
+                    'seamBlend': seam_check.SEAM_BLEND,
+                    'upperMin': seam_check.UPPER_MIN, 'upperMax': seam_check.UPPER_MAX,
+                    'reference': seam_check.REFERENCE})
 
     def do_POST(self) -> None:  # noqa: N802
         if getattr(self.server, "auth_required", False):

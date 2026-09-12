@@ -151,6 +151,24 @@
            SAME file the Fase-1 render applies via ffmpeg's lut3d filter, so
            this is a real preview, not an approximation like the sliders. -->
       <canvas id="lutCanvas" class="lut-canvas hidden"></canvas>
+      <!-- Ajuste da costura da tela dividida (2026-09-12, pedido dele): as três
+           camadas que o template compõe — arte no topo com a dissolução, a
+           pessoa transformada por (y-focusY)*zoom+bandH, e o matte por cima —
+           recriadas aqui para ele ARRASTAR a linha com o mouse. É prévia, não
+           o Remotion: o botão "conferir no render" ao lado gera o quadro real
+           com helpers/phase2_still.py. Ver SEAM em app.js. -->
+      <div id="seamStage" class="seam-stage hidden">
+        <div id="seamFrame" class="seam-frame">
+          <video id="seamPerson" class="seam-layer seam-person" playsinline preload="auto" muted></video>
+          <video id="seamArt" class="seam-layer seam-art" playsinline preload="auto" muted></video>
+          <video id="seamMatte" class="seam-layer seam-matte" playsinline preload="auto" muted></video>
+          <div id="seamLine" class="seam-line"><span id="seamHandle" class="seam-handle"></span></div>
+        </div>
+        <div class="seam-hud">
+          <span id="seamVerdict" class="seam-verdict">—</span>
+          <span id="seamHint" class="seam-hint">arraste a sua imagem · Shift = fino · ↑↓ = 1px</span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -183,6 +201,36 @@
          CSS-filter preview on the video itself (applyImagePreview); the
          rest (sharpness/skin/warmth/shadows/highlights) have no CSS
          equivalent and only show once Fase 1 re-renders after Salvar. -->
+    <!-- Costura da tela dividida: só aparece quando o edit-data tem
+         splitInserts. Gaveta recolhível, nasce fechada e tira espaço do
+         PLAYER, nunca da timeline (regra de layout de 2026-09-01). -->
+    <section id="seamPanel" class="seam-panel glass hidden">
+      <div class="group-head">
+        <button id="seamToggle" class="drawer-toggle" type="button" aria-expanded="false">
+          <span class="caret"></span><span class="group-title">Costura da tela dividida</span>
+        </button>
+        <span id="seamPanelHint" class="drawer-hint"></span>
+      </div>
+      <div id="seamBody" class="drawer-body hidden">
+        <div class="seam-row">
+          <label for="seamWindow">Janela</label>
+          <select id="seamWindow"></select>
+          <button id="seamEnter" class="btn ghost small" type="button">Ajustar no player</button>
+        </div>
+        <div class="seam-row">
+          <label for="seamScrub">Instante</label>
+          <input id="seamScrub" type="range" min="0" max="100" value="25" title="Andar dentro da janela">
+          <button id="seamStill" class="btn ghost small" type="button" title="Gera o quadro real do Remotion">conferir no render</button>
+        </div>
+        <div class="seam-row seam-actions">
+          <button id="seamAll" class="btn ghost small" type="button">Aplicar em todas</button>
+          <button id="seamReset" class="btn ghost small" type="button">Redefinir</button>
+          <button id="seamExit" class="btn ghost small" type="button">Fechar</button>
+        </div>
+        <span class="seam-note">Você arrasta a sua imagem sob a linha até ela cruzar onde quiser; a linha fica parada porque é a borda da arte, e mover uma ou outra é o mesmo movimento. A prévia recria a composição do template: para o quadro exato, use “conferir no render”.</span>
+      </div>
+    </section>
+
     <section id="imgAdjustPanel" class="img-adjust-panel glass hidden">
       <div class="group-head">
         <button id="imgDrawerToggle" class="drawer-toggle" type="button" aria-expanded="false">

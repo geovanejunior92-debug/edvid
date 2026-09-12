@@ -955,6 +955,7 @@ function dirtyCount() {
   n += S.textFixes.length; // cada correção de texto da legenda
   n += Object.keys(S.takeChoices).length; // cada tomada escolhida no roteiro
   n += imageDirty() ? 1 : 0; // one grade change, however many sliders moved
+  n += (typeof seamDirty === 'function' && seamDirty()) ? 1 : 0; // altura da costura
   return n;
 }
 function refreshHeader() {
@@ -1082,6 +1083,8 @@ async function applyState(data) {
       try {
         S.editData = await (await fetch(`media/${S.state.editData}?v=${Date.now()}`)).json();
         buildInsertsDraft();
+        // a gaveta da costura só existe quando há tela dividida com arte em cima
+        if (typeof seamAvailable === 'function' && seamAvailable()) seamFillWindows();
       } catch (e) { /* absent yet */ }
     }
   }
@@ -3006,6 +3009,12 @@ $('btnSave').addEventListener('click', async () => {
     payload.image = { ...S.style.image };
     payload.imageChanged = true;
   }
+  if (typeof seamDirty === 'function' && seamDirty()) {
+    // altura da costura da tela dividida: é `focusY` por janela, e quem aplica
+    // no edit-data.json é helpers/seam_apply.py. Nada aqui mexe no corte — a
+    // Fase 1 não muda, só a Fase 2 re-renderiza.
+    payload.seam = SEAM.payload();
+  }
   const res = await fetch('api/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const savedResult = await res.json();
   if (!res.ok || !savedResult.ok) { toast(savedResult.error || 'Não foi possível salvar os ajustes', 4000); return; }
@@ -3124,3 +3133,322 @@ $('findMedia').addEventListener('click', async () => {
   finally { $('findMedia').disabled = false; }
 });
 $('mediaCandidates').addEventListener('change', () => { $('recoverPath').value = $('mediaCandidates').value; });
+
+// ---------- Costura da tela dividida (2026-09-12) ----------
+// Pedido dele: ajustar a posição da costura com o mouse, ao vivo, em vez de
+// esperar um render para descobrir onde ela caiu. A conta é a do template e a
+// mesma que o helpers/seam_check.py mede: um ponto y da fonte renderiza em
+// (y - focusY) * zoom + bandH, e a costura está em bandH. Daí sai o fato que
+// governa a interface inteira: a fração onde a linha cruza a cabeça é
+// (focusY - topo) / (altura da cabeça) — o zoom e o bandH se CANCELAM. Não
+// existe subir a costura sem descer a pessoa; é o mesmo movimento, e é por isso
+// que aqui se arrasta a IMAGEM, não a linha. Mexer em bandH seria a outra
+// saída, e está errada: bandH é preso ao clipe (bandH + dissolução = altura
+// natural dele), e mudá-lo recorta ou amplia a arte.
+const SEAM = {
+  on: false, idx: -1, at: 0, dragging: false, dragY: 0, dragFocus: 0,
+  head: null,                 // {top,bottom} da cabeça no instante, medido no servidor
+  heads: {},                  // ref -> cabeça medida naquela janela (o relatório usa ESTA)
+  limits: { seamBlend: 100, upperMin: 0.20, upperMax: 0.50, reference: 0.40 },
+  draft: {},                  // ref -> focusY escolhido
+  orig: {},                   // ref -> focusY do edit-data
+
+  windows() {
+    return ((S.editData && S.editData.splitInserts) || [])
+      .map((it, i) => ({ it, ref: i }))
+      // O seam_check só mede layout "top"; a geometria do "bottom" não foi
+      // medida, e chutar aqui seria pior que não oferecer.
+      .filter(({ it }) => (it.layout || 'top') === 'top');
+  },
+  current() {
+    const list = this.windows();
+    return list.find((w) => w.ref === this.idx) || list[0] || null;
+  },
+  focusOf(ref, it) {
+    return this.draft[ref] != null ? this.draft[ref] : (+it.focusY || 400);
+  },
+  geometry(w) {
+    const it = w.it;
+    return {
+      bandH: +it.bandH || 750,
+      blend: +it.seamBlend || this.limits.seamBlend,
+      zoom: +it.zoom || 1,
+      focusY: this.focusOf(w.ref, it),
+    };
+  },
+  fraction(g) {
+    if (!this.head || this.head.bottom <= this.head.top) return null;
+    return (g.focusY - this.head.top) / (this.head.bottom - this.head.top);
+  },
+  verdict(frac) {
+    if (frac == null) return { text: 'sem medida do rosto', cls: '' };
+    const { upperMin, upperMax, reference } = this.limits;
+    if (frac < 0) return { text: `faixa reta (${frac.toFixed(2)})`, cls: 'bad' };
+    if (frac < upperMin) return { text: `raspando (${frac.toFixed(2)})`, cls: 'warn' };
+    if (frac <= upperMax) {
+      const perto = Math.abs(frac - reference) <= 0.05 ? ' — na referência' : '';
+      return { text: `ok (${frac.toFixed(2)})${perto}`, cls: 'ok' };
+    }
+    return { text: `baixa demais (${frac.toFixed(2)}) — cruza o rosto`, cls: 'bad' };
+  },
+
+  async enter() {
+    const w = this.current();
+    if (!w) { toast('Este vídeo não tem tela dividida com arte em cima', 3500); return; }
+    this.idx = w.ref;
+    this.on = true;
+    $('seamStage').classList.remove('hidden');
+    this.seekFromScrub();
+    await this.load(w);
+    this.paint();
+  },
+  exit() {
+    this.on = false;
+    $('seamStage').classList.add('hidden');
+    ['seamPerson', 'seamArt', 'seamMatte'].forEach((id) => { $(id).removeAttribute('src'); $(id).load(); });
+  },
+  mediaUrl(rel) {
+    // os assets da Fase 2 vivem ao lado do edit-data.json; o servidor serve
+    // tudo que está sob a pasta de edição por /media/
+    const base = (S.state.editData || 'remotion/public/edit-data.json').split('/').slice(0, -1).join('/');
+    return `media/${base}/${rel}`;
+  },
+  async load(w) {
+    const it = w.it;
+    const person = $('seamPerson'), art = $('seamArt'), matte = $('seamMatte');
+    person.src = `media/${S.state.video || 'cut.mp4'}`;
+    if (it.src) { art.src = this.mediaUrl(it.src); art.classList.remove('hidden'); }
+    else art.classList.add('hidden');
+    if (it.matte) { matte.src = this.mediaUrl(it.matte); matte.classList.remove('hidden'); }
+    else matte.classList.add('hidden');
+    await this.seek();
+    await this.measure();
+  },
+  async seek() {
+    const w = this.current();
+    if (!w) return;
+    const person = $('seamPerson'), art = $('seamArt'), matte = $('seamMatte');
+    const dentro = Math.max(0, this.at - (+w.it.start || 0));
+    const set = (v, t) => { try { if (v.src) v.currentTime = t; } catch (_) { /* ainda carregando */ } };
+    // O matte é gerado POR JANELA (o de 11,2s dura 5,2s, não os 53s do corte),
+    // então o tempo dele é relativo como o da arte — pedir o tempo absoluto
+    // satura no último quadro e congela o recorte. Pego no navegador, não no
+    // código: os dois caminhos rodam sem erro nenhum. A escolha é medida em
+    // vez de assumida, porque um matte de vídeo inteiro também é legítimo.
+    const inteiro = matte.duration && person.duration
+                 && matte.duration > person.duration * 0.9;
+    set(person, this.at);
+    set(matte, inteiro ? this.at : dentro);
+    set(art, dentro);
+  },
+  seekFromScrub() {
+    const w = this.current();
+    if (!w) return;
+    const start = +w.it.start || 0, end = +w.it.end || start + 1;
+    const p = (+$('seamScrub').value || 0) / 100;
+    this.at = start + (end - start) * p;
+  },
+  async measure() {
+    this.head = null;
+    try {
+      const r = await fetch(`api/seam-head?at=${this.at.toFixed(3)}`);
+      const d = await r.json();
+      if (r.ok && d.top != null) {
+        this.head = { top: +d.top, bottom: +d.bottom };
+        this.heads[this.idx] = this.head;
+        this.limits = { seamBlend: +d.seamBlend || 100, upperMin: +d.upperMin,
+                        upperMax: +d.upperMax, reference: +d.reference };
+      }
+    } catch (_) { /* sem detector: a linha continua, o número some */ }
+  },
+
+  paint() {
+    const w = this.current();
+    if (!w || !this.on) return;
+    const g = this.geometry(w);
+    const frame = $('seamFrame'), stage = $('seamStage');
+    const vw = +(S.editData && S.editData.width) || 1080;
+    const vh = +(S.editData && S.editData.height) || 1920;
+    const box = stage.getBoundingClientRect();
+    const scale = Math.min(box.width / vw, box.height / vh) || 0.3;
+    frame.style.setProperty('--seam-w', `${vw}px`);
+    frame.style.setProperty('--seam-h', `${vh}px`);
+    frame.style.setProperty('--seam-scale', String(scale));
+    frame.style.setProperty('--seam-band', `${g.bandH + g.blend}px`);
+    frame.style.setProperty('--seam-blend', `${g.blend}px`);
+    frame.style.setProperty('--seam-y', `${g.bandH}px`);
+    // a transformação do template, literal
+    const t = `translateY(${(g.bandH - g.focusY * g.zoom).toFixed(2)}px) scale(${g.zoom})`;
+    $('seamPerson').style.transform = t;
+    $('seamMatte').style.transform = t;
+    const frac = this.fraction(g);
+    const v = this.verdict(frac);
+    const badge = $('seamVerdict');
+    badge.textContent = v.text;
+    badge.className = `seam-verdict ${v.cls}`;
+    this.paintPanel();
+  },
+  paintPanel() {
+    const list = this.windows();
+    const mudadas = list.filter((w) => this.draft[w.ref] != null
+                                    && this.draft[w.ref] !== (+w.it.focusY || 400)).length;
+    $('seamPanelHint').textContent = list.length
+      ? `${list.length} janela(s)${mudadas ? ` · ${mudadas} ajustada(s)` : ''}`
+      : 'sem tela dividida';
+  },
+
+  // ---- arrasto: move a PESSOA, que é o que de fato acontece no render ----
+  beginDrag(ev) {
+    const w = this.current();
+    if (!this.on || !w) return;
+    this.dragging = true;
+    this.dragY = ev.clientY;
+    this.dragFocus = this.geometry(w).focusY;
+    $('seamStage').classList.add('dragging');
+    ev.preventDefault();
+  },
+  moveDrag(ev) {
+    if (!this.dragging) return;
+    const w = this.current();
+    if (!w) return;
+    const g = this.geometry(w);
+    const vh = +(S.editData && S.editData.height) || 1920;
+    const box = $('seamStage').getBoundingClientRect();
+    const vw = +(S.editData && S.editData.width) || 1080;
+    const scale = Math.min(box.width / vw, box.height / vh) || 0.3;
+    // px do frame, não da tela. Sem o Shift o arrasto é 1:1 com o cursor (a
+    // imagem acompanha o dedo); com ele, 1/5 — porque o player mostra 1920px de
+    // vídeo em ~300 de tela, e nessa escala um movimento de 80px do mouse pulava
+    // 538px do quadro, atravessando a faixa útil inteira (medido no navegador).
+    const fino = ev.shiftKey ? 0.2 : 1;
+    const dy = ((ev.clientY - this.dragY) / scale) * fino;
+    // arrastar para BAIXO desce a pessoa: focusY diminui
+    const novo = Math.round(this.dragFocus - dy / (g.zoom || 1));
+    this.draft[this.idx] = Math.max(0, Math.min(vh, novo));
+    this.paint();
+  },
+  endDrag() {
+    if (!this.dragging) return;
+    this.dragging = false;
+    $('seamStage').classList.remove('dragging');
+    refreshHeader();
+  },
+
+  applyToAll() {
+    const w = this.current();
+    if (!w) return;
+    const frac = this.fraction(this.geometry(w));
+    if (frac == null) { toast('Sem medida do rosto: não dá para levar a mesma altura às outras', 3500); return; }
+    // a MESMA fração, não o mesmo focusY: a cabeça está em altura diferente em
+    // cada janela, e copiar o número cru repetiria o erro que ele apontou.
+    $('seamAll').disabled = true;
+    const alvo = frac;
+    const janelas = this.windows();
+    (async () => {
+      for (const outra of janelas) {
+        const meio = (+outra.it.start || 0) + 0.5;
+        try {
+          const r = await fetch(`api/seam-head?at=${meio.toFixed(3)}`);
+          const d = await r.json();
+          if (r.ok && d.top != null) {
+            this.heads[outra.ref] = { top: +d.top, bottom: +d.bottom };
+            this.draft[outra.ref] = Math.round(+d.top + alvo * (+d.bottom - +d.top));
+          }
+        } catch (_) { /* uma janela sem rosto detectado fica como estava */ }
+      }
+      $('seamAll').disabled = false;
+      this.paint();
+      refreshHeader();
+      toast(`Altura ${alvo.toFixed(2)} levada às outras janelas`, 3000);
+    })();
+  },
+  reset() {
+    this.draft = {};
+    this.heads = this.head && this.idx >= 0 ? { [this.idx]: this.head } : {};
+    this.paint();
+    refreshHeader();
+  },
+  payload() {
+    return this.windows()
+      .filter((w) => this.draft[w.ref] != null && this.draft[w.ref] !== (+w.it.focusY || 400))
+      .map((w) => {
+        const g = this.geometry(w);
+        // a cabeça daquela janela, não a da que está aberta: reportar a fração
+        // da janela corrente para todas fazia o "aplicar em todas" mentir
+        // (0.405 em sete janelas com cabeças de alturas diferentes).
+        const h = this.heads[w.ref];
+        const frac = h && h.bottom > h.top ? (g.focusY - h.top) / (h.bottom - h.top) : null;
+        return { ref: w.ref, src: w.it.src || null, start: +w.it.start, end: +w.it.end,
+                 from: +w.it.focusY || 400, focusY: g.focusY,
+                 ...(frac == null ? {} : { fraction: +frac.toFixed(3) }) };
+      });
+  },
+};
+
+function seamDirty() { return SEAM.payload().length > 0; }
+
+function seamAvailable() {
+  const has = SEAM.windows().length > 0;
+  $('seamPanel').classList.toggle('hidden', !has);
+  if (has) SEAM.paintPanel();
+  return has;
+}
+
+function seamFillWindows() {
+  const sel = $('seamWindow');
+  const list = SEAM.windows();
+  sel.replaceChildren();
+  list.forEach(({ it, ref }) => {
+    const nome = it.label || (it.src || '').split('/').pop() || `janela ${ref + 1}`;
+    sel.add(new Option(`${ref + 1}. ${nome} (${(+it.start).toFixed(1)}s)`, String(ref)));
+  });
+  if (list.length && SEAM.idx < 0) SEAM.idx = list[0].ref;
+  sel.value = String(SEAM.idx);
+}
+
+wireDrawer('seamToggle', 'seamBody', 'edvid.seamDrawer');
+$('seamEnter').addEventListener('click', () => { SEAM.on ? SEAM.exit() : SEAM.enter(); });
+$('seamExit').addEventListener('click', () => SEAM.exit());
+$('seamAll').addEventListener('click', () => SEAM.applyToAll());
+$('seamReset').addEventListener('click', () => SEAM.reset());
+$('seamWindow').addEventListener('change', async (e) => {
+  SEAM.idx = Number(e.target.value);
+  if (SEAM.on) { SEAM.seekFromScrub(); await SEAM.load(SEAM.current()); SEAM.paint(); }
+});
+$('seamScrub').addEventListener('input', async () => {
+  if (!SEAM.on) return;
+  SEAM.seekFromScrub();
+  await SEAM.seek();
+  await SEAM.measure();
+  SEAM.paint();
+});
+$('seamStill').addEventListener('click', async () => {
+  // o quadro EXATO, do Remotion: é o que fecha o risco de a prévia divergir
+  const w = SEAM.current();
+  if (!w) return;
+  $('seamStill').disabled = true;
+  try {
+    const r = await fetch('api/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'timeline-edits', seam: SEAM.payload(), seamStill: { at: +SEAM.at.toFixed(3) } }),
+    });
+    const d = await r.json();
+    toast(d.ok ? 'Pedido de quadro real enviado — o agente responde com a imagem' : (d.error || 'Não foi possível pedir'), 4000);
+  } catch (e) { toast('Não foi possível pedir o quadro', 3500); }
+  finally { $('seamStill').disabled = false; }
+});
+// Setas dão o ajuste que o mouse não dá: 1px do quadro por toque, 10 com Shift.
+window.addEventListener('keydown', (e) => {
+  if (!SEAM.on || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  const w = SEAM.current();
+  if (!w) return;
+  const passo = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowDown' ? -1 : 1);
+  SEAM.draft[SEAM.idx] = Math.round(SEAM.geometry(w).focusY + passo);
+  SEAM.paint();
+  refreshHeader();
+  e.preventDefault();
+});
+$('seamStage').addEventListener('pointerdown', (e) => SEAM.beginDrag(e));
+window.addEventListener('pointermove', (e) => SEAM.moveDrag(e));
+window.addEventListener('pointerup', () => SEAM.endDrag());
+window.addEventListener('resize', () => { if (SEAM.on) SEAM.paint(); });
