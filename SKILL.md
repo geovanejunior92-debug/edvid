@@ -28,7 +28,7 @@ Ao consumir preview_style.json, aplicar headlineText a hook.lines (vazio preserv
 
 ## Mídia marcada na timeline
 
-Ao aplicar `preview_edits.json`, conferir `notes[].media` quando existir: tipo, enquadramento e arquivo/provedor complementam o texto. Preservar o intervalo e a fase gravados. `status=requested` é pedido, não mídia pronta. Para Shutterstock, o conector disponível faz busca de stock; geração utiliza o site oficial até existir integração comprovada. Não tratar stock como geração por IA. Ler `docs/PREVIEW-COMPARTILHADO.md` para o contrato e os limites.
+Ao aplicar `preview_edits.json`, conferir `notes[].media` quando existir: tipo, enquadramento e arquivo/provedor complementam o texto. Preservar o intervalo e a fase gravados. `status=requested` é pedido, não mídia pronta. Para Shutterstock, o conector faz busca de stock e mostra prévias; quando a edição precisar do clipe, o agente está permanentemente autorizado a baixar o arquivo licenciado pelo site autenticado e arquivá-lo em `~/Videos/stock-medico`, sem pedir nova confirmação por clipe. Parar somente diante de cobrança extra, mudança de plano ou licença ambígua. Geração utiliza o site oficial até existir integração comprovada. Não tratar stock como geração por IA nem usar prévia com marca d'água no render. Ler `docs/PREVIEW-COMPARTILHADO.md` para o contrato e os limites.
 
 ## Pedidos no preview compartilhado
 
@@ -490,23 +490,27 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    som de uma transição que já soa, em vez de empilhar um segundo efeito, e só
    acrescenta cue novo onde há silêncio.
 
-10b-pre. **Buscar na Shutterstock, baixar as prévias, ASSISTIR, e oferecer 5
-   opções por item (tarefa fixa, 2026-08-17).** O conector da Shutterstock está
-   ligado — uma ferramenta só, `search`, **somente leitura: não licencia e não
-   baixa**. O fluxo que ele pediu:
+10b-pre. **Buscar na Shutterstock, baixar as prévias, ASSISTIR, e escolher o
+   clipe necessário (tarefa fixa, 2026-08-17; autorização reafirmada em
+   2026-09-12).** O conector da Shutterstock é somente leitura: busca e mostra
+   prévia, mas não licencia nem baixa por API. O download licenciado é feito
+   pelo agente no site autenticado, sem nova confirmação por clipe. O fluxo:
    1. Buscar cada item da lista (frases descritivas em inglês funcionam melhor).
    2. **Baixar as prévias com marca d'água** (`previewMp4` do resultado) das 2
       candidatas de cada item — ele autorizou explicitamente.
    3. **Assistir**: 3 frames por clipe numa folha por item, lida contra a frase
       daquela janela. Prévia é para ESCOLHER; nunca entra na edição.
-   4. Entregar **2 opções por item, com link e leitura de cada uma**, e deixar
-      ELE decidir. Começou em 5 (2026-08-17) e ele reduziu para 2 no mesmo dia:
+   4. Quando houver dúvida editorial, entregar **2 opções por item, com link e
+      leitura de cada uma**, e deixar ELE decidir. Começou em 5 (2026-08-17) e ele reduziu para 2 no mesmo dia:
       *"a partir de agora nao precisa mais fazer 5 videos, somente 2 videos"*.
       Duas boas valem mais que cinco medianas — escolha as duas melhores em vez
       de listar tudo que a busca devolveu.
    5. **Apagar as prévias** depois da análise (pedido dele). As folhas de
       contato podem ficar — são leves e mostram o que foi analisado.
-   O que sobrou de trabalho para ele é só abrir o link e baixar o licenciado.
+   6. Depois da escolha — ou diretamente, quando a marcação for inequívoca —
+      baixar o licenciado pelo site, guardar no acervo com o ID e usar a cópia
+      do projeto. Só interromper se aparecer cobrança extra, mudança de plano
+      ou licença ambígua. Nunca usar a prévia no render.
 
 10b. **Hand over the B-roll shopping list** (standing step, 2026-08-16 — user
    request: "quero que voce sempre faça isso depois da fase 1 Corte, quando
