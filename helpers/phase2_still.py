@@ -137,7 +137,14 @@ def folha(pngs: list[tuple[Path, str]], destino: Path, cols: int = 4) -> Image.I
     for i, (img, rot) in enumerate(tiles):
         cx = (i % cols) * (tile_w + gap)
         cy = (i // cols) * (tile_h + label_h + gap)
-        draw.text((cx + 10, cy + 8), rot[:46], fill=(255, 255, 255), font=font)
+        # Truncar por LARGURA, não por número de caracteres: com 4 colunas o
+        # rótulo de um corta o do vizinho e a folha fica ilegível.
+        texto = rot
+        while texto and draw.textlength(texto, font=font) > tile_w - 20:
+            texto = texto[:-1]
+        if texto != rot:
+            texto = texto[:-1] + "\u2026"
+        draw.text((cx + 10, cy + 8), texto, fill=(255, 255, 255), font=font)
         sheet.paste(img.resize((tile_w, tile_h)), (cx, cy + label_h))
     destino.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(destino)
@@ -149,7 +156,7 @@ def main() -> None:
     ap.add_argument("edit_dir", type=Path)
     ap.add_argument("--at", type=float, nargs="+", help="instantes em segundos (sobrepõe os automáticos)")
     ap.add_argument("--max", type=int, default=8, help="teto de quadros (padrão 8)")
-    ap.add_argument("--cols", type=int, default=4)
+    ap.add_argument("--cols", type=int, default=3)
     args = ap.parse_args()
 
     edit = args.edit_dir.expanduser().resolve()
@@ -175,7 +182,7 @@ def main() -> None:
 
     destino = edit / "verify" / "phase2_still"
     destino.mkdir(parents=True, exist_ok=True)
-    print(f"{len(lista)} quadro(s) de {edit_data.parent.parent.parent.name} — {fps:g}fps, {dur:.2f}s\n")
+    print(f"{len(lista)} quadro(s) de {edit.parent.name} — {fps:g}fps, {dur:.2f}s\n")
 
     feitos: list[tuple[Path, str]] = []
     falhas = 0
