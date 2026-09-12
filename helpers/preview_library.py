@@ -80,6 +80,30 @@ def project_key(edit_dir) -> str:
     return hashlib.sha256(str(Path(edit_dir).resolve()).encode()).hexdigest()[:16]
 
 
+def scan_library(library) -> list[Path]:
+    """As pastas `edit` de todos os projetos dentro de uma biblioteca.
+
+    Uma implementação só, usada pelo servidor web e pelo Studio: enquanto cada
+    lado varria (ou não varria) por conta própria, o app nativo mostrava a
+    biblioteca VAZIA com nove projetos no disco — compartilhar o identificador
+    não faz um lado descobrir o que o outro vê.
+    """
+    import os
+    library = Path(library).expanduser().resolve()
+    achados: list[Path] = []
+    if not library.is_dir():
+        return achados
+    for base, dirs, files in os.walk(library):
+        dirs[:] = [d for d in dirs
+                   if not d.startswith('.') and d not in ('node_modules', 'remotion', 'transcripts')]
+        if 'state.json' in files:
+            path = Path(base).resolve()
+            if path.is_relative_to(library):
+                achados.append(path)
+            dirs[:] = []          # não descer dentro de um projeto
+    return sorted(achados)
+
+
 def library_root(edit_dir) -> Path:
     """Onde ficam as marcas (fixado/arquivado) de um projeto.
 

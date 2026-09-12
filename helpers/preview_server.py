@@ -683,15 +683,11 @@ def _check_access(root: Path) -> None:
 
 
 def discover_projects(library: Path, active: Path) -> dict[str, Path]:
-    library, active = library.resolve(), active.resolve()
-    projects = {preview_library.project_key(active): active}
-    for base, dirs, files in os.walk(library):
-        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'remotion', 'transcripts')]
-        if 'state.json' in files:
-            path = Path(base).resolve()
-            if path.is_relative_to(library.resolve()):
-                projects[preview_library.project_key(path)] = path
-            dirs[:] = []
+    # A varredura vive em preview_library.scan_library: o Studio precisa da
+    # MESMA, e duas cópias divergiriam na primeira exclusão de pasta.
+    projects = {preview_library.project_key(active.resolve()): active.resolve()}
+    for path in preview_library.scan_library(library):
+        projects[preview_library.project_key(path)] = path
     return projects
 
 

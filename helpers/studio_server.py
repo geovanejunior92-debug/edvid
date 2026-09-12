@@ -44,13 +44,71 @@ def _read_json(path: Path, fallback: object) -> object:
         return fallback
 
 
+# Quanto tempo um resultado de varredura vale antes de olhar o disco de novo.
+# A UI consulta /api/projects em poll; varrer a biblioteca a cada consulta seria
+# trabalho de disco para nada.
+DISCOVERY_TTL_S = 30.0
+
+
 class ProjectRegistry:
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, libraries: list[Path] | None = None):
         self.path = data_dir / "projects.json"
         self.lock = threading.RLock()
         raw = _read_json(self.path, {"version": 1, "projects": []})
         items = raw.get("projects", []) if isinstance(raw, dict) else []
         self.items = {x["id"]: x for x in items if isinstance(x, dict) and isinstance(x.get("id"), str)}
+        self.libraries = [Path(x).expanduser() for x in (libraries or [])]
+        self._discovered_at = 0.0
+
+    def known_libraries(self) -> list[Path]:
+        """As bibliotecas a varrer: as configuradas + a pasta-mãe do que já existe.
+
+        A segunda metade é o que faz o app continuar achando projeto depois de o
+        usuário adicionar uma pasta em outro lugar: a partir dali, aquela pasta
+        passa a ser varrida como biblioteca também.
+        """
+        raizes: list[Path] = []
+        for lib in self.libraries:
+            try:
+                r = lib.resolve()
+            except OSError:
+                continue
+            if r.is_dir() and r not in raizes:
+                raizes.append(r)
+        with self.lock:
+            registrados = list(self.items.values())
+        for item in registrados:
+            edit = Path(item.get("editPath") or Path(item["path"]) / "edit")
+            try:
+                r = preview_library.library_root(edit)
+            except (OSError, ValueError):
+                continue
+            if r.is_dir() and r not in raizes:
+                raizes.append(r)
+        return raizes
+
+    def discover(self, force: bool = False) -> int:
+        """Registra o que existe no disco e ainda não estava na lista.
+
+        Sem isto, o aplicativo abria com a biblioteca vazia enquanto a versão web
+        listava nove projetos: o registro nativo só conhecia pasta adicionada à
+        mão, e ninguém nunca adicionou. Devolve quantos entraram agora.
+        """
+        agora = time.time()
+        if not force and agora - self._discovered_at < DISCOVERY_TTL_S:
+            return 0
+        self._discovered_at = agora
+        novos = 0
+        for library in self.known_libraries():
+            for edit in preview_library.scan_library(library):
+                if preview_library.project_key(edit) in self.items:
+                    continue
+                try:
+                    self.add(edit)
+                    novos += 1
+                except (ValueError, OSError):
+                    continue          # pasta ilegível não pode derrubar a lista
+        return novos
 
     def list(self) -> list[dict]:
         with self.lock:
@@ -82,7 +140,12 @@ class ProjectRegistry:
             path.mkdir(parents=True, exist_ok=True)
         if not path.is_dir():
             raise ValueError("Escolha uma pasta existente ou marque a opção para criá-la.")
-        is_edit = path.name == "edit" and ((path / "state.json").exists() or (path / "edl.json").exists())
+        # Pasta de edição se reconhece pelo CONTEÚDO, não pelo nome: a biblioteca
+        # dele tem seis projetos em pastas chamadas `edit_tireoide`, `edit_v01` e
+        # afins, e exigir o nome exato "edit" fazia o registro tratá-las como
+        # pasta de projeto e criar um `edit/` VAZIO dentro de cada uma (cinco
+        # foram criadas e removidas em 2026-09-12 ao testar a descoberta).
+        is_edit = (path / "state.json").exists() or (path / "edl.json").exists()
         edit = path if is_edit else path / "edit"
         project_path = path.parent if is_edit else path
         edit.mkdir(exist_ok=True)
@@ -591,8 +654,21 @@ class JobQueue:
                             self._save()
 
 
+def default_libraries() -> list[Path]:
+    """Onde procurar projetos quando ninguém disse.
+
+    `EDVID_LIBRARY` (uma ou mais pastas separadas por ':') tem precedência; o
+    padrão é ~/Videos, que é a biblioteca que o Preview web usa.
+    """
+    bruto = os.environ.get("EDVID_LIBRARY", "").strip()
+    if bruto:
+        return [Path(x) for x in bruto.split(":") if x.strip()]
+    return [Path.home() / "Videos"]
+
+
 class StudioApp:
-    def __init__(self, data_dir: Path, token: str | None = None):
+    def __init__(self, data_dir: Path, token: str | None = None,
+                 libraries: list[Path] | None = None):
         self.data_dir = data_dir.expanduser().resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._lock_handle = (self.data_dir / ".studio.lock").open("a+")
@@ -603,7 +679,14 @@ class StudioApp:
             raise RuntimeError("O Edvid Studio já está usando esta pasta de dados.")
         self.token = token or secrets.token_urlsafe(32)
         self.session = secrets.token_urlsafe(32)
-        self.projects = ProjectRegistry(self.data_dir)
+        # `libraries=None` é NENHUMA biblioteca, de propósito: quem escolhe o
+        # padrão de ambiente é o CLI, não este objeto. Com o padrão aqui dentro,
+        # todo teste que criasse um StudioApp varria ~/Videos e registrava os
+        # projetos reais do usuário na sua lista temporária (quebrou um teste de
+        # 2026-09-11 na primeira execução da suíte).
+        self.projects = ProjectRegistry(self.data_dir, libraries)
+        if libraries:
+            self.projects.discover(force=True)
         self.queue = JobQueue(self.data_dir, self.projects)
 
     def close(self) -> None:
@@ -774,6 +857,8 @@ class StudioHandler(preview_server.Handler):
             file = self._safe(APP_DIR, rel)
             self._send_file(file) if file else self._json({"error": "Caminho inválido."}, 400)
         elif path == "/api/projects":
+            # projeto criado pelo Preview web aparece aqui sem reiniciar o app
+            self.app.projects.discover()
             items = []
             for item in self.app.projects.list():
                 copy = dict(item)
@@ -971,8 +1056,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Serviço local do Edvid Studio")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--data-dir", type=Path, required=True)
+    parser.add_argument("--library", type=Path, action="append",
+                        help="pasta de projetos a varrer (pode repetir; padrão ~/Videos)")
     args = parser.parse_args()
-    app = StudioApp(args.data_dir)
+    app = StudioApp(args.data_dir, libraries=args.library or default_libraries())
     server = make_server(app, args.port)
     url = f"http://127.0.0.1:{server.server_port}/?token={app.token}"
     print(json.dumps({"url": url}), flush=True)
