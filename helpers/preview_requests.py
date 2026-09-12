@@ -225,6 +225,9 @@ def insert_assets(root):
     return sorted(set(items))
 
 
+SPLIT_LAYOUTS = {'fullscreen', 'split-top', 'split-bottom', 'behind'}
+
+
 def validate_media_notes(root, notes):
     import math
     if not isinstance(notes, list) or len(notes) > 500:
@@ -237,8 +240,18 @@ def validate_media_notes(root, notes):
         if media is None: continue  # legacy text annotations are unchanged
         if not isinstance(media, dict) or media.get('kind') not in {'image', 'video', 'file'}:
             raise ValueError('Tipo de mídia inválido')
-        if media.get('layout') not in {'fullscreen', 'split'}:
+        # 'split' é apelido histórico de 'split-top': payload antigo continua
+        # válido e sobe para o nome novo aqui, para o agente nunca receber os
+        # dois nomes para a mesma coisa.
+        if media.get('layout') == 'split':
+            media['layout'] = 'split-top'
+        if media.get('layout') not in SPLIT_LAYOUTS:
             raise ValueError('Enquadramento inválido')
+        if str(media.get('layout')).startswith('split'):
+            # "eu na frente da faixa" (matte da pessoa) é o padrão deste usuário
+            media['front'] = bool(media.get('front', True))
+        else:
+            media.pop('front', None)
         for start, end in [('start', 'end'), ('renderedStart', 'renderedEnd')]:
             a, b = note.get(start), note.get(end)
             if any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) for x in (a, b)) or a < 0 or b <= a:

@@ -1467,3 +1467,8 @@ body.drawer-open .diag-body { max-height: none; flex: 1 1 auto; min-height: 0; }
 .chip.word.fixed{border-color:rgba(9,181,183,.9);box-shadow:inset 0 -2px 0 rgba(9,181,183,.9)}
 .word-bar-input{flex:1 1 260px;min-width:160px;padding:7px 10px;font:inherit;font-size:13px;color:#f4f1ed;background:rgba(0,0,0,.45);border:1px solid rgba(9,181,183,.9);border-radius:8px}
 .word-bar-input:focus-visible{outline:2px solid #d0aeff;outline-offset:2px}
+
+/* opções de tela dividida na nota */
+.note-editor label.check{display:flex;align-items:center;gap:8px;font-size:12px;color:#cfd4de;cursor:pointer}
+.note-editor label.check input{width:15px;height:15px;accent-color:#ff7713}
+.note-editor .hint{margin:4px 0 0;font-size:11px;line-height:1.45;color:#8d94a2}

@@ -313,6 +313,21 @@ borda apontada com um clique.
   redistribuiu. Depois disso, regenere as legendas e re-renderize a **Fase 2**
   (o `cut.mp4` não muda — nada aqui mexe no EDL). Correção vazia é recusada:
   apagar fala é corte (`fillers.py --from-preview`), não correção.
+- `notes[].media.layout` (2026-09-11) — **a tela dividida agora é criada na
+  interface**, não descrita no chat. Quatro valores, e cada um é um destino
+  diferente no `edit-data.json`:
+  - `fullscreen` → insert full-bleed, como sempre.
+  - `split-top` → `splitInserts[]` com `layout: "top"` (arte em cima).
+  - `split-bottom` → `splitInserts[]` com `layout: "bottom"` (arte embaixo).
+  - `behind` → `behindVideos[]`, B-roll no quadro inteiro atrás da pessoa —
+    o caso RARO, não o que ele chama de "atrás da cabeça".
+  Com `front: true` (padrão em `split-*`), gere o matte da janela com
+  `person_matte.py` e ponha o `matte` no `splitInsert`: é a soma dos dois
+  efeitos que ele pediu em 16/08 — a cabeça sobe NA FRENTE da arte e a costura
+  dissolve atrás dela. `front: false` é faixa reta. `split` sozinho é apelido
+  histórico de `split-top` e já sobe para o nome novo na validação.
+  `bandH`/`focusY` continuam calibrados por você num still (a faixa depende do
+  enquadramento da fonte) — a interface não pede número.
 - `notes[]` — free-text correction requests, each with `start`/`end` on the draft
   timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
   `phase` tab the user was on. Use the RENDERED pair to find the moment in the

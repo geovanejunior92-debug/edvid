@@ -34,10 +34,47 @@ class MediaTests(unittest.TestCase):
     def test_invalid_provider(self):
         self.note['media']['provider']='fake'
         with self.assertRaises(ValueError): validate_media_notes(self.root,[self.note])
-    def test_client_preserves_shutterstock(self):
+    def run_normalize(self, args):
         module=Path(__file__).resolve().parents[1]/'assets/preview/media-controls.js'
-        code=f"const m=require({json.dumps(str(module))}); console.log(JSON.stringify(m.normalize('video','split','','shutterstock')));"
+        code=f"const m=require({json.dumps(str(module))}); console.log(JSON.stringify(m.normalize({args})));"
         result=subprocess.run(['node','-e',code],capture_output=True,text=True,check=True)
-        self.assertEqual(json.loads(result.stdout),{'kind':'video','layout':'split','status':'requested','provider':'shutterstock'})
+        return json.loads(result.stdout)
+
+    def test_client_preserves_shutterstock_and_upgrades_legacy_split(self):
+        # 'split' era o único nome de tela dividida; sobe para 'split-top' e
+        # ganha o padrão dele — a pessoa na frente da faixa.
+        self.assertEqual(self.run_normalize("'video','split','','shutterstock'"),
+                         {'kind':'video','layout':'split-top','front':True,'status':'requested','provider':'shutterstock'})
+
+    def test_client_carries_each_split_treatment(self):
+        self.assertEqual(self.run_normalize("'video','split-bottom','','agent',false")['layout'],'split-bottom')
+        self.assertFalse(self.run_normalize("'video','split-bottom','','agent',false")['front'])
+        # tela cheia e 'atrás de mim' não têm faixa, então não carregam `front`
+        for layout in ('fullscreen','behind'):
+            self.assertNotIn('front', self.run_normalize(f"'video','{layout}','','agent'"))
+
+    def test_client_refuses_unknown_layout(self):
+        module=Path(__file__).resolve().parents[1]/'assets/preview/media-controls.js'
+        code=f"const m=require({json.dumps(str(module))}); try{{m.normalize('video','split-diagonal')}}catch(e){{console.log(JSON.stringify(e.message))}}"
+        result=subprocess.run(['node','-e',code],capture_output=True,text=True,check=True)
+        self.assertIn('Enquadramento', json.loads(result.stdout))
+
+    def test_server_upgrades_legacy_split_and_defaults_front(self):
+        self.note['media']={'kind':'video','layout':'split','provider':'agent'}
+        validate_media_notes(self.root,[self.note])
+        self.assertEqual(self.note['media']['layout'],'split-top')
+        self.assertTrue(self.note['media']['front'])
+
+    def test_server_keeps_front_false_and_strips_it_off_non_split(self):
+        self.note['media']={'kind':'video','layout':'split-bottom','provider':'agent','front':False}
+        validate_media_notes(self.root,[self.note])
+        self.assertFalse(self.note['media']['front'])
+        self.note['media']={'kind':'video','layout':'behind','provider':'agent','front':True}
+        validate_media_notes(self.root,[self.note])
+        self.assertNotIn('front',self.note['media'])
+
+    def test_server_refuses_unknown_layout(self):
+        self.note['media']={'kind':'video','layout':'split-diagonal','provider':'agent'}
+        with self.assertRaises(ValueError): validate_media_notes(self.root,[self.note])
 
 if __name__=='__main__': unittest.main()
