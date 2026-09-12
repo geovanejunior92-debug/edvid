@@ -610,6 +610,24 @@ aproximação e afastamento entre janelas (ex.: 1.07, 0.95, 1.05, 0.97…) resol
 o zoom é ancorado no rosto, senão mudar a escala empurra a cabeça para fora da
 costura.
 
+### A costura é sempre a do Formato 1 (2026-09-11)
+
+Instrução dele: *"a divisão entre as telas divididas segue o padrão de divisão
+do modelo tela dividida formato padrão 1"*. Vale para TODA tela dividida, não
+só para o preset — inclusive as criadas marcando o intervalo no preview.
+
+A regra por trás do número: o template desenha a arte com `bandH + SEAM_BLEND`
+(100) e dissolve os últimos 100px, então a junção cai na borda de baixo do
+PRÓPRIO clipe — sem sombra e sem linha reta — quando
+
+    bandH = altura natural do clipe a 1080 de largura − 100
+
+`split_band.py <clipe>` faz essa conta. Um clipe 16:9 dá os **508** do preset;
+um clipe 1080×860 dá **760**, que foi a calibragem de um vídeo em enquadramento
+fechado. Não são valores concorrentes: é a mesma regra com clipes de altura
+diferente. `focusY` não sai daí — depende de onde a cabeça está na FONTE e
+continua medido num still, e mexer em `bandH` obriga a recalculá-lo.
+
 ### Tela dividida COM a pessoa na frente da faixa — o padrão deste usuário (2026-08-16)
 
 **Isto, e não o `behindVideos[]` abaixo, é o que ele quer quando diz "atrás da

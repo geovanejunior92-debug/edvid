@@ -163,6 +163,10 @@ the track reference you load after the gate. One of them is not optional:
   intervalo original, declarada na saída como aproximação. Corrigir o texto
   NUNCA move a legenda: o usuário está consertando o que foi ouvido, não
   quando foi dito.
+- **`split_band.py <clipe…> [--frame-width N]`** — o `bandH` de cada clipe para
+  a costura cair na borda inferior dele, que é o padrão de divisão do Formato 1
+  generalizado para qualquer proporção. Avisa quando o valor sai do padrão (aí
+  o `focusY` precisa ser recalibrado num still). Não calcula `focusY`.
 - **`check_inserts.py <edit-data.json> [--min-motion 0.3]`** — **gate obrigatório
   antes de todo render da Fase 2.** Prova, por número, que cada insert de vídeo
   TOCA (não congelou por estar fora de uma `<Sequence>` ou por ser mais curto que
@@ -326,8 +330,16 @@ borda apontada com um clique.
   efeitos que ele pediu em 16/08 — a cabeça sobe NA FRENTE da arte e a costura
   dissolve atrás dela. `front: false` é faixa reta. `split` sozinho é apelido
   histórico de `split-top` e já sobe para o nome novo na validação.
-  `bandH`/`focusY` continuam calibrados por você num still (a faixa depende do
-  enquadramento da fonte) — a interface não pede número.
+  **A costura segue o padrão do Formato 1, sempre** (instrução dele,
+  2026-09-11): a arte é desenhada com `bandH + SEAM_BLEND` e os últimos 100px
+  dissolvem, então a junção cai na BORDA DE BAIXO do próprio clipe — sem
+  sombra, sem linha reta — quando `bandH = altura natural do clipe a 1080 de
+  largura − 100`. Rode **`split_band.py <clipe>`** em vez de fazer a conta: 16:9
+  dá os 508 do preset; um clipe 1080×860 dá 760, que foi a calibragem de
+  enquadramento fechado. Os dois números são a MESMA regra, não exceções.
+  `focusY` continua medido num still — ele depende de onde a cabeça está na
+  FONTE, não no clipe, e mudar `bandH` obriga a recalculá-lo. A interface não
+  pede número nenhum.
 - `notes[]` — free-text correction requests, each with `start`/`end` on the draft
   timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
   `phase` tab the user was on. Use the RENDERED pair to find the moment in the
