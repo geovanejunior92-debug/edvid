@@ -364,6 +364,14 @@ borda apontada com um clique.
   **`seam_check.py <cut.mp4> --at <início da janela> --band-h N --focus-y N
   --zoom Z`**: ele mede onde o topo da cabeça cai e devolve FAIXA RETA /
   RASPANDO / OK / BAIXA DEMAIS. A fração aprovada por ele é ~0.40.
+- `takeChoices[]` (2026-09-12) — a tomada que ELE escolheu para cada linha do
+  roteiro, na gaveta "Tomadas do roteiro": `{line, text, take, source, start,
+  end, score}`. A gaveta lê `studio-pipeline/alignment.json` (escrito pelo
+  `script_align.py`) e só desenha — **o preview nunca escreve `edl.json`**.
+  Para aplicar: monte o EDL na ordem das linhas, e **valide cada borda com
+  `speech_regions.py`** antes de renderizar, porque os tempos do alinhamento
+  são os das palavras e não têm a folga da regra 5. Linha marcada `missing` não
+  vira range; leve a lista delas para ele como pergunta, não invente take.
 - `notes[]` — free-text correction requests, each with `start`/`end` on the draft
   timeline plus `renderedStart`/`renderedEnd` on the current `cut.mp4`, and the
   `phase` tab the user was on. Use the RENDERED pair to find the moment in the

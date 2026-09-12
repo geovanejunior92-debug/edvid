@@ -33,6 +33,10 @@ CONTROLES = {
     'catálogo com personalizada': ('app.js', "id: 'personalizada'"),
     'payload de correção de texto': ('app.js', 'textFixes'),
     'tratamentos de tela dividida': ('media-controls.js', 'split-bottom'),
+    'gaveta de tomadas do roteiro': ('index.html', 'takesPanel'),
+    'título da gaveta de tomadas': ('index.html', 'Tomadas do roteiro'),
+    'leitura do alinhamento': ('app.js', 'studio-pipeline/alignment.json'),
+    'payload de escolha de tomada': ('app.js', 'takeChoices'),
 }
 
 

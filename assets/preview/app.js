@@ -791,6 +791,8 @@ let S = {
   textFixes: [], // [{start,end,from,to}] rendered seconds — texto corrigido
   fixing: false, // campo de correção aberto na barra de palavras
   diag: null, // diagnostics.json (helpers/diagnostics.py)
+  align: null, // studio-pipeline/alignment.json (helpers/script_align.py)
+  takeChoices: {}, // linha do roteiro -> índice da tomada escolhida
   pendingIn: null, // an IN is open, waiting for its OUT
   editingNote: null, // id of the note the editor is bound to
   style: null, // current picks {edit, captions, elements:{…}, note}
@@ -948,6 +950,7 @@ function dirtyCount() {
   n += S.notes.length; // each correction marker is an unsaved adjustment too
   n += S.textCuts.length; // cada trecho riscado no texto
   n += S.textFixes.length; // cada correção de texto da legenda
+  n += Object.keys(S.takeChoices).length; // cada tomada escolhida no roteiro
   n += imageDirty() ? 1 : 0; // one grade change, however many sliders moved
   return n;
 }
@@ -1090,6 +1093,12 @@ async function applyState(data) {
     const r = await fetch(`media/diagnostics.json?v=${Date.now()}`);
     if (r.ok) S.diag = await r.json();
   } catch (e) { /* sem diagnóstico ainda */ }
+  S.align = null; S.takeChoices = {};
+  try {
+    // o alinhamento é escrito pelo Studio; o preview só o LÊ e desenha
+    const r = await fetch(`media/studio-pipeline/alignment.json?v=${Date.now()}`);
+    if (r.ok) S.align = await r.json();
+  } catch (e) { /* sem roteiro alinhado ainda */ }
 
   fitZoom();
   renderAll();
@@ -1263,6 +1272,7 @@ function updateScrollRange() {
 // ---------- rendering ----------
 function renderAll() {
   updateImgDrawerHint();
+  renderTakes();
   timelineEl.style.width = `${contentWidth()}px`;
   renderClips();
   renderWords();
@@ -1370,6 +1380,57 @@ $('wordBarFix').addEventListener('keydown', (e) => {
 $('wordBarFix').addEventListener('blur', commitFix);
 $('wordBarCancel').addEventListener('click', () => { S.fixing = false; S.wordSel = null; renderWords(); renderWordBar(); });
 
+// ---------- escolha de tomadas do roteiro ----------
+// O alinhamento (script_align.py) PROPÕE; quem escolhe é o usuário. Esta
+// gaveta existe porque sem ela o alignment.json era um dado que ninguém via —
+// a função ficava tecnicamente pronta e praticamente inutilizável.
+function renderTakes() {
+  const panel = $('takesPanel'), body = $('takesBody');
+  const a = S.align;
+  const has = a && Array.isArray(a.lines) && a.lines.length;
+  panel.classList.toggle('hidden', !has);
+  if (!has) return;
+  const s = a.summary || {};
+  $('takesHint').textContent =
+    `${s.lines || a.lines.length} linhas · ${s.multiple || 0} regravadas · ${s.missing || 0} sem gravação`;
+  if (body.classList.contains('hidden')) return; // fechada: não desenha à toa
+  body.innerHTML = '';
+  for (const item of a.lines) {
+    const row = el('div', 'take-line', body);
+    const q = el('p', 'take-quote', row);
+    const tag = el('span', 'take-status', q);
+    tag.dataset.s = item.status;
+    tag.textContent = {ok: 'ok', multiple: 'regravada', missing: 'não gravada', curta: 'curta'}[item.status] || item.status;
+    const txt = el('b', '', q); txt.textContent = item.text;
+    if (!item.candidates || !item.candidates.length) {
+      const why = el('span', '', q); why.textContent = ` — ${item.why || ''}`;
+      continue;
+    }
+    const opts = el('div', 'take-opts', row);
+    const escolhida = S.takeChoices[item.line] ?? 0;
+    item.candidates.forEach((c, i) => {
+      const b = el('button', `take-opt${i === escolhida ? ' on' : ''}`, opts);
+      b.type = 'button';
+      const t = el('span', 't', b);
+      t.textContent = `${fmt(c.start)}–${fmt(c.end)}`;
+      const meta = el('span', '', b);
+      meta.textContent = item.candidates.length > 1
+        ? `tomada ${i + 1} · ${Math.round(c.score * 100)}%${c.fillers ? ` · ${c.fillers} vício` : ''}`
+        : `${Math.round(c.score * 100)}%`;
+      b.addEventListener('click', () => {
+        S.takeChoices[item.line] = i;
+        // leva a agulha para a tomada escolhida: ouvir é o que decide
+        if (Number.isFinite(c.start)) seekDraft(renderedToDraft(c.start));
+        renderTakes(); refreshHeader();
+      });
+    });
+  }
+  if (a.offScript && a.offScript.length) {
+    const off = el('div', 'take-off', body);
+    off.textContent = `${a.offScript.length} trecho(s) falados fora do roteiro — improviso, pode ser aproveitável.`;
+  }
+}
+
 // ---------- painel de diagnóstico ----------
 function renderDiag() {
   const panel = $('diagPanel');
@@ -1475,6 +1536,7 @@ function wireDrawer(toggleId, bodyId, key) {
 }
 wireDrawer('imgDrawerToggle', 'imgDrawerBody', 'edvid.imgDrawer');
 wireDrawer('diagToggle', 'diagBody', 'edvid.diagDrawer');
+wireDrawer('takesToggle', 'takesBody', 'edvid.takesDrawer');
 syncDrawerState();
 
 // ---------- correction markers ----------
@@ -2920,6 +2982,17 @@ $('btnSave').addEventListener('click', async () => {
       from: f.from, to: f.to,
     }));
   }
+  if (Object.keys(S.takeChoices).length) {
+    // escolha de tomada é decisão EDITORIAL: vai como pedido, com a linha do
+    // roteiro e o trecho escolhido, para o agente montar o EDL e validar as
+    // bordas. O preview nunca escreve edl.json.
+    payload.takeChoices = Object.entries(S.takeChoices).map(([line, idx]) => {
+      const item = (S.align?.lines || []).find((l) => String(l.line) === String(line));
+      const c = item && item.candidates && item.candidates[idx];
+      return c ? {line: Number(line), text: item.text, take: idx,
+                  source: c.source, start: c.start, end: c.end, score: c.score} : null;
+    }).filter(Boolean);
+  }
   if (imageDirty()) {
     // Fase-1 grade controls (per-segment ffmpeg grade at extraction, Hard
     // Rule 7) — a non-default value here means the skill re-renders the CUT,
@@ -2936,6 +3009,7 @@ $('btnSave').addEventListener('click', async () => {
     S.pendingIn = null;
     S.textCuts = [];
     S.textFixes = [];
+    S.takeChoices = {};
     S.wordSel = null;
     renderWordBar();
     S.draft.forEach((r) => { r.orig = { start: r.start, end: r.end }; if (r.removed) r.hardRemoved = true; });
@@ -2956,6 +3030,7 @@ $('btnDiscard').addEventListener('click', () => {
   S.pendingIn = null;
   S.textCuts = [];
   S.textFixes = [];
+  S.takeChoices = {};
   S.wordSel = null;
   S.fixing = false;
   renderWordBar();

@@ -275,6 +275,19 @@
       </div>
       <div id="diagBody" class="diag-body hidden"></div>
     </section>
+
+    <!-- Escolha de tomadas. Mesma regra da gaveta do Diagnóstico: nasce
+         fechada, resume numa linha, e ao abrir come espaço do PLAYER, nunca da
+         timeline. Só aparece quando existe alignment.json. -->
+    <section id="takesPanel" class="diag-panel glass hidden">
+      <div class="diag-head">
+        <button id="takesToggle" class="drawer-toggle" type="button" aria-expanded="false">
+          <span class="caret"></span><span class="diag-title">Tomadas do roteiro</span>
+        </button>
+        <span id="takesHint" class="drawer-hint"></span>
+      </div>
+      <div id="takesBody" class="diag-body hidden"></div>
+    </section>
   </div>
   </div>
 
