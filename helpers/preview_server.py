@@ -28,10 +28,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
+import signal
 import uuid
-from urllib.parse import urlsplit, unquote
+from http import cookies
+from urllib.parse import parse_qs, urlsplit, unquote
 from project_health import health, write_json
 import preview_requests
+import preview_automatic
 import preview_mix
 import preview_library
 import argparse
@@ -193,6 +197,32 @@ class Handler(BaseHTTPRequestHandler):
         p = (base / rel.lstrip("/")).resolve()
         return p if p.is_relative_to(base.resolve()) else None
 
+    def _cookie_ok(self) -> bool:
+        jar = cookies.SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie", ""))
+        except cookies.CookieError:
+            return False
+        value = jar.get("edvid_preview_session")
+        expected = getattr(self.server, "session", "")
+        return bool(value and expected and secrets.compare_digest(value.value, expected))
+
+    def _authorize(self) -> tuple[bool, bool]:
+        supplied = parse_qs(urlsplit(self.path).query).get("token", [""])[0]
+        expected = getattr(self.server, "token", "")
+        bootstrap = bool(supplied and expected and secrets.compare_digest(supplied, expected))
+        return self._cookie_ok() or bootstrap, bootstrap
+
+    def _same_origin(self) -> bool:
+        origin = self.headers.get("Origin")
+        if not origin:
+            return False
+        parsed = urlsplit(origin)
+        return parsed.scheme == "http" and parsed.netloc == self.headers.get("Host")
+
+    def _auth_error(self) -> None:
+        self._json({"error": "Sessão inválida. Abra novamente o link seguro do Edvid."}, 401)
+
     def _current_video(self) -> Path | None:
         state_p = self.root / "state.json"
         rel = "cut.mp4"
@@ -265,6 +295,18 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- routes ----
     def do_GET(self) -> None:  # noqa: N802
+        if getattr(self.server, "auth_required", False):
+            authorized, bootstrap = self._authorize()
+            if not authorized:
+                self._auth_error()
+                return
+            if bootstrap:
+                self.send_response(302)
+                self.send_header("Location", urlsplit(self.path).path or "/")
+                self.send_header("Set-Cookie", f"edvid_preview_session={self.server.session}; Path=/; HttpOnly; SameSite=Strict")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         if not self._select_project():
             return
         path = self.path.split("?", 1)[0]
@@ -319,6 +361,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "unknown route"}, 404)
 
     def do_POST(self) -> None:  # noqa: N802
+        if getattr(self.server, "auth_required", False):
+            if not self._cookie_ok():
+                self._auth_error()
+                return
+            if not self._same_origin():
+                self._json({'error': 'Origem não permitida'}, 403)
+                return
         if not self._select_project():
             return
         origin = self.headers.get('Origin')
@@ -358,7 +407,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.split('?', 1)[0] == '/api/requests':
             try:
-                self._json({'ok': True, 'request': preview_requests.submit(self.root, body)})
+                record = preview_requests.submit(self.root, body)
+                automatic = getattr(self.server, 'automatic_requests', None)
+                if automatic:
+                    record = automatic.enqueue(self.root, record)
+                self._json({'ok': True, 'request': record})
             except (ValueError, OSError) as e:
                 self._json({'error': str(e)}, 400)
             return
@@ -567,6 +620,25 @@ def discover_projects(library: Path, active: Path) -> dict[str, Path]:
     return projects
 
 
+def make_server(root: Path, library: Path, host: str = "127.0.0.1", port: int = 4820,
+                automatic_factory=preview_automatic.AutomaticRequestQueue,
+                require_auth: bool | None = None, token: str | None = None) -> ThreadingHTTPServer:
+    root = Path(root).resolve()
+    library = Path(library).resolve()
+    srv = ThreadingHTTPServer((host, port), Handler)
+    srv.default_root = root
+    srv.library = library
+    srv.projects = discover_projects(library, root)
+    srv.recovery_lock = threading.Lock()
+    srv.auth_required = (host not in {"127.0.0.1", "localhost", "::1"}
+                         if require_auth is None else require_auth)
+    srv.token = token or secrets.token_urlsafe(32)
+    srv.session = secrets.token_urlsafe(32)
+    srv.automatic_requests = automatic_factory(srv.projects)
+    Handler.root = root
+    return srv
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Edvid preview interface server")
     ap.add_argument("--root", type=Path, required=True, help="the session <edit> dir")
@@ -574,6 +646,7 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=4820)
     ap.add_argument("--host", default="127.0.0.1",
                     help="0.0.0.0 libera o preview para a rede local (celular na mesma Wi-Fi)")
+    ap.add_argument("--token", help="token opcional para o acesso pela rede local")
     args = ap.parse_args()
 
     root = args.root.resolve()
@@ -583,18 +656,25 @@ def main() -> None:
     if not (APP_DIR / "index.html").exists():
         raise SystemExit(f"app not found at {APP_DIR}")
 
-    Handler.root = root
     # 127.0.0.1 por padrão: o preview serve a pasta da edição, então não fica
     # aberto na rede sem alguém pedir. Com --host 0.0.0.0 ele passa a aceitar
     # conexão da rede local, que é como o usuário assiste e marca correções pelo
     # celular enquanto o Mac faz o trabalho (2026-08-17).
-    srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    srv.default_root = root
-    srv.library = (args.library or root.parent).resolve()
-    srv.projects = discover_projects(srv.library, root)
-    srv.recovery_lock = threading.Lock()
-    print(f"Edvid preview → http://{args.host}:{args.port}  (root: {root})", flush=True)
-    srv.serve_forever()
+    library = (args.library or root.parent).resolve()
+    srv = make_server(root, library, args.host, args.port, token=args.token)
+    suffix = f"/?token={srv.token}" if srv.auth_required else "/"
+    display_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
+    print(f"Edvid preview → http://{display_host}:{srv.server_port}{suffix}  (root: {root})", flush=True)
+    if args.host == "0.0.0.0":
+        print("Em outro dispositivo, troque 127.0.0.1 pelo IP deste Mac.", flush=True)
+    def stop_server(_signum, _frame):
+        threading.Thread(target=srv.shutdown, daemon=True).start()
+    signal.signal(signal.SIGTERM, stop_server)
+    try:
+        srv.serve_forever()
+    finally:
+        srv.automatic_requests.close()
+        srv.server_close()
 
 
 if __name__ == "__main__":

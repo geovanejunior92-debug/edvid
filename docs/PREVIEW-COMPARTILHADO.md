@@ -23,9 +23,17 @@ O painel Vídeos e conversa lista os vídeos diretamente na pasta do projeto (ac
 
 Selecione vídeos, use as setas para ordenar e abra **Ver sequência original**. Os blocos representam arquivos inteiros, com largura uniforme; não são formas de onda nem cortes por duração. O player passa ao próximo arquivo selecionado ao terminar. Use **Voltar ao corte** para retornar à edição.
 
-Para roteiro, importe `.txt`/`.md` ou cole o texto. Para corte com IA, descreva a intenção. **Salvar pedido para o agente** grava um arquivo independente em `edit/agent-requests/`, com fontes na ordem escolhida e status `pending`. A UI mostra o histórico e consulta respostas a cada 15 segundos. Volte à conversa do agente e peça a execução dos pedidos do projeto. Não há modelo ou sessão de chat em execução dentro do preview; não confundir salvamento com início automático do corte. O agente consulta os pedidos conforme o SKILL.md compartilhado e registra a resposta somente após trabalhar.
+Para um único vídeo, **Iniciar corte automático** grava o pedido em `edit/agent-requests/` e o próprio servidor coloca o trabalho na fila. Ele transcreve em português, cria a proposta técnica por pausas, registra a aprovação vinculada à revisão e ao hash, renderiza um preview e verifica o corte. O histórico mostra fila, transcrição, proposta, render, conclusão ou erro e é atualizado a cada três segundos. O modo automático é aprovação explícita somente dessa estratégia técnica de Fase 1; não aprova acabamento, legendas, inserts nem a Fase 2.
+
+Roteiro, ajuste e seleção com vários vídeos continuam sendo pedidos editoriais para Astra ou Claude. Nesses casos, a UI preserva fontes e ordem no mesmo diretório, com status `pending` ou `awaiting_agent`, sem fingir que uma sessão de IA está rodando dentro do Preview.
+
+Cada envio recebe uma chave de idempotência preservada enquanto a resposta não chega. Esse estado sobrevive a uma recarga da página: ao voltar, o envio é retomado sem criar dois pedidos iguais. O servidor devolve o pedido existente numa repetição, e um claim durável por processo impede duas instâncias do Preview de renderizarem o mesmo pedido. A fila recupera estados ativos após queda, mas não executa pedidos editoriais antigos. Projetos que já entraram na Fase 2 não são recortados automaticamente, porque isso deixaria acabamento e vídeo final ligados a outro corte.
+
+Links de arquivos continuam disponíveis para revisão e pedidos editoriais. O automático exige um arquivo real dentro da pasta do projeto; quando a fonte é um link, o pedido aguarda o agente copiá-la com segurança antes de cortar.
 
 Esta parte exige um novo processo de `preview_server.py` (novas rotas); atualizar apenas a aba de um servidor antigo não carrega código Python novo. As mudanças anteriores apenas de CSS/JS não tinham essa exigência.
+
+Com `--host 0.0.0.0`, o servidor gera um token de abertura, troca-o por um cookie de sessão e exige mesma origem em toda alteração. Use o link impresso pelo servidor somente no dispositivo do usuário. Em `127.0.0.1`, o Preview continua restrito ao próprio Mac.
 
 ## Mídia por intervalo
 
@@ -47,4 +55,4 @@ Para mixar, indicar --style, --voice, opcionais --music e --sfx, --output novo.w
 
 A raiz `/` abre a biblioteca com criação de projeto e seletor de vídeos. O nome gera uma pasta única dentro da biblioteca configurada. Os vídeos selecionados são copiados, sem mover os originais; nomes repetidos não sobrescrevem arquivos. Limite: 8 GiB por arquivo MOV, MP4, M4V ou WEBM. Envios interrompidos removem apenas o arquivo temporário incompleto; importações concluídas permanecem.
 
-O projeto novo abre a sequência original. Ainda é preciso salvar um pedido e pedir ao agente para executar o corte. Projetos anteriores abrem apenas quando escolhidos, pelo endereço `/p/<id>/`. Reinicie servidores antigos para carregar as novas rotas Python; recarregar a aba sozinho não atualiza o servidor.
+Com um único vídeo, o projeto novo inicia transcrição e primeiro corte antes de abrir a sequência original. Com vários vídeos, ele abre a seleção sem iniciar um corte editorial às cegas. Projetos anteriores abrem apenas quando escolhidos, pelo endereço `/p/<id>/`. Reinicie servidores antigos para carregar a fila Python; recarregar a aba sozinho não atualiza o processo do servidor.

@@ -1,12 +1,17 @@
 """Original-media catalogue and durable requests shared by both host agents."""
 import hashlib
+import fcntl
 import json
+import os
+import re
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from project_health import write_json
 
 EXTENSIONS = {'.mp4', '.mov', '.m4v', '.webm'}
+AUTOMATIC_ACTIVE = {'queued', 'transcribing', 'proposing', 'approving', 'rendering'}
 
 
 def sources(root):
@@ -31,10 +36,13 @@ def directory(root):
     return path
 
 
-def requests(root):
+def _records(root, limit=None):
     folder = directory(root)
     result = []
-    for file in sorted(folder.glob('*.json'))[-100:]:
+    files = sorted(folder.glob('*.json'))
+    if limit is not None:
+        files = files[-limit:]
+    for file in files:
         if file.is_symlink():
             continue
         try:
@@ -44,6 +52,116 @@ def requests(root):
         except (OSError, ValueError):
             continue
     return result
+
+
+def requests(root):
+    return _records(root, 100)
+
+
+def all_requests(root):
+    return _records(root)
+
+
+@contextmanager
+def request_lock(root):
+    folder = directory(root)
+    folder.mkdir(exist_ok=True)
+    path = folder / '.requests.lock'
+    if path.is_symlink():
+        raise ValueError('Lock de pedidos inválido')
+    with path.open('a+') as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _record_path(root, request_id):
+    if not isinstance(request_id, str) or not re.fullmatch(r'\d+-[0-9a-f]{8}', request_id):
+        raise ValueError('Identificador de pedido inválido')
+    path = directory(root) / f'{request_id}.json'
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('Pedido não encontrado')
+    return path
+
+
+def _get_unlocked(root, request_id):
+    path = _record_path(root, request_id)
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise ValueError('Pedido inválido') from exc
+    if not isinstance(record, dict) or record.get('id') != request_id:
+        raise ValueError('Pedido inválido')
+    return record
+
+
+def get(root, request_id):
+    return _get_unlocked(root, request_id)
+
+
+def update(root, request_id, **fields):
+    with request_lock(root):
+        record = _get_unlocked(root, request_id)
+        record.update(fields)
+        write_json(_record_path(root, request_id), record)
+        return record
+
+
+def _pid_alive(value):
+    try:
+        pid = int(value)
+        if pid <= 0:
+            return False
+        os.kill(pid, 0)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def claim(root, request_id, owner):
+    with request_lock(root):
+        record = _get_unlocked(root, request_id)
+        if (record.get('mode') != 'automatic'
+                or record.get('status') not in AUTOMATIC_ACTIVE
+                or len(record.get('sources') or []) != 1
+                or (record.get('dispatch') or {}).get('kind') != 'single-source-automatic'):
+            return None
+        lease = record.get('lease')
+        if (isinstance(lease, dict) and lease.get('owner') != owner
+                and _pid_alive(lease.get('pid'))):
+            return None
+        record.update(
+            status='queued',
+            response='Corte automático entrou na fila.',
+            updatedAt=time.time(),
+            lease={'owner': owner, 'pid': os.getpid(), 'claimedAt': time.time()},
+        )
+        record.pop('error', None)
+        write_json(_record_path(root, request_id), record)
+        return record
+
+
+def owns(root, request_id, owner):
+    try:
+        lease = get(root, request_id).get('lease')
+    except ValueError:
+        return False
+    return isinstance(lease, dict) and lease.get('owner') == owner and lease.get('pid') == os.getpid()
+
+
+def update_owned(root, request_id, owner, *, release=False, **fields):
+    with request_lock(root):
+        record = _get_unlocked(root, request_id)
+        lease = record.get('lease')
+        if not isinstance(lease, dict) or lease.get('owner') != owner or lease.get('pid') != os.getpid():
+            raise ValueError('O pedido automático pertence a outro processo')
+        record.update(fields)
+        if release or record.get('status') in {'completed', 'failed', 'awaiting_agent'}:
+            record.pop('lease', None)
+        write_json(_record_path(root, request_id), record)
+        return record
 
 
 def submit(root, body):
@@ -61,14 +179,34 @@ def submit(root, body):
         raise ValueError('Uma fonte mudou ou não está mais disponível. Atualize a lista.')
     if mode != 'adjustment' and not ids:
         raise ValueError('Selecione pelo menos um vídeo para o corte')
+    idempotency_key = body.get('idempotencyKey') or uuid.uuid4().hex
+    if (not isinstance(idempotency_key, str) or not 8 <= len(idempotency_key) <= 128
+            or not re.fullmatch(r'[A-Za-z0-9._:-]+', idempotency_key)):
+        raise ValueError('Chave de repetição inválida')
     key = f'{time.time_ns()}-{uuid.uuid4().hex[:8]}'
+    automatic = mode == 'automatic' and len(ids) == 1
+    fingerprint = hashlib.sha256(json.dumps({
+        'mode': mode, 'text': text.strip(), 'sources': ids,
+    }, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     record = {'id': key, 'createdAt': time.strftime('%Y-%m-%d %H:%M:%S'),
-              'status': 'pending', 'mode': mode, 'text': text.strip(),
+              'status': 'queued' if automatic else 'pending', 'mode': mode, 'text': text.strip(),
+              'idempotencyKey': idempotency_key,
+              'requestFingerprint': fingerprint,
               'sources': [catalog[x] for x in ids]}
+    if automatic:
+        record.update(response='Corte automático entrou na fila.',
+                      dispatch={'kind': 'single-source-automatic', 'state': 'requested'})
     folder = directory(root)
     folder.mkdir(exist_ok=True)
-    write_json(folder / f'{key}.json', record)
-    return record
+    with request_lock(root):
+        existing = next((item for item in all_requests(root)
+                         if item.get('idempotencyKey') == idempotency_key), None)
+        if existing:
+            if existing.get('requestFingerprint') != fingerprint:
+                raise ValueError('A chave de repetição já pertence a outra solicitação')
+            return existing
+        write_json(folder / f'{key}.json', record)
+        return record
 
 ASSET_EXTENSIONS = EXTENSIONS | {'.png', '.jpg', '.jpeg', '.webp'}
 
