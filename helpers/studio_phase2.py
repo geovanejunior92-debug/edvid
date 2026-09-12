@@ -163,6 +163,18 @@ class StudioPhase2:
             shutil.copytree(TEMPLATE, self.remotion,
                             ignore=shutil.ignore_patterns("node_modules", "out", ".git", "*.log"))
             created = True
+        # node_modules do Remotion pesa ~570 MB POR PROJETO. Com três projetos
+        # isso já são 1,7 GB nesta máquina, e cresce a cada vídeo. Quando existe
+        # uma instalação compartilhada no template, o projeto aponta para ela em
+        # vez de duplicar — e ainda renderiza na hora, sem `npm install`.
+        # NÃO copio: um symlink é reversível (apague e rode npm install local).
+        compartilhado = TEMPLATE / "node_modules"
+        alvo_modulos = self.remotion / "node_modules"
+        if compartilhado.is_dir() and not alvo_modulos.exists():
+            try:
+                alvo_modulos.symlink_to(compartilhado, target_is_directory=True)
+            except OSError:
+                pass   # sem link, o projeto simplesmente pede npm install
         self.public.mkdir(parents=True, exist_ok=True)
         target = self.public / "cut.mp4"
         if not target.exists() or _fingerprint(target) != _fingerprint(self.cut):
