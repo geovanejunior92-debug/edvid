@@ -161,10 +161,14 @@ type CutFlash = {
   variant?: 'corte' | 'saida';
 };
 
-// BEHIND-THE-SUBJECT com vídeo — o padrão do usuário para "tela dividida"
-// (2026-08-16): o B-roll não é faixa acima, é o FUNDO, com a pessoa recortada
-// por cima e a troca de clipe acontecendo atrás da cabeça. Cada janela precisa
-// de um matte próprio (`person_matte.py`), cujo frame 0 é o início da janela.
+// BEHIND-THE-SUBJECT com vídeo — o B-roll não é faixa, é o FUNDO INTEIRO, com
+// a pessoa recortada por cima. **NÃO é o padrão do usuário e NÃO é o que ele
+// chama de "atrás da cabeça"** (este comentário afirmava o contrário até
+// 2026-09-11, contradizendo o shortform.md e repetindo a troca que ele já
+// tinha corrigido em 16/08). O padrão dele é `splitInserts[]` COM `matte`: a
+// divisão das telas permanece e a cabeça sobe na frente da faixa. Use isto
+// aqui só quando ele pedir fundo inteiro, sem divisão. Cada janela precisa de
+// um matte próprio (`person_matte.py`), cujo frame 0 é o início da janela.
 type BehindVideo = {
   src: string; // B-roll que vai ao fundo
   kind?: 'video' | 'image';

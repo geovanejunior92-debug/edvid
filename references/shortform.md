@@ -651,8 +651,9 @@ Variante SEM divisão: o B-roll vira o fundo inteiro. Existe e funciona, mas
 **não é o padrão dele** — ver a seção acima antes de usar.
 
 The template's own `behind[]` only takes `image`/`words`. For **video** B-roll
-behind the subject — which is this user's standing meaning of "tela dividida",
-not the top band — use `behindVideos[]` in edit-data.json, rendered by
+behind the subject — **sem divisão nenhuma**, o oposto da seção acima; NÃO é o
+que ele quer dizer com "tela dividida" nem com "atrás da cabeça" — use
+`behindVideos[]` in edit-data.json, rendered by
 `BehindVideos` in `CustomGraphics.tsx` (already in the shared template):
 
 ```json
