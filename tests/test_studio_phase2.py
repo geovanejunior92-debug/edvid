@@ -39,6 +39,19 @@ def base_data(**over):
 
 
 class Phase2Base(unittest.TestCase):
+    def sem_dependencias(self):
+        """Projeto sem node_modules, haja ou não instalação compartilhada."""
+        alvo = self.p.remotion / 'node_modules'
+        if alvo.is_symlink() or alvo.exists():
+            alvo.unlink() if alvo.is_symlink() else __import__('shutil').rmtree(alvo)
+
+    def com_dependencias(self):
+        """Projeto COM node_modules, sem depender do compartilhado existir."""
+        alvo = self.p.remotion / 'node_modules'
+        if alvo.is_symlink():
+            return                       # já aponta para o compartilhado
+        alvo.mkdir(parents=True, exist_ok=True)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -56,11 +69,16 @@ class Phase2Base(unittest.TestCase):
 
 
 class ScaffoldTests(Phase2Base):
-    def test_scaffold_copies_the_template_without_node_modules(self):
+    def test_scaffold_never_copies_node_modules_into_the_project(self):
+        """Copiar são 570 MB por vídeo. Ou não existe, ou é link para a
+        instalação compartilhada — nunca uma cópia."""
         r = self.p.scaffold()
         self.assertTrue(r['created'])
         self.assertTrue((self.p.remotion / 'src' / 'Main.tsx').is_file())
-        self.assertFalse((self.p.remotion / 'node_modules').exists())
+        alvo = self.p.remotion / 'node_modules'
+        if alvo.exists():
+            self.assertTrue(alvo.is_symlink(), 'node_modules não pode ser cópia')
+            self.assertEqual(alvo.resolve(), (studio_phase2.TEMPLATE / 'node_modules').resolve())
         self.assertTrue((self.p.public / 'cut.mp4').is_file())
 
     def test_scaffold_never_overwrites_an_existing_project(self):
@@ -206,13 +224,14 @@ class RenderTests(Phase2Base):
 
     def test_render_is_blocked_without_remotion_dependencies(self):
         saved = self.approved()
+        self.sem_dependencias()
         with self.assertRaises(Phase2Error) as cm:
             self.p.render(saved['revision'], saved['dataHash'])
         self.assertIn('npm install', str(cm.exception))
 
     def test_check_inserts_failing_aborts_before_rendering(self):
         saved = self.approved()
-        (self.p.remotion / 'node_modules').mkdir(parents=True)
+        self.com_dependencias()
         self.p.runner = fake_runner(returncode=1, stdout='insert congelado')
         with self.assertRaises(Phase2Error) as cm:
             self.p.render(saved['revision'], saved['dataHash'])
@@ -227,7 +246,7 @@ class RenderTests(Phase2Base):
 
     def test_full_pass_runs_both_gates_and_records_the_output(self):
         saved = self.approved()
-        (self.p.remotion / 'node_modules').mkdir(parents=True)
+        self.com_dependencias()
         final = self.root / 'edit' / 'final.mp4'
 
         def runner(argv, **kw):
@@ -247,7 +266,7 @@ class RenderTests(Phase2Base):
 
     def test_qc_failing_does_not_record_a_delivered_render(self):
         saved = self.approved()
-        (self.p.remotion / 'node_modules').mkdir(parents=True)
+        self.com_dependencias()
         final = self.root / 'edit' / 'final.mp4'
 
         def runner(argv, **kw):
