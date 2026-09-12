@@ -237,3 +237,45 @@ sendo paridade de uso — é exatamente a distinção que a própria matriz defi
 
 A Fase 2 no Studio não é mais um item da lista: é o **pré-requisito** dos itens
 4, 5, 6, 7, 8, 9 e 15. Fazer qualquer um deles antes é construir duas vezes.
+
+---
+
+# Verificação independente — Studio 0.3 (Astra, 12/09/2026)
+
+Recontagem feita sobre rotas alcançáveis, controles visíveis, comandos realmente
+montados e testes. A presença de um helper continua não valendo como entrega no
+aplicativo.
+
+| # | Função | Estado no Studio 0.3 | Evidência e limite atual |
+|---:|---|---|---|
+| 1 | Corte limpo por IA | **completa** | Fonte, transcrição, proposta, aprovação por revisão/hash, render com gates, aplicação de ajustes e histórico estão na interface. |
+| 2 | Roteiro guia o corte | **parcial** | O Studio salva, alinha roteiro e transcrição e mostra alternativas de tomada. A seleção semântica ainda depende de limiares heurísticos; sem roteiro, a proposta continua baseada em pausas acústicas. |
+| 3 | J-cut | **ausente como controle** | O motor aplica J-cut e a timeline mostra A1/A2 quando o EDL contém os dados, mas o usuário não configura nem compara versões no Studio. |
+| 4 | Zoom automático | **ausente como fluxo E2E** | O estilo aparece como regra fixa e o Remotion sabe renderizar, mas o Studio não gera o `edit-data.json` correspondente a partir dessa escolha. |
+| 5 | Zoom nos cortes | **ausente como fluxo E2E** | Mesma lacuna do zoom automático. |
+| 6 | Flash na transição | **ausente como fluxo E2E** | Existe no catálogo/template, sem autoria por corte nem persistência até o `edit-data.json`. |
+| 7 | Legendas com presets | **parcial** | Há presets, correção, ajuste de tempo, divisão e junção, além de validação estrutural. A geração completa dos arquivos Remotion ainda não nasce toda no Studio. |
+| 8 | Headline e texto | **parcial** | Estilos, fonte e headline personalizada são revisáveis; falta transformar a escolha da interface em toda a configuração Remotion sem preparação externa. |
+| 9 | Tela dividida | **parcial** | A timeline distingue tela cheia, divisão simples e pessoa sobre o conteúdo e permite ajustar intervalos existentes. Escolha de mídia e geração de matte ainda não são E2E. |
+| 10 | Trilha por arquivo | **completa** | Arquivo local, ganho, fades e ducking existem no acabamento local. |
+| 11 | Trilha por IA | **parcial** | Treblo tem autenticação, consentimento, fila, player e recuperação; uma geração paga real ainda não foi validada. |
+| 12 | Inserir imagem ou vídeo | **parcial** | Mídia local existente pode ser ajustada; busca, proveniência, download e criação de novas camadas seguem fora da interface. |
+| 13 | Vídeo por IA | **ausente** | Não há rota nem contrato de provedor no Studio. |
+| 14 | Marcações na timeline | **parcial** | Marcações e ajustes entram no histórico e podem ser aplicados/desfeitos; falta um estado visível de pendente/aplicada por marcação. |
+| 15 | Renderizar | **parcial** | Fase 1, acabamento local e Remotion entram pela fila. O Remotion preserva o último vídeo bom, passa por gates e exige revisão integral do arquivo, mas ainda depende de `edit-data.json` e assets previamente montados. |
+| 16 | Biblioteca de projetos | **completa** | Web e aplicativo exibem miniaturas e compartilham busca, fixar, renomear, arquivar e restaurar sem apagar arquivos. |
+| 17 | Chaves de API | **ausente** | Não há tela de provedores nem Keychain no Studio. |
+
+**Placar verificado: 3 completas, 8 parciais e 6 ausentes.** O placar anterior
+de 3/6/8 subestimava o avanço dos itens 2 e 9, mas a lista de pendências também
+exagerava ao dizer que a timeline inteira não havia começado: a timeline de
+revisão e ajuste existe. O que ainda não existe é a **autoria completa de novas
+camadas** nela.
+
+A Fase 2 deixou de ser uma lacuna estrutural: o aplicativo prepara, salva,
+aprova e renderiza o projeto Remotion. Ela ainda não conclui sozinha os itens
+4–9 porque não transforma todas as decisões visuais em dados e assets. Formato 1
+inteiramente autônomo, biblioteca de mídia/IA, Canva dentro do Studio, áudio
+multicamadas completo, exportação multiformato e coordenador autônomo continuam
+abertos. Isso confirma o núcleo da lista de pendências, com a ressalva sobre a
+timeline acima.

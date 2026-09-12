@@ -54,7 +54,19 @@ class ProjectRegistry:
 
     def list(self) -> list[dict]:
         with self.lock:
-            items = [{**dict(x), **self.flags(x)} for x in self.items.values()]
+            items = []
+            for raw in self.items.values():
+                item = {**dict(raw), **self.flags(raw)}
+                edit = Path(item.get("editPath") or Path(item["path"]) / "edit")
+                state_path = edit / "state.json"
+                state = _read_json(state_path, {})
+                if isinstance(state, dict) and isinstance(state.get("project"), str) and state["project"].strip():
+                    item["name"] = state["project"].strip()
+                    try:
+                        item["updatedAt"] = max(item.get("updatedAt", 0), state_path.stat().st_mtime)
+                    except OSError:
+                        pass
+                items.append(item)
         return sorted(items, key=lambda x: (not x["pinned"], -x.get("updatedAt", 0)))
 
     def get(self, project_id: str) -> dict | None:
@@ -108,6 +120,17 @@ class ProjectRegistry:
         preview_library.set_flags(preview_library.library_root(edit), project_id,
                                   pinned=pinned, archived=archived)
         return {**item, **self.flags(item)}
+
+    def rename(self, project_id: str, name: object) -> dict:
+        item = self.get(project_id)
+        if not item:
+            raise ValueError("Projeto não encontrado.")
+        edit = Path(item.get("editPath") or Path(item["path"]) / "edit")
+        renamed = preview_library.rename(edit, name)
+        with self.lock:
+            self.items[project_id].update(name=renamed, updatedAt=time.time())
+            self._save()
+            return {**dict(self.items[project_id]), **self.flags(self.items[project_id])}
 
     def _save(self) -> None:
         atomic_json(self.path, {"version": 1, "projects": list(self.items.values())})
@@ -274,10 +297,12 @@ class JobQueue:
                 raise ValueError("Os ajustes de preview precisam ser um JSON dentro do projeto.")
             job["previewEdits"] = str(preview_edits.relative_to(root))
         with self.condition:
-            if action != "status" and any(x.get("kind") == "pipeline" and x.get("projectId") == project_id
-                                          and x.get("status") in {"queued", "running"} and x.get("action") != "status"
+            if action != "status" and any(x.get("projectId") == project_id
+                                          and x.get("kind") in {"pipeline", "finish", "phase2"}
+                                          and x.get("status") in {"queued", "running"}
+                                          and x.get("action") != "status"
                                           for x in self.jobs):
-                raise ValueError("Este projeto já tem uma ação da Fase 1 na fila.")
+                raise ValueError("Este projeto já tem uma ação de edição na fila.")
             self.jobs.append(job)
             self._save()
             self.condition.notify()
@@ -288,7 +313,7 @@ class JobQueue:
         return (isinstance(value, str) and len(value) == 64
                 and all(char in "0123456789abcdef" for char in value.lower()))
 
-    PHASE2_ACTIONS = ("status", "scaffold", "save", "approve", "render")
+    PHASE2_ACTIONS = ("status", "scaffold", "save", "approve", "render", "review-approve")
 
     def enqueue_phase2(self, project_id: str, action: str, options: dict) -> dict:
         """Fase 2 (Remotion). Mesma disciplina do finish: uma ação de edição por
@@ -316,12 +341,18 @@ class JobQueue:
             job.update(revision=revision, dataHash=data_hash)
             if action == "approve":
                 job["approve"] = True
+        elif action == "review-approve":
+            output_hash = options.get("outputHash")
+            if not self._valid_hash(output_hash) or options.get("fullReview") is not True:
+                raise ValueError("O hash do arquivo e a revisão visual integral precisam ser confirmados explicitamente.")
+            job.update(outputHash=output_hash, fullReview=True)
         with self.condition:
             if any(x.get("projectId") == project_id and x.get("status") in {"queued", "running"}
                    and x.get("kind") in {"pipeline", "finish", "phase2"} and x.get("action") != "status"
                    for x in self.jobs):
                 raise ValueError("Este projeto já tem uma ação de edição na fila.")
             self.jobs.append(job)
+            self._save()
             self.condition.notify_all()
         return job
 
@@ -450,6 +481,8 @@ class JobQueue:
                 command.extend(["--revision", str(job["revision"]), "--data-hash", job["dataHash"]])
             if job["action"] == "approve":
                 command.append("--approve")
+            if job["action"] == "review-approve":
+                command.extend(["--output-hash", job["outputHash"], "--full-review"])
             return command
         if job["kind"] == "finish":
             project = self.projects.get(job["projectId"])
@@ -528,7 +561,9 @@ class JobQueue:
                             except (ValueError, TypeError):
                                 failure = {}
                             detail = failure.get("error") if isinstance(failure, dict) else None
-                            fallback = "A ação da Fase 1 não foi concluída." if job["kind"] == "pipeline" else "A finalização não foi concluída."
+                            fallback = {"pipeline": "A ação da Fase 1 não foi concluída.",
+                                        "phase2": "A ação da Fase 2 não foi concluída.",
+                                        "finish": "A finalização não foi concluída."}[job["kind"]]
                             message = detail if isinstance(detail, str) and 0 < len(detail) <= 500 else fallback
                         elif job["kind"] == "music":
                             message = "A operação local não terminou. Consulte o ID da tarefa antes de usar a recuperação pela linha de comando."
@@ -743,6 +778,10 @@ class StudioHandler(preview_server.Handler):
             for item in self.app.projects.list():
                 copy = dict(item)
                 copy["available"] = Path(item["path"]).is_dir()
+                edit = Path(item.get("editPath") or Path(item["path"]) / "edit")
+                thumbs = sorted((edit / ".preview_cache" / "thumbs").glob("*.jpg"))
+                middle = thumbs[len(thumbs) // 2:] or thumbs
+                copy["thumbnail"] = str(middle[0]) if middle else None
                 items.append(copy)
             self._json({"projects": items})
         elif path == "/api/jobs":
@@ -876,19 +915,22 @@ class StudioHandler(preview_server.Handler):
                 else:
                     job = self.app.queue.enqueue(str(body.get("projectId", "")), str(body.get("kind", "")), Path(str(body.get("input", ""))))
                 self._json(job, 202)
-            elif path == "/api/projects/flags":
+            elif path in {"/api/projects/flags", "/api/projects/update"}:
                 # fixar/arquivar pelo aplicativo, gravando no MESMO arquivo que a
                 # biblioteca web lê — uma biblioteca, não duas
                 try:
                     pinned = body.get("pinned") if "pinned" in body else None
                     archived = body.get("archived") if "archived" in body else None
-                    if pinned is None and archived is None:
-                        raise ValueError("Informe pinned e/ou archived.")
+                    has_name = "name" in body
+                    if pinned is None and archived is None and not has_name:
+                        raise ValueError("Informe name, pinned e/ou archived.")
                     for value in (pinned, archived):
                         if value is not None and not isinstance(value, bool):
                             raise ValueError("pinned e archived precisam ser booleanos.")
-                    item = self.app.projects.set_flags(str(body.get("projectId", "")),
-                                                       pinned=pinned, archived=archived)
+                    project_id = str(body.get("projectId", ""))
+                    item = self.app.projects.rename(project_id, body.get("name")) if has_name else self.app.projects.get(project_id)
+                    if pinned is not None or archived is not None:
+                        item = self.app.projects.set_flags(project_id, pinned=pinned, archived=archived)
                     self._json(item)
                 except ValueError as exc:
                     self._json({"error": str(exc)}, 400)

@@ -503,9 +503,9 @@ class TreatTests(unittest.TestCase):
         self.assertIn("agudos", bloqueios["check_audio"])
 
     def test_stabilization_only_when_the_shake_is_measured_above_the_floor(self):
-        calmo = self.pipe({"stabilize.py": (0, "media 0.12 px/quadro")}).treat()
+        calmo = self.pipe({"stabilize.py": (0, 'C014.mp4: 1080x1920 30fps\n  tremida: 0.12 px/quadro RMS → 0.03\n{"shake_px_before": 0.12}')}).treat()
         self.assertNotIn("stabilize", json.loads((self.root / "edit" / "edl.json").read_text()))
-        tremido = self.pipe({"stabilize.py": (0, "media 6.90 px/quadro")}).treat()
+        tremido = self.pipe({"stabilize.py": (0, 'video05.mp4: 1080x1920 30fps\n  tremida: 6.90 px/quadro RMS → 0.40\n{"shake_px_before": 6.9}')}).treat()
         self.assertTrue(json.loads((self.root / "edit" / "edl.json").read_text())["stabilize"])
         self.assertIn("6.90", str(tremido["report"]["applied"]))
 

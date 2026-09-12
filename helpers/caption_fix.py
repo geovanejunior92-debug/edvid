@@ -40,17 +40,36 @@ def _weights(words: list[str]) -> list[float]:
     return [r / total for r in raw]
 
 
+def _time_schema(word: dict) -> tuple[str, str, float]:
+    if "start" in word and "end" in word:
+        return "start", "end", 1.0
+    if "startMs" in word and "endMs" in word:
+        return "startMs", "endMs", 1000.0
+    raise ValueError("Palavra sem start/end ou startMs/endMs")
+
+
+def _seconds(word: dict) -> tuple[float, float]:
+    start_key, end_key, scale = _time_schema(word)
+    return float(word[start_key]) / scale, float(word[end_key]) / scale
+
+
 def apply_fix(words: list[dict], start: float, end: float, text: str) -> tuple[list[dict], str]:
     """Return (new word list, one-line report). Raises ValueError when unusable."""
     new_words = str(text or '').split()
     if not new_words:
         raise ValueError('Correção vazia: apagar fala é corte (fillers.py), não correção de legenda')
-    hit = [i for i, w in enumerate(words)
-           if w['start'] >= start - TOL and w['end'] <= end + TOL]
+    hit = []
+    for i, word in enumerate(words):
+        word_start, word_end = _seconds(word)
+        if word_start >= start - TOL and word_end <= end + TOL:
+            hit.append(i)
     if not hit:
         raise ValueError(f'Nenhuma palavra entre {start:.3f}s e {end:.3f}s')
     lo, hi = hit[0], hit[-1]
-    span_start, span_end = words[lo]['start'], words[hi]['end']
+    start_key, end_key, scale = _time_schema(words[lo])
+    if any(_time_schema(words[i]) != (start_key, end_key, scale) for i in hit):
+        raise ValueError("O intervalo mistura esquemas de tempo incompatíveis")
+    span_start, span_end = float(words[lo][start_key]), float(words[hi][end_key])
     old_text = ' '.join(words[i]['text'] for i in hit)
 
     if len(new_words) == len(hit):
@@ -61,9 +80,16 @@ def apply_fix(words: list[dict], start: float, end: float, text: str) -> tuple[l
         replaced, cursor = [], span_start
         for w, share in zip(new_words, _weights(new_words)):
             nxt = cursor + span * share
-            replaced.append({**words[lo], 'text': w, 'start': round(cursor, 3), 'end': round(nxt, 3)})
+            begin_value = round(cursor) if scale == 1000.0 else round(cursor, 3)
+            end_value = round(nxt) if scale == 1000.0 else round(nxt, 3)
+            item = {**words[lo], 'text': w, start_key: begin_value, end_key: end_value}
+            if scale == 1000.0:
+                item['timestampMs'] = round((begin_value + end_value) / 2)
+            replaced.append(item)
             cursor = nxt
-        replaced[-1]['end'] = span_end
+        replaced[-1][end_key] = round(span_end) if scale == 1000.0 else span_end
+        if scale == 1000.0:
+            replaced[-1]['timestampMs'] = round((replaced[-1][start_key] + replaced[-1][end_key]) / 2)
         note = f'{len(hit)} palavra(s) -> {len(new_words)}, tempos REDISTRIBUÍDOS (aproximação)'
     return words[:lo] + replaced + words[hi + 1:], f'«{old_text}» -> «{" ".join(new_words)}» ({note})'
 

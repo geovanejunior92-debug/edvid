@@ -12,22 +12,149 @@ function formatTime(value) {
   return value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value * 1000)) : "—";
 }
 
+const PROJECT_ICONS = {
+  pin: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.3l1.9 4 4.4.6-3.2 3.1.8 4.4L8 11.3l-3.9 2.1.8-4.4L1.7 5.9l4.4-.6z"/></svg>',
+  rename: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M11.6 1.9l2.5 2.5-8 8L3 13l.6-3.1zM2 14.6h12v1.1H2z"/></svg>',
+  archive: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 2.6h12.8v2.6H1.6zM2.8 6.4h10.4v7H2.8zm2.6 2.1h5.2v1.2H5.4z"/></svg>',
+  restore: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.6a5.4 5.4 0 105.1 7.1h-1.7A3.8 3.8 0 118 4.2v2.1l3-2.8L8 .6z"/></svg>',
+};
+
+function projectAction(label, icon, handler, pressed) {
+  const button = document.createElement("button");
+  button.type = "button"; button.className = "project-action"; button.innerHTML = icon;
+  button.title = label; button.setAttribute("aria-label", label);
+  if (pressed !== undefined) button.setAttribute("aria-pressed", String(Boolean(pressed)));
+  button.addEventListener("click", (event) => { event.stopPropagation(); handler(); });
+  return button;
+}
+
+async function updateProject(project, patch) {
+  try {
+    const updated = await api("/api/projects/update", {
+      method: "POST", body: JSON.stringify({ projectId: project.id, ...patch }),
+    });
+    Object.assign(project, updated);
+    await loadProjects();
+    return true;
+  } catch (error) {
+    $("project-notice").textContent = error.message;
+    return false;
+  }
+}
+
+function startProjectRename(card, project) {
+  const heading = card.querySelector(".project-card-body strong");
+  const input = document.createElement("input");
+  input.className = "project-rename"; input.value = project.name; input.maxLength = 100;
+  const finish = async (commit) => {
+    if (!input.isConnected) return;
+    const name = input.value.trim(); input.replaceWith(heading);
+    if (commit && name && name !== project.name) await updateProject(project, { name });
+  };
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") { event.preventDefault(); finish(true); }
+    if (event.key === "Escape") { event.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
+  heading.replaceWith(input); input.focus(); input.select();
+}
+
+function projectCard(project) {
+  const card = document.createElement("article");
+  card.className = `project-card ${project.pinned ? "pinned" : ""} ${state.current?.id === project.id ? "active" : ""}`;
+  card.tabIndex = 0; card.setAttribute("role", "button"); card.setAttribute("aria-label", `Abrir ${project.name}`);
+  card.innerHTML = '<span class="project-poster" aria-hidden="true"></span><span class="project-card-body"><em></em><strong></strong><span></span><small></small><span class="project-actions"></span></span>';
+  const poster = card.querySelector(".project-poster");
+  if (project.thumbnail) {
+    const image = document.createElement("img"); image.alt = ""; image.loading = "lazy";
+    image.src = `/project-media/${project.id}?path=${encodeURIComponent(project.thumbnail)}`;
+    poster.append(image);
+  } else {
+    poster.textContent = (project.name.trim()[0] || "E").toLocaleUpperCase("pt-BR");
+  }
+  card.querySelector("em").textContent = project.available ? "CONTINUAR EDIÇÃO" : "LOCALIZAR PASTA";
+  card.querySelector("strong").textContent = project.name;
+  card.querySelector(".project-card-body > span:not(.project-actions)").textContent = project.path;
+  card.querySelector("small").textContent = project.available ? `Atualizado ${formatTime(project.updatedAt)}` : "Pasta indisponível";
+  const actions = card.querySelector(".project-actions");
+  if (project.archived) {
+    actions.append(projectAction("Tirar do arquivo", PROJECT_ICONS.restore,
+      () => updateProject(project, { archived: false })));
+  } else {
+    actions.append(
+      projectAction(project.pinned ? "Desafixar projeto" : "Fixar projeto no topo", PROJECT_ICONS.pin,
+        () => updateProject(project, { pinned: !project.pinned }), project.pinned),
+      projectAction("Renomear projeto", PROJECT_ICONS.rename, () => startProjectRename(card, project)),
+      projectAction("Arquivar projeto sem apagar arquivos", PROJECT_ICONS.archive, async () => {
+        if (!await updateProject(project, { archived: true })) return;
+        const notice = $("project-notice");
+        notice.replaceChildren(document.createTextNode(`“${project.name}” foi arquivado. Nenhum arquivo foi apagado. `));
+        const undo = document.createElement("button"); undo.type = "button"; undo.className = "text-button"; undo.textContent = "Desfazer";
+        undo.addEventListener("click", () => updateProject(project, { archived: false })); notice.append(undo);
+      }),
+    );
+  }
+  card.addEventListener("click", (event) => {
+    if (!event.target.closest(".project-action, .project-rename")) selectProject(project);
+  });
+  card.addEventListener("keydown", (event) => {
+    if (event.target !== card || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault(); selectProject(project);
+  });
+  return card;
+}
+
 function renderProjects() {
   const list = $("project-list");
   list.replaceChildren();
-  if (!state.projects.length) {
-    const p = document.createElement("p"); p.className = "muted"; p.textContent = "A biblioteca está vazia."; list.append(p); return;
+  const query = $("project-search").value.trim().toLocaleLowerCase("pt-BR");
+  const matches = state.projects.filter((project) => !query
+    || `${project.name} ${project.path}`.toLocaleLowerCase("pt-BR").includes(query));
+  const visible = matches.filter((project) => !project.archived);
+  const archived = matches.filter((project) => project.archived);
+  $("project-notice").textContent = visible.length
+    ? `${visible.length} projeto(s)`
+    : (state.projects.some((project) => project.archived) ? "Nenhum projeto ativo encontrado." : "A biblioteca está vazia.");
+  if (!visible.length) {
+    const p = document.createElement("p"); p.className = "muted";
+    p.textContent = query ? "Tente outro nome ou caminho." : "Adicione uma pasta para começar.";
+    list.append(p);
   }
-  state.projects.forEach((project) => {
-    const button = document.createElement("button");
-    button.className = `project-card ${state.current?.id === project.id ? "active" : ""}`;
-    button.innerHTML = `<strong></strong><span></span><small></small>`;
-    button.querySelector("strong").textContent = project.name;
-    button.querySelector("span").textContent = project.path;
-    button.querySelector("small").textContent = project.available ? `Atualizado ${formatTime(project.updatedAt)}` : "Pasta indisponível";
-    button.addEventListener("click", () => selectProject(project));
-    list.append(button);
+  visible.forEach((project) => list.append(projectCard(project)));
+  const archivedBox = $("archived-projects");
+  archivedBox.hidden = !archived.length;
+  $("archived-count").textContent = `Arquivados (${archived.length})`;
+  const archivedList = $("archived-list"); archivedList.replaceChildren();
+  archived.forEach((project) => archivedList.append(projectCard(project)));
+}
+
+function setStudioTab(name, { toggle = false } = {}) {
+  const toolbox = document.querySelector(".toolbox");
+  const isOpen = toolbox.classList.contains("drawer-open");
+  const isSame = document.querySelector(`[data-studio-tab="${name}"]`)?.classList.contains("active");
+  document.querySelectorAll("[data-studio-tab]").forEach((button) => {
+    const active = button.dataset.studioTab === name;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
   });
+  document.querySelectorAll("[data-studio-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.studioPanel !== name;
+  });
+  toolbox.classList.toggle("drawer-open", !(toggle && isSame && isOpen));
+}
+
+function showLibrary() {
+  window.beforeProjectChange?.();
+  const video = $("raw-preview");
+  video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true;
+  state.current = null;
+  document.body.classList.remove("has-project");
+  $("top-project").hidden = true;
+  $("project").hidden = true;
+  $("editor-frame").removeAttribute("src");
+  renderProjects();
 }
 
 function selectProject(project) {
@@ -35,14 +162,21 @@ function selectProject(project) {
   const video = $("raw-preview");
   video.pause(); video.removeAttribute("src"); video.load(); video.hidden = true;
   state.current = project;
-  $("empty").hidden = true; $("project").hidden = false;
+  document.body.classList.add("has-project");
+  $("empty").hidden = true; $("project").hidden = false; $("top-project").hidden = false;
   $("project-name").textContent = project.name;
   $("project-location").textContent = project.path;
+  $("top-project-name").textContent = project.name;
+  $("top-project-path").textContent = project.path;
+  $("editor-frame").src = `/editor/${project.id}/?embedded=1`;
   $("media-path").value = "";
   $("music-confirm").checked = false;
   updateMusicButton();
+  setStudioTab("project");
+  document.querySelector(".toolbox").classList.remove("drawer-open");
   renderProjects();
   window.loadPipeline?.();
+  window.loadPhase2?.();
   window.loadFinish?.();
 }
 
@@ -55,6 +189,7 @@ async function loadProjects() {
 async function loadJobs() {
   const { jobs } = await api("/api/jobs");
   window.renderPipelineJobs?.(jobs);
+  window.renderPhase2Jobs?.(jobs);
   window.renderFinishJobs?.(jobs);
   const signature = JSON.stringify(jobs);
   if (signature === state.jobsSignature) return;
@@ -63,7 +198,7 @@ async function loadJobs() {
   if (!jobs.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Nenhuma tarefa registrada."; root.append(p); return; }
   jobs.forEach((job) => {
     const row = document.createElement("article"); row.className = "job";
-    const names = { probe: "Análise", proxy: "Proxy", music: "Música Treblo", pipeline: "Fase 1", finish: "Finalização" };
+    const names = { probe: "Análise", proxy: "Proxy", music: "Música Treblo", pipeline: "Fase 1", phase2: "Fase 2 Remotion", finish: "Finalização manual" };
     row.innerHTML = `<div><strong></strong><span class="pill"></span></div><p></p><small></small>`;
     row.querySelector("strong").textContent = names[job.kind] || job.kind;
     row.querySelector(".pill").textContent = ({queued:"na fila",running:"em andamento",completed:"concluída",failed:"falhou",cancelled:"cancelada",interrupted:"interrompida"})[job.status] || job.status;
@@ -170,6 +305,9 @@ $("probe").addEventListener("click", () => enqueue("probe"));
 $("proxy").addEventListener("click", () => enqueue("proxy"));
 $("media-path").addEventListener("change", previewMedia);
 $("refresh").addEventListener("click", loadDiagnostics);
+$("project-search").addEventListener("input", renderProjects);
+$("back-library").addEventListener("click", showLibrary);
+document.querySelectorAll("[data-studio-tab]").forEach((button) => button.addEventListener("click", () => setStudioTab(button.dataset.studioTab, { toggle: true })));
 $("music-confirm").addEventListener("change", updateMusicButton);
 $("music-prompt").addEventListener("input", updateMusicButton);
 $("generate-music").addEventListener("click", enqueueMusic);

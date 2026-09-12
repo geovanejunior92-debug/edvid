@@ -88,10 +88,11 @@ def _parse_saved_at(value: Any) -> int | None:
     return None
 
 
-def _first_float(text: str) -> float | None:
-    """O primeiro número da saída de um helper. Serve para ler a tremida que o
-    stabilize.py --report imprime sem acoplar ao formato da frase inteira."""
-    m = re.search(r"(\d+[.,]\d+|\d+)", text or "")
+def _stabilize_shake(text: str) -> float | None:
+    """Lê a medida nomeada, sem confundir C014, 1080x1920 ou duração com tremida."""
+    m = re.search(r'["\']shake_px_before["\']\s*:\s*(\d+(?:[.,]\d+)?)', text or "")
+    if not m:
+        m = re.search(r"tremida:\s*(\d+(?:[.,]\d+)?)\s*px/quadro", text or "", re.I)
     return float(m.group(1).replace(",", ".")) if m else None
 
 
@@ -344,7 +345,7 @@ class StudioPipeline:
                 code, saida = self._probe_treat(
                     [sys.executable, str(HELPERS_DIR / "stabilize.py"), fonte,
                      "--edit-dir", str(self.edit), "--report"])
-                tremida = _first_float(saida)
+                tremida = _stabilize_shake(saida)
                 if code != 0:
                     bloqueado.append({"etapa": "stabilize", "fonte": Path(fonte).name,
                                       "detalhe": "não consegui medir a tremida"})

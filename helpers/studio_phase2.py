@@ -26,16 +26,18 @@ contorná-las:
 A aprovação é vinculada a revisão + hash + impressão digital do corte, igual ao
 resto do Studio: mexeu no corte, a aprovação anterior morre.
 
-**Limite honesto:** o render real exige as dependências do Remotion instaladas
-(`npm install` em `edit/remotion`). Sem elas, `render` falha com a instrução —
-não com um traceback. O comando montado é testável sem instalar nada, que é
-como `studio_finish.py` também se testa.
+**Limite honesto:** o render real exige as dependências do Remotion. Nesta
+instalação elas ficam compartilhadas no template e o scaffold cria um link no
+projeto; num clone sem essa instalação, o Studio explica como preparar o
+template. O comando montado continua testável sem baixar dependências.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import math
+import os
 import re
 import shutil
 import subprocess
@@ -57,8 +59,21 @@ HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSET_FIELDS = (
     ("soundtrack", "file"),
     ("logo", "src"),
+    ("hook", "logo"),
+    ("hook", "sign"),
 )
-ASSET_LISTS = ("splitInserts", "inserts", "behind", "behindVideos", "graphics", "sfxCues")
+# Cada lista é declarada com os campos que o template realmente entrega a
+# staticFile(). Não trate toda chave chamada `src` como mídia: os gráficos são
+# dados puros e podem ganhar campos homônimos sem que virem arquivo.
+ASSET_LIST_FIELDS = {
+    "splitInserts": (("src", ""), ("matte", "")),
+    "inserts": (("src", ""),),
+    "behind": (("src", ""), ("matte", "")),
+    "behindVideos": (("src", ""), ("matte", "")),
+    "sfxCues": (("src", "sfx"),),
+    "transitions": (("sfx", "sfx"),),
+}
+LIST_FIELDS = tuple(ASSET_LIST_FIELDS) + ("graphics", "titleCards")
 
 
 class Phase2Error(RuntimeError):
@@ -204,14 +219,47 @@ class StudioPhase2:
             block = data.get(section)
             if isinstance(block, dict) and block.get("enabled") is not False and block.get(key):
                 found.append(str(block[key]))
-        for name in ASSET_LISTS:
+        for name, fields in ASSET_LIST_FIELDS.items():
             for item in data.get(name) or []:
                 if not isinstance(item, dict):
                     continue
-                for key in ("src", "matte"):
+                for key, prefix in fields:
                     if item.get(key):
-                        found.append(str(item[key]))
+                        value = Path(str(item[key]))
+                        if prefix and value.parts[:1] != (prefix,):
+                            value = Path(prefix) / value
+                        found.append(str(value))
         return found
+
+    def _validate_stacked_cues(self, *, duration_ms: int,
+                               outro_start_ms: int | None) -> None:
+        path = self.public / "caption-cues.json"
+        if not path.is_file():
+            raise Phase2Error("legenda stacked ligada, mas public/caption-cues.json não existe")
+        cues = _read_json(path)
+        if not isinstance(cues, list) or not cues:
+            raise Phase2Error("legenda stacked ligada, mas caption-cues.json está vazio")
+        previous_end = 0
+        for index, cue in enumerate(cues):
+            try:
+                start = int(cue["startMs"])
+                end = int(cue["endMs"])
+                lines = cue["lines"]
+                words = [word for line in lines for word in line]
+                word_times = [(str(word["text"]).strip(), int(word["fromMs"]),
+                               int(word["toMs"])) for word in words]
+            except (KeyError, TypeError, ValueError):
+                raise Phase2Error(f"caption-cues.json: cue {index} tem estrutura inválida") from None
+            if start < previous_end or end <= start:
+                raise Phase2Error(f"caption-cues.json: cue {index} tem tempo inválido ou sobreposto")
+            if not word_times or any(not text or begin < start or finish > end or finish <= begin
+                                     for text, begin, finish in word_times):
+                raise Phase2Error(f"caption-cues.json: cue {index} tem palavra vazia ou fora do próprio tempo")
+            if end > duration_ms:
+                raise Phase2Error(f"caption-cues.json: cue {index} passa do fim do vídeo")
+            if outro_start_ms is not None and end > outro_start_ms:
+                raise Phase2Error(f"caption-cues.json: cue {index} cai em cima do encerramento")
+            previous_end = end
 
     def validate(self, data: Any) -> dict:
         """As invariantes que quebram um render inteiro em silêncio."""
@@ -221,24 +269,59 @@ class StudioPhase2:
         for key in ("width", "height", "fps", "durationSec"):
             if key not in data:
                 raise Phase2Error(f"edit-data sem `{key}`")
+        try:
+            width = int(data["width"])
+            height = int(data["height"])
+            fps = float(data["fps"])
+            duration = float(data["durationSec"])
+        except (TypeError, ValueError):
+            raise Phase2Error("width, height, fps e durationSec precisam ser números") from None
+        if not math.isfinite(fps) or not math.isfinite(duration):
+            raise Phase2Error("fps e durationSec precisam ser números finitos")
+        for key in LIST_FIELDS:
+            if key in data and not isinstance(data[key], list):
+                raise Phase2Error(f"`{key}` precisa ser uma lista, não um marcador de texto")
         # fps: a skill avisa que o edit-data tem que casar com o cut.mp4 gerado.
         # Errar aqui desloca TODA a linha do tempo da Fase 2 sem erro nenhum.
-        if abs(float(data["fps"]) - info["fps"]) > 0.05:
+        if abs(fps - info["fps"]) > 0.05:
             raise Phase2Error(
                 f"fps do edit-data ({data['fps']}) não bate com o cut.mp4 ({info['fps']}) — "
                 "a Fase 2 inteira sai fora de sincronia")
-        if int(data["width"]) != info["width"] or int(data["height"]) != info["height"]:
+        if width != info["width"] or height != info["height"]:
             raise Phase2Error(
                 f"dimensões do edit-data ({data['width']}x{data['height']}) não batem com o "
                 f"cut.mp4 ({info['width']}x{info['height']})")
-        duration = float(data["durationSec"])
         if duration <= 0:
             raise Phase2Error("durationSec precisa ser maior que zero")
-        # a Fase 2 pode passar do corte por causa do encerramento, mas não muito
-        if duration > info["duration"] + 15:
+        outro = data.get("outro") or {}
+        if not isinstance(outro, dict):
+            raise Phase2Error("`outro` precisa ser um objeto")
+        outro_start_ms = None
+        fim_esperado = info["duration"]
+        limite_final = fim_esperado + 0.25
+        if outro.get("enabled"):
+            try:
+                outro_start = float(outro["startSec"])
+                outro_duration = float(outro.get("durationSec", 2.6))
+            except (KeyError, TypeError, ValueError):
+                raise Phase2Error("encerramento ligado exige startSec e durationSec numéricos") from None
+            if (not math.isfinite(outro_start) or not math.isfinite(outro_duration)
+                    or outro_start < 0 or outro_duration <= 0):
+                raise Phase2Error("encerramento precisa ter início válido e duração maior que zero")
+            if outro_start > info["duration"] + 0.02:
+                raise Phase2Error("o encerramento começa depois do fim do corte e congelaria a imagem")
+            outro_start_ms = round(outro_start * 1000)
+            fim_esperado = max(fim_esperado, outro_start + outro_duration)
+            limite_final = fim_esperado + 0.25
+        if duration < fim_esperado - 0.25:
+            raise Phase2Error(
+                f"durationSec ({duration}s) termina antes do conteúdo esperado ({fim_esperado:.1f}s)")
+        # A única extensão legítima é a que o encerramento descreve. O limite
+        # antigo de 15 s aceitava qualquer silêncio/quadro congelado sem motivo.
+        if duration > limite_final:
             raise Phase2Error(
                 f"durationSec ({duration}s) passa {duration - info['duration']:.1f}s do corte "
-                f"({info['duration']:.1f}s) — mais do que um encerramento explica")
+                f"({info['duration']:.1f}s) sem um encerramento que explique a diferença")
         # Legenda com bloco vazio ou sobreposta renderiza sem erro e estraga o
         # vídeo entregue. Achado em projeto real: 90 blocos vazios seguidos,
         # metade do vídeo com tempo e sem texto, invisível até existir gate.
@@ -246,19 +329,35 @@ class StudioPhase2:
         # vazio, e lista vazia é problema de quem vai exibir legenda, não de
         # quem desligou. Foi o que os testes mostraram ao quebrar todo
         # projeto recém-scaffoldado.
-        quer_legenda = bool((data.get("captions") or {}).get("enabled"))
+        captions_config = data.get("captions") or {}
+        if not isinstance(captions_config, dict):
+            raise Phase2Error("`captions` precisa ser um objeto")
+        quer_legenda = bool(captions_config.get("enabled"))
         captions = self.public / "captions.json"
-        if quer_legenda and captions.is_file():
+        if quer_legenda and not captions.is_file():
+            raise Phase2Error("legenda ligada, mas public/captions.json não existe")
+        if quer_legenda:
             import caption_edit
             try:
                 cues = caption_edit.load(captions)
             except caption_edit.CaptionError as exc:
                 raise Phase2Error(str(exc)) from exc
-            limite = int(float(data["durationSec"]) * 1000)
-            erros = caption_edit.validate(cues, duration_ms=limite)
+            limite = int(duration * 1000)
+            erros = caption_edit.validate(cues, duration_ms=limite,
+                                           outro_start_ms=outro_start_ms)
             if erros:
                 raise Phase2Error("legenda inválida: " + "; ".join(erros[:3])
                                   + (f" (e mais {len(erros) - 3})" if len(erros) > 3 else ""))
+            if captions_config.get("style") == "stacked":
+                self._validate_stacked_cues(duration_ms=limite,
+                                            outro_start_ms=outro_start_ms)
+                sfx_config = captions_config.get("sfx") or {}
+                if not isinstance(sfx_config, dict):
+                    raise Phase2Error("`captions.sfx` precisa ser um objeto")
+                if sfx_config.get("enabled", True) is not False:
+                    for required in ("sfx/caption-click.mp3", "sfx/caption-scratch.mp3"):
+                        if not (self.public / required).is_file():
+                            raise Phase2Error(f"asset ausente em public/: {required}")
         missing = []
         for raw in self._collect_assets(data):
             if Path(raw).is_absolute() or ".." in Path(raw).parts:
@@ -282,7 +381,9 @@ class StudioPhase2:
                "cutFingerprint": _fingerprint(self.cut), "savedAt": int(time.time())}
         doc["dataHash"] = _digest({"editData": data, "cutFingerprint": doc["cutFingerprint"]})
         _atomic_json(self.data / "revisions" / f"rev-{revision}.json", doc)
-        self._update_state(revision=revision, dataHash=doc["dataHash"], approval=None, render=None)
+        (self.data / "approved.json").unlink(missing_ok=True)
+        self._update_state(revision=revision, dataHash=doc["dataHash"], approval=None,
+                           render=None, delivery=None)
         return {"ok": True, "action": "save", "revision": revision, "dataHash": doc["dataHash"]}
 
     def _revision(self, revision: int, data_hash: str) -> dict:
@@ -329,28 +430,57 @@ class StudioPhase2:
             raise Phase2Error("o corte mudou depois da aprovação; aprove de novo")
         if not (self.remotion / "node_modules").is_dir():
             raise Phase2Error(
-                "as dependências do Remotion não estão instaladas neste projeto — "
-                f"rode `npm install` em {self.remotion.relative_to(self.root)} e tente de novo")
+                "as dependências do Remotion não estão disponíveis — prepare a instalação "
+                "compartilhada no template com `npm install` e execute Preparar Fase 2 novamente")
         # Gate obrigatório: insert congelado ou ampliado passa em silêncio.
         self._gate([sys.executable, str(HELPERS_DIR / "check_inserts.py"),
                     str(self.public / "edit-data.json")], "check_inserts")
         output = self.edit / "final.mp4"
-        run = self.runner(self.build_render_command(output), cwd=str(self.remotion),
-                          capture_output=True, text=True)
-        if getattr(run, "returncode", 1) != 0:
-            detail = (getattr(run, "stderr", "") or "")[:600]
-            raise Phase2Error(f"o render do Remotion falhou: {detail.strip()}")
-        if not output.is_file() or output.stat().st_size == 0:
-            raise Phase2Error("o render terminou sem produzir edit/final.mp4")
-        self._gate([sys.executable, str(HELPERS_DIR / "qc_final.py"), str(output)], "qc_final")
+        staged = self.edit / f".final-phase2-r{revision}-{data_hash[:12]}.mp4"
+        staged.unlink(missing_ok=True)
+        try:
+            run = self.runner(self.build_render_command(staged), cwd=str(self.remotion),
+                              capture_output=True, text=True)
+            if getattr(run, "returncode", 1) != 0:
+                detail = (getattr(run, "stderr", "") or "")[:600]
+                raise Phase2Error(f"o render do Remotion falhou: {detail.strip()}")
+            if not staged.is_file() or staged.stat().st_size == 0:
+                raise Phase2Error("o render terminou sem produzir o vídeo da Fase 2")
+            self._gate([sys.executable, str(HELPERS_DIR / "qc_final.py"), str(staged)], "qc_final")
+            if output.is_file():
+                history = self.data / "renders"
+                history.mkdir(parents=True, exist_ok=True)
+                old = _fingerprint(output)
+                os.replace(output, history / f"final-{int(time.time())}-{old['sha256'][:12]}.mp4")
+            os.replace(staged, output)
+        finally:
+            staged.unlink(missing_ok=True)
         result = {"ok": True, "action": "render", "revision": revision,
                   "output": str(output.relative_to(self.root)),
                   "fingerprint": _fingerprint(output)}
-        self._update_state(render=result)
+        self._update_state(render=result, delivery=None)
         return result
 
+    def review_approve(self, output_hash: str, full_review: bool) -> dict:
+        if full_review is not True or not HASH_RE.fullmatch(output_hash or ""):
+            raise Phase2Error("a revisão visual integral e o hash do arquivo são obrigatórios")
+        render = self._state().get("render") or {}
+        output_raw = render.get("output")
+        expected = (render.get("fingerprint") or {}).get("sha256")
+        if not output_raw or not expected or output_hash != expected:
+            raise Phase2Error("o hash não corresponde ao último render aprovado pelos gates")
+        output = self.confined(output_raw, must_exist=True)
+        if _fingerprint(output).get("sha256") != output_hash:
+            raise Phase2Error("o vídeo mudou depois do render; assista e aprove o arquivo atual")
+        delivery = {"version": 1, "output": str(output.relative_to(self.root)),
+                    "outputHash": output_hash, "fullReview": True,
+                    "approvedAt": int(time.time()), "status": "approved-for-delivery"}
+        _atomic_json(self.data / "delivery.json", delivery)
+        self._update_state(delivery=delivery)
+        return {"ok": True, "action": "review-approve", **delivery}
 
-ACTIONS = ("status", "scaffold", "save", "approve", "render")
+
+ACTIONS = ("status", "scaffold", "save", "approve", "render", "review-approve")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -363,6 +493,8 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--revision", type=int)
     ap.add_argument("--data-hash")
     ap.add_argument("--approve", action="store_true")
+    ap.add_argument("--output-hash")
+    ap.add_argument("--full-review", action="store_true")
     return ap
 
 
@@ -377,6 +509,8 @@ def dispatch(args: argparse.Namespace, runner: Runner = subprocess.run) -> dict:
             if not args.edit_data:
                 raise Phase2Error("save exige --edit-data")
             return phase2.save(args.edit_data)
+        if args.action == "review-approve":
+            return phase2.review_approve(args.output_hash or "", args.full_review)
         if args.revision is None or not args.data_hash:
             raise Phase2Error(f"{args.action} exige --revision e --data-hash")
         if args.action == "approve":

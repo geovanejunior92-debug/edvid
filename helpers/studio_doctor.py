@@ -2,8 +2,8 @@
 """O que falta nesta máquina para o Studio funcionar — com o conserto escrito.
 
 O aplicativo depende de coisas que não vêm dentro dele: ffmpeg, o ambiente
-Python da skill, o modelo de transcrição, e o Node com as dependências do
-Remotion por PROJETO. Quando falta uma, o sintoma aparece longe da causa: o
+Python da skill, o modelo de transcrição, e o Node com a instalação compartilhada
+do Remotion. Quando falta uma, o sintoma aparece longe da causa: o
 render do Remotion falha no meio, a transcrição morre com traceback, o corte
 sai sem limpeza de áudio.
 
@@ -127,10 +127,10 @@ def check(project: Path | None = None) -> list[dict]:
             detalhe=str(compartilhado))
     else:
         add("Remotion compartilhado", "aviso",
-            "sem ela, cada projeto instala as próprias dependências (~570 MB cada)",
+            "sem ela, a Fase 2 fica bloqueada e não deve duplicar ~570 MB por projeto",
             f"cd '{SKILL / 'assets' / 'shortform'}' && npm install")
 
-    # --- dependências do Remotion: são POR PROJETO, não globais
+    # --- cada projeto aponta para a instalação compartilhada
     if project:
         remotion = Path(project) / "edit" / "remotion"
         if not remotion.is_dir():
@@ -141,8 +141,9 @@ def check(project: Path | None = None) -> list[dict]:
             add("Remotion do projeto", "ok", "a Fase 2 pode renderizar")
         else:
             add("Remotion do projeto", "faltando",
-                "o render da Fase 2 para neste ponto — é a dependência que faltava",
-                f"cd '{remotion}' && npm install")
+                "o projeto perdeu o vínculo com a instalação compartilhada",
+                f"cd '{SKILL / 'assets' / 'shortform'}' && npm install && "
+                f"'{sys.executable}' '{HELPERS / 'studio_phase2.py'}' --root '{Path(project)}' --action scaffold")
     return itens
 
 

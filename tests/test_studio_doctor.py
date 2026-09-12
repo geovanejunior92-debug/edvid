@@ -51,6 +51,7 @@ class DoctorTests(unittest.TestCase):
             item = self.itens(project=proj)['Remotion do projeto']
             self.assertEqual(item['state'], 'faltando')
             self.assertIn('npm install', item['fix'])
+            self.assertIn('assets/shortform', item['fix'])
 
     def test_installed_dependencies_report_ready(self):
         with tempfile.TemporaryDirectory() as tmp:

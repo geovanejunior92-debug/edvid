@@ -48,6 +48,9 @@
 'use strict';
 
 // ---------- dom ----------
+const EMBEDDED_IN_STUDIO = new URLSearchParams(location.search).get('embedded') === '1';
+document.body.classList.toggle('embedded-studio', EMBEDDED_IN_STUDIO);
+
 const $ = (id) => document.getElementById(id);
 const video = $('video');
 const panel = $('timelinePanel');

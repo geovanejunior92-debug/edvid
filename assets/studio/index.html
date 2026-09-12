@@ -8,26 +8,49 @@
   <link rel="stylesheet" href="/studio/style.css">
 </head>
 <body>
-  <header>
-    <div><span class="mark">E</span><strong>Edvid Studio</strong></div>
+  <header class="topbar">
+    <button id="back-library" class="brand" type="button" aria-label="Voltar para a biblioteca">
+      <img src="/assets/edvid-logo-white.png" alt="Edvid">
+      <span>Seu espaço de edição</span>
+    </button>
+    <div id="top-project" class="top-project" hidden>
+      <span class="eyebrow">Projeto</span>
+      <strong id="top-project-name"></strong>
+      <span id="top-project-path"></span>
+    </div>
     <span id="service-status" class="status">serviço local</span>
   </header>
-  <main>
-    <aside>
-      <section>
-        <h1>Projetos</h1>
-        <form id="project-form">
+  <main id="studio-main">
+    <aside id="library-view" class="library-view">
+      <section class="library-intro">
+        <span class="eyebrow">Biblioteca local</span>
+        <h1>Comece um vídeo novo.</h1>
+        <p class="intro">Seus cortes, escolhas e próximos passos, organizados por projeto.</p>
+        <form id="project-form" class="new-project">
           <label for="project-path">Pasta do projeto</label>
           <div class="field-row">
             <input id="project-path" name="path" autocomplete="off" placeholder="/Users/…/Meu projeto" required>
             <button id="choose-folder" class="secondary picker" type="button" hidden>Escolher</button>
           </div>
           <label class="check"><input id="create-project" type="checkbox"> Criar a pasta se ela ainda não existir</label>
-          <button type="submit">Adicionar à biblioteca</button>
+          <p>Escolha uma pasta do Mac. O Studio prepara a área de edição sem mover os vídeos originais.</p>
+          <button type="submit">Adicionar projeto</button>
         </form>
         <p id="project-error" class="error" role="alert"></p>
       </section>
-      <nav id="project-list" aria-label="Biblioteca de projetos"></nav>
+      <section class="library-list">
+        <h2>Seus projetos</h2>
+        <label class="search" for="project-search">Buscar projeto
+          <input id="project-search" type="search" placeholder="Nome do vídeo ou projeto">
+        </label>
+        <p id="project-notice" class="muted" role="status"></p>
+        <nav id="project-list" aria-label="Biblioteca de projetos"></nav>
+        <details id="archived-projects" hidden>
+          <summary id="archived-count">Arquivados (0)</summary>
+          <p class="muted">Arquivar só esconde o cartão. Nenhum arquivo do projeto é apagado.</p>
+          <nav id="archived-list" aria-label="Projetos arquivados"></nav>
+        </details>
+      </section>
     </aside>
     <section class="workspace">
       <div id="empty" class="empty">
@@ -37,8 +60,20 @@
       <div id="project" hidden>
         <div class="project-head">
           <div><span class="eyebrow">Projeto selecionado</span><h2 id="project-name"></h2><p id="project-location"></p></div>
-          <button id="open-editor" type="button">Abrir editor</button>
+          <button id="open-editor" class="secondary" type="button">Abrir editor em tela cheia</button>
         </div>
+        <div class="editor-shell">
+          <aside class="toolbox" aria-label="Ferramentas do projeto">
+            <nav class="tool-tabs" aria-label="Etapas da edição">
+              <button class="tool-tab active" type="button" data-studio-tab="project" aria-label="Projeto" title="Projeto"><span aria-hidden="true">⌂</span></button>
+              <button class="tool-tab" type="button" data-studio-tab="phase1" aria-label="Corte" title="Corte"><span aria-hidden="true">✂</span></button>
+              <button class="tool-tab" type="button" data-studio-tab="phase2" aria-label="Efeitos" title="Efeitos"><span aria-hidden="true">✦</span></button>
+              <button class="tool-tab" type="button" data-studio-tab="finish" aria-label="Exportar" title="Exportar"><span aria-hidden="true">⇧</span></button>
+              <button class="tool-tab" type="button" data-studio-tab="music" aria-label="Música" title="Música"><span aria-hidden="true">♫</span></button>
+              <button class="tool-tab" type="button" data-studio-tab="activity" aria-label="Atividade" title="Atividade"><span aria-hidden="true">≡</span></button>
+            </nav>
+            <div class="tool-scroll">
+              <section class="project-tools" data-studio-panel="project">
         <div class="job-create">
           <div class="grow">
             <label for="media-path">Arquivo de vídeo dentro do projeto</label>
@@ -52,7 +87,8 @@
         </div>
         <p id="job-error" class="error" role="alert"></p>
         <video id="raw-preview" controls hidden></video>
-        <section class="pipeline-panel" aria-labelledby="pipeline-title">
+              </section>
+        <section class="pipeline-panel" data-studio-panel="phase1" aria-labelledby="pipeline-title" hidden>
           <div class="section-title"><div><span class="eyebrow">Fase 1</span><h2 id="pipeline-title">Corte técnico</h2></div><span id="pipeline-state" class="pill">sem estado</span></div>
           <p class="muted">A proposta encontra blocos de fala e pausas. Ela é técnica: não escolhe trechos pela narrativa nem decide o que deve entrar no vídeo.</p>
           <label for="pipeline-script">Roteiro de referência (opcional)</label>
@@ -69,7 +105,28 @@
           <p class="muted">Aplicar ajustes do preview cria uma nova revisão e invalida a aprovação anterior. Revise e aprove o novo plano antes de renderizar.</p>
           <p id="pipeline-error" class="error" role="alert"></p>
         </section>
-        <section class="finish-panel" aria-labelledby="finish-title">
+        <section class="phase2-panel" data-studio-panel="phase2" aria-labelledby="phase2-title" hidden>
+          <div class="section-title"><div><span class="eyebrow">Fase 2</span><h2 id="phase2-title">Efeitos e legendas</h2></div><span id="phase2-state" class="pill">sem estado</span></div>
+          <p class="muted">O editor ao lado usa o mesmo projeto da versão web. Salve a configuração Remotion, aprove a revisão e renderize sem sair do aplicativo.</p>
+          <label for="phase2-edit-data">Arquivo de configuração dentro do projeto</label>
+          <input id="phase2-edit-data" autocomplete="off" value="edit/remotion/public/edit-data.json">
+          <div class="phase2-actions"><button id="phase2-scaffold" class="secondary" type="button">Preparar Fase 2</button><button id="phase2-save" type="button">Salvar revisão</button></div>
+          <article id="phase2-approval" class="plan-card" hidden>
+            <div class="section-title"><strong>Revisão Remotion</strong><span id="phase2-revision"></span></div>
+            <p id="phase2-summary" class="muted"></p>
+            <label class="check"><input id="phase2-approve-check" type="checkbox"> Revisei os efeitos no editor e aprovo exatamente esta revisão.</label>
+            <div class="phase2-actions"><button id="phase2-approve" type="button" disabled>Aprovar efeitos</button><button id="phase2-render" type="button" disabled>Renderizar vídeo final</button></div>
+          </article>
+          <article id="phase2-review" class="plan-card" hidden>
+            <div class="section-title"><strong>Revisão do arquivo final</strong><span id="phase2-delivery-status"></span></div>
+            <video id="phase2-output" controls preload="metadata"></video>
+            <p id="phase2-output-hash" class="muted"></p>
+            <label class="check"><input id="phase2-review-check" type="checkbox"> Assisti ao vídeo inteiro e aprovo este arquivo para entrega.</label>
+            <div class="phase2-actions"><button id="phase2-review-approve" type="button" disabled>Aprovar para entrega</button></div>
+          </article>
+          <p id="phase2-error" class="error" role="alert"></p>
+        </section>
+        <section class="finish-panel" data-studio-panel="finish" aria-labelledby="finish-title" hidden>
           <div class="section-title"><div><span class="eyebrow">Fase 2</span><h2 id="finish-title">Finalização</h2></div><span id="finish-state" class="pill">sem ajustes</span></div>
           <p class="muted">Configure o acabamento do corte aprovado. Salvar cria uma revisão própria; a entrega só é liberada após os gates e a revisão visual integral do arquivo exportado.</p>
           <div class="finish-grid">
@@ -88,7 +145,7 @@
           <article id="finish-review" class="plan-card" hidden><div class="section-title"><strong>Controle de qualidade</strong><span id="finish-delivery-status"></span></div><p id="finish-qc-summary"></p><div id="finish-qc-reports" class="report-links"></div><p class="muted">A folha de contato mostra apenas amostras. Ela não comprova a revisão do vídeo inteiro.</p><video id="finish-preview" controls preload="metadata"></video><p id="finish-output-hash" class="muted"></p><label class="check"><input id="finish-review-check" type="checkbox"> Assisti ao arquivo exportado inteiro e aprovo esta versão visualmente.</label><button id="finish-review-approve" type="button" disabled>Aprovar revisão visual</button></article>
           <p id="finish-error" class="error" role="alert"></p>
         </section>
-        <section class="music-panel" aria-labelledby="music-title">
+        <section class="music-panel" data-studio-panel="music" aria-labelledby="music-title" hidden>
           <div class="section-title">
             <div><span class="eyebrow">Treblo</span><h2 id="music-title">Gerar trilha instrumental</h2></div>
             <div class="provider-state"><span id="treblo-config" class="pill">verificando configuração</span><button id="treblo-check" class="text-button" type="button">Testar conexão</button></div>
@@ -104,16 +161,25 @@
           <p id="music-error" class="error" role="alert"></p>
           <p class="muted cancel-note">Cancelar no Studio interrompe apenas o processo local. Isso não garante o cancelamento na Treblo nem o estorno de créditos.</p>
         </section>
-      </div>
-      <div class="lower-grid">
-        <section><div class="section-title"><h2>Fila</h2><span>uma tarefa por vez</span></div><div id="jobs"></div></section>
-        <section><div class="section-title"><h2>Diagnóstico</h2><button id="refresh" class="text-button" type="button">Atualizar</button></div><dl id="diagnostics"></dl></section>
+        <section class="activity-panel" data-studio-panel="activity" hidden>
+          <div class="lower-grid">
+            <section><div class="section-title"><h2>Fila</h2><span>uma tarefa por vez</span></div><div id="jobs"></div></section>
+            <section><div class="section-title"><h2>Diagnóstico</h2><button id="refresh" class="text-button" type="button">Atualizar</button></div><dl id="diagnostics"></dl></section>
+          </div>
+        </section>
+            </div>
+          </aside>
+          <section class="editor-surface" aria-label="Timeline e player">
+            <iframe id="editor-frame" title="Editor do projeto"></iframe>
+          </section>
+        </div>
       </div>
     </section>
   </main>
   <script>history.replaceState(null, "", location.pathname);</script>
   <script src="/studio/app.js"></script>
   <script src="/studio/pipeline.js"></script>
+  <script src="/studio/phase2.js"></script>
   <script src="/studio/finish.js"></script>
 </body>
 </html>

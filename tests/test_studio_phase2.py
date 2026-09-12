@@ -33,7 +33,7 @@ def fake_runner(returncode=0, stdout='', stderr=''):
 
 
 def base_data(**over):
-    data = {'width': 1080, 'height': 1920, 'fps': 30, 'durationSec': 38.0}
+    data = {'width': 1080, 'height': 1920, 'fps': 30, 'durationSec': 40.0}
     data.update(over)
     return data
 
@@ -116,8 +116,38 @@ class ValidateTests(Phase2Base):
     def test_duration_far_past_the_cut_is_refused(self):
         with self.assertRaises(Phase2Error):
             self.p.validate(base_data(durationSec=90.0))
-        # um encerramento a mais continua válido
-        self.p.validate(base_data(durationSec=42.0))
+        # só a extensão descrita pelo encerramento continua válida
+        self.p.validate(base_data(durationSec=42.0,
+                                  outro={'enabled': True, 'startSec': 39.5,
+                                         'durationSec': 2.5}))
+        with self.assertRaises(Phase2Error):
+            self.p.validate(base_data(durationSec=42.0))
+
+    def test_duration_cannot_truncate_the_cut_or_the_outro(self):
+        with self.assertRaisesRegex(Phase2Error, 'termina antes'):
+            self.p.validate(base_data(durationSec=12.0))
+        with self.assertRaisesRegex(Phase2Error, 'termina antes'):
+            self.p.validate(base_data(durationSec=40.0,
+                                      outro={'enabled': True, 'startSec': 39.5,
+                                             'durationSec': 2.5}))
+
+    def test_placeholders_and_bad_scalar_types_are_refused_as_phase2_errors(self):
+        for bad in (base_data(splitInserts='PREENCHER'), base_data(fps='trinta'),
+                    base_data(durationSec=float('nan'))):
+            with self.assertRaises(Phase2Error):
+                self.p.validate(bad)
+
+    def test_stacked_caption_sfx_requires_an_object(self):
+        (self.p.public / 'captions.json').write_text(json.dumps([
+            {'text': 'Você', 'startMs': 100, 'endMs': 600, 'timestampMs': 350}]))
+        (self.p.public / 'caption-cues.json').write_text(json.dumps([{
+            'i': 0, 'startMs': 100, 'endMs': 600, 'preset': 'SOLO_BIG',
+            'exit': 'abrupt', 'styleOffset': 0,
+            'lines': [[{'text': 'Você', 'fromMs': 100, 'toMs': 600}]],
+        }]))
+        with self.assertRaisesRegex(Phase2Error, 'captions.sfx'):
+            self.p.validate(base_data(captions={
+                'enabled': True, 'style': 'stacked', 'sfx': 'ligado'}))
 
     def test_missing_asset_is_named(self):
         data = base_data(splitInserts=[{'src': 'pexels/a.mp4', 'start': 1, 'end': 2}])
@@ -151,6 +181,41 @@ class ValidateTests(Phase2Base):
             {'text': 'começou', 'startMs': 420, 'endMs': 900, 'timestampMs': 660}]))
         self.p.validate(base_data(captions={'enabled': True}))
 
+    def test_captions_cannot_cover_the_outro(self):
+        (self.p.public / 'captions.json').write_text(json.dumps([
+            {'text': 'Você', 'startMs': 39000, 'endMs': 40100, 'timestampMs': 39500}]))
+        with self.assertRaises(Phase2Error) as cm:
+            self.p.validate(base_data(durationSec=42.0, captions={'enabled': True},
+                                      outro={'enabled': True, 'startSec': 40,
+                                             'durationSec': 2.0}))
+        self.assertIn('encerramento', str(cm.exception))
+
+    def test_stacked_captions_require_real_cues_and_their_implicit_sfx(self):
+        (self.p.public / 'captions.json').write_text(json.dumps([
+            {'text': 'Você', 'startMs': 100, 'endMs': 600, 'timestampMs': 350}]))
+        data = base_data(captions={'enabled': True, 'style': 'stacked'})
+        with self.assertRaises(Phase2Error) as cm:
+            self.p.validate(data)
+        self.assertIn('caption-cues.json', str(cm.exception))
+        (self.p.public / 'caption-cues.json').write_text(json.dumps([{
+            'i': 0, 'startMs': 100, 'endMs': 600, 'preset': 'SOLO_BIG',
+            'exit': 'abrupt', 'styleOffset': 0,
+            'lines': [[{'text': 'Você', 'fromMs': 100, 'toMs': 600}]],
+        }]))
+        self.p.validate(data)
+        (self.p.public / 'sfx' / 'caption-click.mp3').unlink()
+        with self.assertRaises(Phase2Error) as cm:
+            self.p.validate(data)
+        self.assertIn('caption-click.mp3', str(cm.exception))
+        self.p.validate(base_data(captions={'enabled': True, 'style': 'stacked',
+                                            'sfx': {'enabled': False}}))
+
+    def test_enabled_captions_require_the_file(self):
+        (self.p.public / 'captions.json').unlink()
+        with self.assertRaises(Phase2Error) as cm:
+            self.p.validate(base_data(captions={'enabled': True}))
+        self.assertIn('captions.json', str(cm.exception))
+
     def test_captions_disabled_means_the_empty_list_is_not_a_problem(self):
         """O template vem com captions.json vazio. Cobrar legenda de quem
         desligou a legenda quebrava todo projeto recém-criado."""
@@ -175,6 +240,51 @@ class ValidateTests(Phase2Base):
         self.p.validate(base_data(soundtrack={'enabled': False, 'file': 'trilha.mp3'}))
         with self.assertRaises(Phase2Error):
             self.p.validate(base_data(soundtrack={'enabled': True, 'file': 'trilha.mp3'}))
+
+    def test_hook_and_sfx_assets_follow_the_template_paths(self):
+        (self.p.public / 'brand').mkdir(parents=True)
+        (self.p.public / 'brand' / 'logo.png').write_bytes(b'x')
+        (self.p.public / 'sfx').mkdir(parents=True, exist_ok=True)
+        (self.p.public / 'sfx' / 'click.wav').write_bytes(b'x')
+        data = base_data(hook={'enabled': True, 'logo': 'brand/logo.png'},
+                         sfxCues=[{'src': 'click.wav', 'at': 1}])
+        self.p.validate(data)
+        (self.p.public / 'brand' / 'logo.png').unlink()
+        with self.assertRaises(Phase2Error) as cm:
+            self.p.validate(data)
+        self.assertIn('brand/logo.png', str(cm.exception))
+
+    def test_every_template_asset_field_is_checked_at_its_real_public_path(self):
+        """Guarda o contrato entre o validador e os staticFile() do TSX."""
+        cases = [
+            ({'soundtrack': {'enabled': True, 'file': 'music/track.mp3'}},
+             'music/track.mp3'),
+            ({'logo': {'enabled': True, 'src': 'brand/opening.png'}},
+             'brand/opening.png'),
+            ({'hook': {'enabled': True, 'sign': 'brand/sign.png'}},
+             'brand/sign.png'),
+            ({'inserts': [{'src': 'inserts/card.jpg'}]}, 'inserts/card.jpg'),
+            ({'behind': [{'src': 'behind/bg.jpg', 'matte': 'behind/matte.mov'}]},
+             'behind/bg.jpg'),
+            ({'behindVideos': [{'src': 'behind/video.mp4', 'matte': 'behind/person.mov'}]},
+             'behind/video.mp4'),
+            ({'splitInserts': [{'src': 'split/art.mp4', 'matte': 'split/person.mov'}]},
+             'split/art.mp4'),
+            ({'sfxCues': [{'src': 'missing-cue.mp3'}]}, 'sfx/missing-cue.mp3'),
+            ({'transitions': [{'at': 1, 'sfx': 'missing-transition.wav'}]},
+             'sfx/missing-transition.wav'),
+        ]
+        for fragment, expected in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaises(Phase2Error) as cm:
+                    self.p.validate(base_data(**fragment))
+                self.assertIn(expected, str(cm.exception))
+
+    def test_all_top_level_template_collections_reject_placeholders(self):
+        for name in ('splitInserts', 'inserts', 'behind', 'behindVideos',
+                     'sfxCues', 'transitions', 'graphics', 'titleCards'):
+            with self.subTest(name=name), self.assertRaisesRegex(Phase2Error, name):
+                self.p.validate(base_data(**{name: 'PREENCHER'}))
 
 
 class RevisionTests(Phase2Base):
@@ -207,7 +317,7 @@ class RevisionTests(Phase2Base):
         ref = self.write_data(base_data())
         first = self.p.save(ref)
         self.p.approve(first['revision'], first['dataHash'], True)
-        self.write_data(base_data(durationSec=39.0))
+        self.write_data(base_data(camera={'enabled': False}))
         second = self.p.save(ref)
         self.assertEqual(second['revision'], 2)
         with self.assertRaises(Phase2Error) as cm:
@@ -253,7 +363,7 @@ class RenderTests(Phase2Base):
             if argv[0] == 'ffprobe':
                 return subprocess.CompletedProcess(argv, 0, json.dumps(CUT_INFO), '')
             if argv[0] == 'npx':
-                final.write_bytes(b'v' * 4096)
+                Path(argv[5]).write_bytes(b'v' * 4096)
             runner.calls.append(argv)
             return subprocess.CompletedProcess(argv, 0, '', '')
         runner.calls = []
@@ -263,17 +373,40 @@ class RenderTests(Phase2Base):
         scripts = [Path(a[1]).name for a in runner.calls if a[0] == sys.executable]
         self.assertEqual(scripts, ['check_inserts.py', 'qc_final.py'],
                          'os dois gates rodam, e nessa ordem')
+        self.assertIsNone(self.p._state().get('delivery'))
+        with self.assertRaises(Phase2Error):
+            self.p.review_approve(r['fingerprint']['sha256'], False)
+        delivered = self.p.review_approve(r['fingerprint']['sha256'], True)
+        self.assertEqual(delivered['status'], 'approved-for-delivery')
 
-    def test_qc_failing_does_not_record_a_delivered_render(self):
+    def test_review_refuses_a_render_changed_after_the_gates(self):
         saved = self.approved()
         self.com_dependencias()
-        final = self.root / 'edit' / 'final.mp4'
 
         def runner(argv, **kw):
             if argv[0] == 'ffprobe':
                 return subprocess.CompletedProcess(argv, 0, json.dumps(CUT_INFO), '')
             if argv[0] == 'npx':
-                final.write_bytes(b'v' * 4096)
+                Path(argv[5]).write_bytes(b'v' * 4096)
+            return subprocess.CompletedProcess(argv, 0, '', '')
+
+        self.p.runner = runner
+        rendered = self.p.render(saved['revision'], saved['dataHash'])
+        (self.root / rendered['output']).write_bytes(b'alterado depois do QC')
+        with self.assertRaisesRegex(Phase2Error, 'mudou depois do render'):
+            self.p.review_approve(rendered['fingerprint']['sha256'], True)
+
+    def test_qc_failing_does_not_record_a_delivered_render(self):
+        saved = self.approved()
+        self.com_dependencias()
+        final = self.root / 'edit' / 'final.mp4'
+        final.write_bytes(b'ultimo-render-bom')
+
+        def runner(argv, **kw):
+            if argv[0] == 'ffprobe':
+                return subprocess.CompletedProcess(argv, 0, json.dumps(CUT_INFO), '')
+            if argv[0] == 'npx':
+                Path(argv[5]).write_bytes(b'v' * 4096)
                 return subprocess.CompletedProcess(argv, 0, '', '')
             if Path(argv[1]).name == 'qc_final.py':
                 return subprocess.CompletedProcess(argv, 1, 'legenda em silêncio', '')
@@ -283,13 +416,31 @@ class RenderTests(Phase2Base):
             self.p.render(saved['revision'], saved['dataHash'])
         self.assertIn('qc_final reprovou', str(cm.exception))
         self.assertIsNone(self.p._state().get('render'))
+        self.assertEqual(final.read_bytes(), b'ultimo-render-bom')
+        self.assertFalse(any(self.root.joinpath('edit').glob('.final-phase2-*.mp4')))
 
 
-class HardRuleTests(unittest.TestCase):
-    def test_module_never_writes_tsx(self):
-        source = (Path(__file__).resolve().parents[1] / 'helpers' / 'studio_phase2.py').read_text()
-        self.assertNotIn('.tsx"', source.replace("'", '"').replace('ignore_patterns', ''))
-        self.assertIn('copytree', source)   # o template é COPIADO, não editado
+class HardRuleTests(Phase2Base):
+    def test_save_approve_and_render_leave_every_tsx_byte_unchanged(self):
+        self.p.scaffold()
+        before = {path.relative_to(self.p.remotion): path.read_bytes()
+                  for path in self.p.remotion.rglob('*.tsx')}
+        ref = self.write_data(base_data())
+        saved = self.p.save(ref)
+        self.p.approve(saved['revision'], saved['dataHash'], True)
+        self.com_dependencias()
+        def runner(argv, **kw):
+            if argv[0] == 'ffprobe':
+                return subprocess.CompletedProcess(argv, 0, json.dumps(CUT_INFO), '')
+            if argv[0] == 'npx':
+                Path(argv[5]).write_bytes(b'v' * 4096)
+            return subprocess.CompletedProcess(argv, 0, '', '')
+
+        self.p.runner = runner
+        self.p.render(saved['revision'], saved['dataHash'])
+        after = {path.relative_to(self.p.remotion): path.read_bytes()
+                 for path in self.p.remotion.rglob('*.tsx')}
+        self.assertEqual(after, before)
 
 
 if __name__ == '__main__':

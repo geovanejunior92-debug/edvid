@@ -1502,3 +1502,11 @@ body.drawer-open .diag-body { max-height: none; flex: 1 1 auto; min-height: 0; }
 .take-opt.on .t{color:#ffb37a}
 .take-opt:focus-visible{outline:3px solid #d0aeff;outline-offset:2px}
 .take-off{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07);font-size:11px;color:#8d94a2;line-height:1.5}
+
+/* Dentro do aplicativo, o Studio já fornece marca, projeto e navegação. O
+   editor compartilhado preserva timeline/player e remove apenas o cabeçalho
+   duplicado; a versão web sem `?embedded=1` continua idêntica. */
+body.embedded-studio{background:#080b0f}
+body.embedded-studio>header{display:none}
+body.embedded-studio>.tabs{margin:8px 8px 0}
+body.embedded-studio>main{padding:8px;gap:8px}

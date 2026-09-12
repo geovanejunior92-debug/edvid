@@ -76,6 +76,16 @@ class AlignTests(unittest.TestCase):
         fontes = {c['source'] for c in r['lines'][0]['candidates']}
         self.assertEqual(fontes, {'C001', 'C002'})
 
+    def test_a_candidate_never_splices_the_end_of_one_file_to_the_next(self):
+        a, _ = words('uma frase termina com implante hormonal', source='C001')
+        b, _ = words('nao engorda e outra fala continua', source='C002')
+        r = script_align.align('Implante hormonal não engorda.', {'C001': a, 'C002': b})
+        candidates = r['lines'][0]['candidates']
+        self.assertTrue(candidates)  # aproximações parciais ainda podem ser propostas
+        self.assertFalse(any('implante' in x['text'] and 'engorda' in x['text']
+                             for x in candidates),
+                         'nenhuma candidata pode costurar palavras de dois arquivos')
+
     def test_the_take_with_fewer_fillers_wins_a_tie(self):
         limpa, t = words('o implante hormonal nao engorda')
         suja, _ = words('o implante hormonal ne nao engorda', t + 1)

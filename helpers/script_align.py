@@ -86,18 +86,19 @@ def _candidates(line_tokens: list[str], stream: list[dict], min_score: float) ->
         alvo = set(line_tokens)
     largura = max(n, 3)
     brutos: list[tuple[float, int, int]] = []
-    for i in range(0, max(1, len(stream) - largura + 1)):
-        janela = stream[i:i + largura]
-        tokens = [w["norm"] for w in janela]
-        if len(alvo & set(tokens)) / len(alvo) < 0.4:
-            continue
+    for i in range(len(stream)):
         # tenta encolher/esticar um pouco: a transcrição gagueja e o roteiro não
-        melhor, melhor_fim = 0.0, largura
-        for fim in (largura, largura + 2, max(2, largura - 2)):
-            trecho = [w["norm"] for w in stream[i:i + fim]]
+        melhor, melhor_fim = 0.0, 0
+        for tamanho in dict.fromkeys((largura, largura + 2, max(2, largura - 2))):
+            palavras = stream[i:i + tamanho]
+            if len(palavras) < 2 or len({w["source"] for w in palavras}) != 1:
+                continue
+            trecho = [w["norm"] for w in palavras]
+            if len(alvo & set(trecho)) / len(alvo) < 0.4:
+                continue
             s = _score(line_tokens, trecho)
             if s > melhor:
-                melhor, melhor_fim = s, fim
+                melhor, melhor_fim = s, len(palavras)
         if melhor >= min_score:
             brutos.append((melhor, i, i + melhor_fim))
     brutos.sort(key=lambda x: -x[0])
@@ -167,21 +168,24 @@ def align(script: str, sources: dict[str, list[dict]], min_score: float = MIN_SC
     for ini, fim in usados:
         cobertos.update(range(ini, fim))
     extras, atual = [], []
+
+    def flush_extra() -> None:
+        nonlocal atual
+        if len(atual) >= 6:
+            extras.append({"source": stream[atual[0]]["source"],
+                           "start": round(stream[atual[0]]["start"], 3),
+                           "end": round(stream[atual[-1]]["end"], 3),
+                           "text": " ".join(stream[j]["text"] for j in atual)})
+        atual = []
+
     for i, w in enumerate(stream):
         if i in cobertos:
-            if len(atual) >= 6:
-                extras.append({"source": stream[atual[0]]["source"],
-                               "start": round(stream[atual[0]]["start"], 3),
-                               "end": round(stream[atual[-1]]["end"], 3),
-                               "text": " ".join(stream[j]["text"] for j in atual)})
-            atual = []
+            flush_extra()
         else:
+            if atual and stream[atual[-1]]["source"] != w["source"]:
+                flush_extra()
             atual.append(i)
-    if len(atual) >= 6:
-        extras.append({"source": stream[atual[0]]["source"],
-                       "start": round(stream[atual[0]]["start"], 3),
-                       "end": round(stream[atual[-1]]["end"], 3),
-                       "text": " ".join(stream[j]["text"] for j in atual)})
+    flush_extra()
     resumo = {
         "lines": len(linhas),
         "ok": sum(1 for r in resultado if r["status"] == "ok"),

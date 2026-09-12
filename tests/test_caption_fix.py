@@ -66,6 +66,17 @@ class ApplyFixTests(unittest.TestCase):
         out, _ = caption_fix.apply_fix(self.w, 0.3, 1.4, 'auxilia')
         self.assertEqual([x['text'] for x in out], ['o', 'Munjaro', 'auxilia', 'muito'])
 
+    def test_remotion_millisecond_captions_are_supported_and_keep_their_schema(self):
+        captions = [
+            {'text': 'Munjaro', 'startMs': 200, 'endMs': 900,
+             'timestampMs': 550, 'confidence': None},
+        ]
+        out, _ = caption_fix.apply_fix(captions, 0.2, 0.9, 'Mounjaro semanal')
+        self.assertEqual([x['text'] for x in out], ['Mounjaro', 'semanal'])
+        self.assertEqual((out[0]['startMs'], out[-1]['endMs']), (200, 900))
+        self.assertNotIn('start', out[0])
+        self.assertTrue(all(x['startMs'] <= x['timestampMs'] <= x['endMs'] for x in out))
+
 
 class ApplyFixesTests(unittest.TestCase):
     def test_several_fixes_do_not_shift_each_other(self):

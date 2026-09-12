@@ -83,6 +83,39 @@ class StudioServerTests(unittest.TestCase):
         self.assertEqual(self.request("POST", "/api/projects", {"path": str(bad)}, cookie, origin)[0], 400)
         self.assertEqual(self.request("GET", "/api/projects/../../etc", cookie=cookie)[0], 404)
 
+    def test_native_library_shows_thumbnails_and_updates_the_shared_project_state(self):
+        cookie = self.login()
+        origin = f"http://127.0.0.1:{self.server.server_port}"
+        project = self.workspace / "Biblioteca"
+        edit = project / "edit"
+        thumbs = edit / ".preview_cache" / "thumbs"
+        thumbs.mkdir(parents=True)
+        (edit / "state.json").write_text('{"project":"Nome antigo"}')
+        (thumbs / "thumb-0001.jpg").write_bytes(b"jpeg")
+        _, item, _ = self.request("POST", "/api/projects", {"path": str(project)}, cookie, origin)
+
+        listed = self.request("GET", "/api/projects", cookie=cookie)[1]["projects"][0]
+        self.assertEqual(listed["thumbnail"], str((thumbs / "thumb-0001.jpg").resolve()))
+        status, renamed, _ = self.request("POST", "/api/projects/update", {
+            "projectId": item["id"], "name": "Nome novo", "pinned": True,
+        }, cookie, origin)
+        self.assertEqual(status, 200)
+        self.assertEqual(renamed["name"], "Nome novo")
+        self.assertTrue(renamed["pinned"])
+        self.assertEqual(json.loads((edit / "state.json").read_text())["project"], "Nome novo")
+
+        # Renomear pela biblioteca web altera state.json; a nativa deve refletir
+        # isso sem manter uma segunda verdade em projects.json.
+        (edit / "state.json").write_text('{"project":"Nome vindo do web"}')
+        relisted = self.request("GET", "/api/projects", cookie=cookie)[1]["projects"][0]
+        self.assertEqual(relisted["name"], "Nome vindo do web")
+
+        status, archived, _ = self.request("POST", "/api/projects/update", {
+            "projectId": item["id"], "archived": True,
+        }, cookie, origin)
+        self.assertEqual(status, 200)
+        self.assertTrue(archived["archived"])
+
     def test_mutations_require_same_origin(self):
         cookie = self.login()
         body = {"path": str(self.workspace / "x"), "create": True}
@@ -218,7 +251,12 @@ class StudioServerTests(unittest.TestCase):
         manager = studio.JobQueue(data, registry, command_builder=lambda _job: [sys.executable, "-c", "pass"])
         self.addCleanup(manager.close)
 
-        job = manager.enqueue_phase2(item["id"], "save", {"editData": "edit/edit-data.json"})
+        # Segure o worker para provar que o enqueue persiste ANTES de a tarefa
+        # começar. Sem este save, fechar o app logo após o clique perde a ação.
+        with manager.condition:
+            job = manager.enqueue_phase2(item["id"], "save", {"editData": "edit/edit-data.json"})
+            persisted = json.loads((data / "queue.json").read_text())
+            self.assertIn(job["id"], [item["id"] for item in persisted["jobs"]])
         command = manager._build_command(job)
         self.assertEqual(command[:6], [sys.executable, str(Path(studio.__file__).with_name("studio_phase2.py")),
                                        "--root", str(project.resolve()), "--action", "save"])
@@ -230,6 +268,8 @@ class StudioServerTests(unittest.TestCase):
             manager.enqueue_finish(item["id"], "save", {"settings": {
                 "version": 1, "platform": "reels", "captions": {"mode": "none"},
                 "headline": {"enabled": False}, "inserts": [], "music": {"enabled": False}}})
+        with self.assertRaisesRegex(ValueError, "já tem uma ação de edição"):
+            manager.enqueue_pipeline(item["id"], "undo", {})
 
         deadline = time.time() + 2
         while time.time() < deadline and manager.get(job["id"])["status"] not in manager.FINAL:
@@ -256,6 +296,13 @@ class StudioServerTests(unittest.TestCase):
             manager.enqueue_phase2(item["id"], "render", {"revision": 1, "dataHash": "curto"})
         with self.assertRaisesRegex(ValueError, "caminho do edit-data"):
             manager.enqueue_phase2(item["id"], "save", {})
+        with self.assertRaisesRegex(ValueError, "revisão visual integral"):
+            manager.enqueue_phase2(item["id"], "review-approve", {
+                "outputHash": "b" * 64})
+        reviewed = manager.enqueue_phase2(item["id"], "review-approve", {
+            "outputHash": "b" * 64, "fullReview": True})
+        self.assertEqual(manager._build_command(reviewed)[-3:],
+                         ["--output-hash", "b" * 64, "--full-review"])
 
     def test_finish_dispatch_builds_fixed_commands_and_requires_exact_approval(self):
         data = self.base / "finish-command-data"
