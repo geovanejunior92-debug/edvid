@@ -172,6 +172,16 @@ Trilha de IMAGEM (post, carrossel, capa, thumbnail — 2026-09-10). Leia **`refe
 Phase 2/3 helpers (captions, face tracking, image search, music) are listed in
 the track reference you load after the gate. One of them is not optional:
 
+- **`caption_edit.py <captions.json> [--duration-ms N] [--outro-start-ms N] [--drop-after-ms N] [--apply]`**
+  — o outro lado do `caption_fix.py`: TEMPO, divisão e junção de bloco, mais as
+  invariantes que o render não checa. Separa **erro** (bloco vazio, tempo
+  invertido, sobreposição, legenda passando do vídeo ou por cima do
+  encerramento — exit ≠ 0) de **aviso** cosmético (palavra curta demais para o
+  realce do karaokê pegar; artigos de 20ms existem e não bloqueiam). Funções:
+  `retime`, `split`, `merge`, `shift` (é o que ressincroniza depois de um corte
+  novo) e `drop_after`. **Rodado nas legendas reais do canal em 2026-09-12:
+  achou 90 blocos vazios seguidos num projeto** — tempo sem texto na metade do
+  vídeo, invisível até existir gate.
 - **`caption_fix.py <edit> [--targets …] [--apply]`** — aplica os `textFixes[]`
   do preview a `transcripts/cut.json` e `remotion/public/captions.json`. Sem
   `--apply` só mostra o que faria. Mesma contagem de palavras → tempos

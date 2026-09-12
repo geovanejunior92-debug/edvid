@@ -110,6 +110,38 @@ class ValidateTests(Phase2Base):
         (self.p.public / 'pexels' / 'a.mp4').write_bytes(b'x')
         self.p.validate(data)
 
+    def test_empty_caption_blocks_block_the_render(self):
+        """O defeito que existe de verdade num projeto do canal: 90 blocos com
+        tempo e sem texto. Renderiza sem erro e estraga o vídeo."""
+        (self.p.public / 'captions.json').write_text(json.dumps([
+            {'text': 'Você', 'startMs': 100, 'endMs': 400, 'timestampMs': 250},
+            {'text': '', 'startMs': 420, 'endMs': 700, 'timestampMs': 560}]))
+        with self.assertRaises(Phase2Error) as cm:
+            self.p.validate(base_data(captions={'enabled': True}))
+        self.assertIn('bloco vazio', str(cm.exception))
+
+    def test_overlapping_captions_block_the_render(self):
+        (self.p.public / 'captions.json').write_text(json.dumps([
+            {'text': 'a', 'startMs': 100, 'endMs': 900, 'timestampMs': 500},
+            {'text': 'b', 'startMs': 400, 'endMs': 1200, 'timestampMs': 800}]))
+        with self.assertRaises(Phase2Error):
+            self.p.validate(base_data(captions={'enabled': True}))
+
+    def test_valid_captions_do_not_block(self):
+        (self.p.public / 'captions.json').write_text(json.dumps([
+            {'text': 'Você', 'startMs': 100, 'endMs': 400, 'timestampMs': 250},
+            {'text': 'começou', 'startMs': 420, 'endMs': 900, 'timestampMs': 660}]))
+        self.p.validate(base_data(captions={'enabled': True}))
+
+    def test_captions_disabled_means_the_empty_list_is_not_a_problem(self):
+        """O template vem com captions.json vazio. Cobrar legenda de quem
+        desligou a legenda quebrava todo projeto recém-criado."""
+        (self.p.public / 'captions.json').write_text('[]')
+        self.p.validate(base_data(captions={'enabled': False}))
+        self.p.validate(base_data())
+        with self.assertRaises(Phase2Error):
+            self.p.validate(base_data(captions={'enabled': True}))
+
     def test_asset_escaping_the_project_is_refused(self):
         for bad in ('/etc/passwd', '../../fora.mp4'):
             with self.assertRaises(Phase2Error) as cm:

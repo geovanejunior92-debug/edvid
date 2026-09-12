@@ -227,6 +227,26 @@ class StudioPhase2:
             raise Phase2Error(
                 f"durationSec ({duration}s) passa {duration - info['duration']:.1f}s do corte "
                 f"({info['duration']:.1f}s) — mais do que um encerramento explica")
+        # Legenda com bloco vazio ou sobreposta renderiza sem erro e estraga o
+        # vídeo entregue. Achado em projeto real: 90 blocos vazios seguidos,
+        # metade do vídeo com tempo e sem texto, invisível até existir gate.
+        # Só quando a legenda está LIGADA: o template vem com captions.json
+        # vazio, e lista vazia é problema de quem vai exibir legenda, não de
+        # quem desligou. Foi o que os testes mostraram ao quebrar todo
+        # projeto recém-scaffoldado.
+        quer_legenda = bool((data.get("captions") or {}).get("enabled"))
+        captions = self.public / "captions.json"
+        if quer_legenda and captions.is_file():
+            import caption_edit
+            try:
+                cues = caption_edit.load(captions)
+            except caption_edit.CaptionError as exc:
+                raise Phase2Error(str(exc)) from exc
+            limite = int(float(data["durationSec"]) * 1000)
+            erros = caption_edit.validate(cues, duration_ms=limite)
+            if erros:
+                raise Phase2Error("legenda inválida: " + "; ".join(erros[:3])
+                                  + (f" (e mais {len(erros) - 3})" if len(erros) > 3 else ""))
         missing = []
         for raw in self._collect_assets(data):
             if Path(raw).is_absolute() or ".." in Path(raw).parts:
