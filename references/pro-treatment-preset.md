@@ -52,4 +52,9 @@ Os nomes dos comandos representam intenção de edição, não percentuais matem
 
 ## Claude / Edvid
 
-Esta referência faz parte do comportamento do Edvid. Quando o usuário escrever exatamente `/deblur /skinpro /relight /colorgrade /enhance`, interpretar automaticamente como o preset PRO acima, detectando se a entrada é foto ou vídeo e aplicando as regras correspondentes.
+Esta referência faz parte do comportamento do Edvid. Quando o usuário escrever
+`videopro` — sozinho ou dentro de um pedido de edição — interpretar
+automaticamente como o preset PRO acima. A sequência completa
+`/deblur /skinpro /relight /colorgrade /enhance` continua sendo um atalho
+equivalente. Detectar se a entrada é foto ou vídeo e aplicar as regras
+correspondentes.
