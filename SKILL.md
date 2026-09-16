@@ -828,6 +828,23 @@ If the resulting grade is applied on top of an existing LOG/detect_color grade
 (e.g. after `detect_color.py` already picked something), chain them with a
 comma rather than replacing — same as any manual nudge on top of an auto-pick.
 
+### Preset VideoPro Original
+
+`grade.py` expõe `videopro_original` como acabamento técnico permanente para
+fontes Rec.709 já interpretadas corretamente. Ele combina, em intensidade
+conservadora: redução de ruído (`enhance`), suavização seletiva por contraste
+baixo (`skinpro`), curva leve de meios-tons (`relight`), correção neutra de cor
+(`colorgrade`) e nitidez de baixa amplitude (`deblur`). Não é LUT criativa,
+embelezamento facial com detecção de rosto nem reconstrução generativa.
+
+Use `grade: "videopro_original"` no EDL ou `grade.py --preset
+videopro_original`. Para a promessa de resolução excelente, preserve a
+resolução nativa com `keep_resolution`; o preset não faz upscale nem inventa
+detalhe ausente. Antes do gate, renderize a montagem de candidatos e confira
+rosto, cabelo, texto, bordas contrastadas, ruído e highlights. Se aparecer pele
+plástica ou halo, recue — o original sempre tem prioridade sobre a intensidade
+do efeito.
+
 **Portrait-mode transport overflow (fixed 2026-08-15):** moving the image
 panel into `#editorCol` narrowed the column (~316px in portrait, player takes
 the rest). The `.transport` bar (play/mute, times, mark button, the 130px

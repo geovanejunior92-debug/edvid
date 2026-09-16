@@ -127,6 +127,24 @@ PRESETS: dict[str, str] = {
         "noise=alls=2:allf=t+u"
     ),
 
+    # VideoPro Original (2026-09-15) — acabamento técnico, não um "look".
+    # A cadeia conserva a identidade da fonte e combina cinco cuidados leves:
+    #   enhance/colorgrade: limpeza de ruído + contraste/cor quase neutros;
+    #   skinpro: smartblur age sobretudo em áreas de baixo contraste, com força
+    #            pequena para não plastificar pele, cabelo ou textura fina;
+    #   relight: curva suave abre meios-tons e segura os extremos;
+    #   deblur: nitidez de baixa amplitude, abaixo da faixa que cria halos.
+    # Nenhuma etapa inventa resolução. Para preservar 4K/original, o chamador
+    # precisa renderizar com keep_resolution; o preset só melhora os pixels que
+    # realmente existem na fonte.
+    "videopro_original": (
+        "hqdn3d=0.80:0.60:2.40:1.80,"
+        "smartblur=1.0:0.12:18,"
+        "eq=contrast=1.025:brightness=0.004:saturation=0.985:gamma=1.015:gamma_weight=0.82,"
+        "curves=master='0/0.008 0.22/0.235 0.50/0.515 0.82/0.825 1/0.992',"
+        "unsharp=5:5:0.30:3:3:0.10"
+    ),
+
     # Flat — no grade. Useful as a sentinel for "skip grading this source".
     "none": "",
 }
