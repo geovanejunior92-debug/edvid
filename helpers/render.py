@@ -250,6 +250,33 @@ def shortform_target_fps(video: Path) -> str:
     return "30" if source_fps(video) >= 29.5 else "24"
 
 
+# Taxas padrão: a saída nativa trava a taxa da fonte num valor exato (CFR). O
+# iPhone grava VFR em torno de 60; concat e J-cut precisam de quadros regulares.
+_STANDARD_RATES = [(23.976, "24000/1001"), (24.0, "24"), (25.0, "25"),
+                   (29.97, "30000/1001"), (30.0, "30"), (50.0, "50"),
+                   (59.94, "60000/1001"), (60.0, "60")]
+
+
+# fps nativo (60 continua 60) só no longform (--keep-resolution) ou com
+# --native-fps. O template Remotion do short-form tem ~70 animações contadas em
+# quadros e calibradas para 24/30fps: a 60 todas correriam no dobro da
+# velocidade. Resolução nativa vale sempre; fps nativo no short-form só depois
+# de o template virar independente de fps.
+NATIVE_FPS = False
+
+
+def native_fps_rate(video: Path) -> str:
+    """Taxa nativa da fonte para ffmpeg `-r`, arredondada à taxa padrão mais próxima.
+
+    Regra de 2026-09-22 (iPhone 18 Pro Max, 4K60): o render nativo preserva
+    resolução E fps da fonte. 60 continua 60.
+    """
+    fps = source_fps(video)
+    if fps <= 0:
+        return "30"
+    return min(_STANDARD_RATES, key=lambda r: abs(r[0] - fps))[1]
+
+
 # -------- Per-segment extraction (Rule 2 + Rule 3) --------------------------
 
 
@@ -291,8 +318,8 @@ def extract_segment(
       - final (default): 1080p libx264 fast CRF 20
       - preview:         1080p libx264 medium CRF 22 (evaluable for QC)
       - draft:           720p libx264 ultrafast CRF 28 (cut-point check only)
-      - keep_resolution: source resolution + source fps (LONGFORM / 16:9 YouTube).
-        Skips scaling and does not force 24 fps. Draft/preview still down-scale.
+      - keep_resolution: resolução da fonte (PADRÃO desde 2026-09-22: 4K do
+        iPhone sai 4K, CRF 18). fps segue NATIVE_FPS. Draft still down-scales.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -373,7 +400,7 @@ def extract_segment(
     if abs(speed - 1.0) > 1e-3:
         speed_vf.append(f"setpts=PTS/{speed:.4f}")
         if speed < 1.0:
-            fps_out = shortform_target_fps(source) if not keep_resolution else f"{source_fps(source):.3f}"
+            fps_out = native_fps_rate(source) if NATIVE_FPS else shortform_target_fps(source)
             speed_vf.append(f"minterpolate=fps={fps_out}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
         rate = speed
         while rate < 0.5:   # atempo aceita 0.5–100 por estágio
@@ -399,6 +426,8 @@ def extract_segment(
         preset, crf = "ultrafast", "28"
     elif preview:
         preset, crf = "medium", "22"
+    elif keep_resolution:
+        preset, crf = "fast", "18"  # nativo: a resolução é a prioridade
     else:
         preset, crf = "fast", "20"
     # Encoder de hardware do Mac (VideoToolbox) para preview/draft: a mesma
@@ -440,9 +469,13 @@ def extract_segment(
         # (Chrome/Remotion in Phase 2) silently re-interpret the graded image.
         cmd += ["-colorspace", "bt709", "-color_primaries", "bt709",
                 "-color_trc", "bt709", "-color_range", "tv"]
-        if not keep_resolution:
+        if NATIVE_FPS:
+            # nativo: mesma taxa da fonte, mas constante (VFR quebra concat/J-cut)
+            cmd += ["-r", native_fps_rate(source)]
+        else:
             # short-form fps: 30 if the source is 30fps+ (natural motion, matches
-            # IG/TikTok/Shorts capture), else the 24 standard; longform keeps source.
+            # IG/TikTok/Shorts capture, and the Remotion template's frame timings),
+            # else the 24 standard.
             cmd += ["-r", shortform_target_fps(source)]
     else:
         cmd += ["-vn"]
@@ -1315,6 +1348,19 @@ def build_final_composite(
 PREMIUM_EXPORT_BITRATE = "16M"  # midpoint of the brief's 14-18 Mbps VBR range
 PREMIUM_EXPORT_MAXRATE = "18M"
 PREMIUM_EXPORT_BUFSIZE = "32M"
+# 2026-09-22: a entrega segue a resolução/fps do arquivo, nunca reduz. Acima de
+# 1080p a taxa sobe na proporção dos pixels (4K ≈ 4× 1080p → 45–55 Mbps HEVC),
+# senão o 4K sairia com bitrate de 1080p e perderia o detalhe que justifica o 4K.
+PREMIUM_EXPORT_4K = ("45M", "55M", "90M")
+
+
+def _video_dims(video: Path) -> tuple[int, int]:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0", str(video)],
+        capture_output=True, text=True, check=True)
+    w, h = out.stdout.strip().split(",")[:2]
+    return int(w), int(h)
 
 
 def _aac_encoder_args(bitrate: str) -> list[str]:
@@ -1341,30 +1387,36 @@ def _aac_encoder_args(bitrate: str) -> list[str]:
 def export_premium(input_path: Path, output_path: Path) -> None:
     """2-pass H.265 export matching the "premium editorial" tech spec.
 
-    Video: 1080x1920, 30fps constant, HEVC main profile, 14-18 Mbps VBR 2-pass.
+    Video: resolução e fps do próprio arquivo (constante), HEVC main profile,
+    14-18 Mbps VBR 2-pass em 1080p; 45-55 Mbps acima disso (4K).
     Audio: AAC 320kbps, 48kHz (re-encoded even if the source was already AAC,
     so the bitrate/rate match exactly — cheap relative to the video pass).
     """
     log_dir = output_path.parent
     passlog = str(log_dir / f".{output_path.stem}_2pass")
+    w, h = _video_dims(input_path)
+    if w * h > 1080 * 1920 * 1.5:
+        bitrate, maxrate, bufsize = PREMIUM_EXPORT_4K
+    else:
+        bitrate, maxrate, bufsize = (PREMIUM_EXPORT_BITRATE, PREMIUM_EXPORT_MAXRATE,
+                                     PREMIUM_EXPORT_BUFSIZE)
     common_v = [
         "-c:v", "libx265", "-preset", "slow", "-profile:v", "main",
-        "-b:v", PREMIUM_EXPORT_BITRATE,
-        "-maxrate", PREMIUM_EXPORT_MAXRATE, "-bufsize", PREMIUM_EXPORT_BUFSIZE,
-        "-r", "30", "-vf", "scale=1080:1920:flags=lanczos",
+        "-b:v", bitrate, "-maxrate", maxrate, "-bufsize", bufsize,
+        "-r", native_fps_rate(input_path),
         "-pix_fmt", "yuv420p",
         "-colorspace", "bt709", "-color_primaries", "bt709",
         "-color_trc", "bt709", "-color_range", "tv",
         "-tag:v", "hvc1",
     ]
-    print(f"  premium export pass 1/2 (HEVC {PREMIUM_EXPORT_BITRATE}, analysis) …")
+    print(f"  premium export pass 1/2 ({w}x{h} HEVC {bitrate}, analysis) …")
     subprocess.run(
         ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(input_path),
          *common_v, "-x265-params", f"log-level=error:pass=1:stats={passlog}.log",
          "-an", "-f", "mp4", "/dev/null"],
         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
     )
-    print(f"  premium export pass 2/2 (HEVC {PREMIUM_EXPORT_BITRATE}, final) → {output_path.name}")
+    print(f"  premium export pass 2/2 ({w}x{h} HEVC {bitrate}, final) → {output_path.name}")
     subprocess.run(
         ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(input_path),
          *common_v, "-x265-params", f"log-level=error:pass=2:stats={passlog}.log",
@@ -1440,8 +1492,20 @@ def main() -> None:
     ap.add_argument(
         "--keep-resolution",
         action="store_true",
-        help="LONGFORM (16:9 YouTube): keep the source resolution and fps instead of "
-             "forcing 1080p @ 24. Grade/voice-master/loudnorm still apply.",
+        help="LONGFORM (16:9 YouTube): além da resolução nativa (já padrão desde "
+             "2026-09-22), mantém o fps da fonte (60 continua 60).",
+    )
+    ap.add_argument(
+        "--native-fps",
+        action="store_true",
+        help="Mantém o fps da fonte também no short-form. Só com Fase 2 que não "
+             "use o template Remotion (animações calibradas em 24/30fps).",
+    )
+    ap.add_argument(
+        "--delivery-1080",
+        action="store_true",
+        help="Modo antigo, só se o usuário pedir: reduz para 1080p. O padrão "
+             "preserva a resolução da fonte (4K sai 4K).",
     )
     ap.add_argument(
         "--jobs",
@@ -1453,8 +1517,8 @@ def main() -> None:
         "--export-premium",
         action="store_true",
         help='Re-encode the finished output to the "premium editorial" delivery '
-             "spec as a final pass: 1080x1920, 30fps constant, HEVC main "
-             "profile, 14-18 Mbps VBR 2-pass, AAC 320kbps/48kHz, tagged hvc1 "
+             "spec as a final pass: source resolution/fps (constant), HEVC main "
+             "profile, 16 Mbps at 1080p / 45 Mbps at 4K VBR 2-pass, AAC 320kbps/48kHz, tagged hvc1 "
              "for QuickTime/iOS. Written alongside the normal output as "
              "<name>.premium.mp4 — the H.264 file is not replaced.",
     )
@@ -1480,6 +1544,10 @@ def main() -> None:
              f"{JCUT_TAIL_TRIM_FRAMES}). Capped by the silence actually there.",
     )
     args = ap.parse_args()
+    # Resolução/fps nativos são o padrão (4K60 do iPhone sai 4K60); 1080 só a pedido.
+    keep_res = not args.delivery_1080
+    global NATIVE_FPS
+    NATIVE_FPS = bool(args.keep_resolution or args.native_fps)
 
     global HW_ENCODE, HW_FINAL
     if args.no_hw:
@@ -1500,7 +1568,12 @@ def main() -> None:
         # preview timeline and segments.json must all describe the same cut as the
         # rendered file, or anything that has to land on a cut lands beside it.
         first_src = next(iter(edl.get("sources", {}).values()), None)
-        target_fps = int(shortform_target_fps(Path(first_src))) if (first_src and not args.keep_resolution) else 30
+        if not first_src:
+            target_fps = 30
+        elif NATIVE_FPS:
+            target_fps = round(source_fps(Path(first_src))) or 30
+        else:
+            target_fps = int(shortform_target_fps(Path(first_src)))
         snapped = snap_ranges_to_frames(edl, target_fps)
         if snapped:
             edl["total_duration_s"] = round(sum(r["end"] - r["start"] for r in edl["ranges"]), 3)
@@ -1534,7 +1607,7 @@ def main() -> None:
             # 1+2. Picture and sound extracted from different ranges, then overlapped.
             plan = extract_and_assemble_jcut(
                 edl, edit_dir, jcut, preview=args.preview, draft=args.draft,
-                keep_resolution=args.keep_resolution, jobs=args.jobs,
+                keep_resolution=keep_res, jobs=args.jobs,
                 base_path=base_path, audio_clean=audio_clean, stabilize=stabilize,
             )
             # Persist the real output timeline: everything downstream (preview
@@ -1557,7 +1630,7 @@ def main() -> None:
             # 1. Extract per-segment (auto-grade per range if EDL grade is "auto")
             segment_paths = extract_all_segments(
                 edl, edit_dir, preview=args.preview, draft=args.draft,
-                keep_resolution=args.keep_resolution, jobs=args.jobs,
+                keep_resolution=keep_res, jobs=args.jobs,
                 audio_clean=audio_clean, stabilize=stabilize,
             )
             # 2. Concat → base

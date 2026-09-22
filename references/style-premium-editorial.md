@@ -58,7 +58,7 @@ any of the three opt-in pieces.
 | Script accent font | Alex Brush, loaded in `CustomGraphics.tsx` and the preview app |
 | Voice mastering | `helpers/render.py` → `PREMIUM_VOICE_MASTER_CHAIN`, `--voice-master premium` — **built, but not used by default for this user, see Audio section** |
 | Loudness target | `helpers/render.py` → `PREMIUM_LOUDNORM_I/TP` (-16 LUFS / -3 dBTP), same flag |
-| Final delivery encode | `helpers/render.py` → `export_premium()`, `--export-premium` (HEVC 14-18Mbps 2-pass, 30fps constant, AAC 320k) |
+| Final delivery encode | `helpers/render.py` → `export_premium()`, `--export-premium` (HEVC 2-pass na resolução/fps do arquivo: 16 Mbps em 1080p, 45 Mbps em 4K; AAC 320k) |
 
 Everything below this line is EDITORIAL JUDGMENT — decisions to make while
 cutting, not something a script enforces for you.
@@ -244,7 +244,8 @@ video, ask rather than silently picking one.
 
 ## Technical delivery spec
 
-1080×1920, 30fps constant, HEVC main profile, 14-18 Mbps VBR 2-pass, AAC
+Resolução e fps do próprio arquivo, constantes (4K sai 4K — regra de 2026-09-22),
+HEVC main profile, VBR 2-pass a 16 Mbps em 1080p ou 45 Mbps (máx. 55) em 4K, AAC
 320kbps/48kHz, `hvc1` tag (QuickTime/iOS compatibility) — `export_premium()`
 in `render.py` does this as a final transcode pass, run after the normal
 pipeline, output alongside the H.264 file as `<name>.premium.mp4`. No

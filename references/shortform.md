@@ -10,7 +10,11 @@ approved. Everything here rides on the **data-driven template** at
   motion, matches Instagram/TikTok/Shorts capture); only slower sources use 24.
   `render.py` picks this automatically for `cut.mp4` — then set `edit-data.json`
   `fps` to the SAME value as `cut.mp4` (ffprobe it) so the Remotion render matches.
-- **Base:** 1080×1920 (fps per the rule above), `<OffthreadVideo src=cut.mp4>` with the **dynamic
+- **Resolução (2026-09-22, obrigatório):** o `cut.mp4` sai na resolução da fonte
+  (4K do iPhone = 2160×3840). O `edit-data.json` continua com `width: 1080,
+  height: 1920` (o layout do template é desenhado nessa grade) e o render usa
+  `--scale 2` para sair em 4K. O Studio calcula o fator sozinho.
+- **Base:** 1080×1920 layout (fps per the rule above), `<OffthreadVideo src=cut.mp4>` with the **dynamic
   camera**: hard zoom per cut segment (`zoomCuts`, ~1.10–1.22, cycles), slow
   push-in (`zoomAuto`, +0.04/segment), clamped eye-tracking (`tracking`, target
   upper third, never reveals an edge). **`zoomCuts` and `zoomAuto` are FIXED —
@@ -171,7 +175,7 @@ question is settled.
 4. **Verify with stills, batched:** `npx remotion still Reels --frame=<n> f.png`
    for the hook still (user approval), then ONE contact sheet for spot checks:
    `contact_sheet.py <render> --times t1 t2 t3 -o sheet.png` — one image, not N.
-5. **Render:** `npx remotion render Reels out/render.mp4`, then loudnorm →
+5. **Render:** `npx remotion render Reels out/render.mp4 --scale <k> --jpeg-quality 95 --crf 16`, onde `k` = largura do `cut.mp4` ÷ `width` do edit-data (4K = 2; 1080 = omita `--scale`), then loudnorm →
    `edit/final.mp4` (see Phase 3).
 
 Never edit `src/Main.tsx`. Bespoke graphics go in `src/CustomGraphics.tsx`

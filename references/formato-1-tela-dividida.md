@@ -24,7 +24,7 @@ Os valores fixos estão lá; o que segue é o porquê e o que varia.
 
 | Camada | Valor fixo | Varia por vídeo |
 |---|---|---|
-| Base | 1080×1920, 30fps, câmera `zooms [1.14,1.2,1.12,1.22]`, `pushIn 0.04` | `durationSec` |
+| Base | layout 1080×1920 renderizado na resolução do `cut.mp4` (4K = `--scale 2`), 30fps, câmera `zooms [1.14,1.2,1.12,1.22]`, `pushIn 0.04` | `durationSec` |
 | Capa | `hookStacked`: entra em `offsetY 0.30`, desliza para `0.155` (1,0s→1,9s), some em **4,0s**; branco com a palavra-chave em **`#3b82f6`**; tamanhos 112/66/112/92 | as 4 linhas |
 | Logo | `brand/logo-transparente.png`, centralizada na **borda inferior**, `width 520`, `bottom 120`, até **4,0s** | — |
 | Legenda | `stacked`, `stackedOffsetY 0.30`, `fontScale 0.92`, `accent` e `pencilColor` **`#3b82f6`** | — |

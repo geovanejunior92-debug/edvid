@@ -76,6 +76,19 @@ ASSET_LIST_FIELDS = {
 LIST_FIELDS = tuple(ASSET_LIST_FIELDS) + ("graphics", "titleCards")
 
 
+def render_scale(layout_w: int, layout_h: int, cut_w: int, cut_h: int) -> int | None:
+    """Fator inteiro entre o layout do edit-data e o cut.mp4 (1 = mesmo tamanho).
+
+    O template é desenhado em 1080×1920; um corte nativo 4K (2160×3840) renderiza
+    com --scale 2. None quando não é múltiplo inteiro exato: aí a Fase 2 sairia
+    esticada ou fora de posição.
+    """
+    if layout_w <= 0 or layout_h <= 0 or cut_w % layout_w or cut_h % layout_h:
+        return None
+    k = cut_w // layout_w
+    return k if k >= 1 and cut_h // layout_h == k else None
+
+
 class Phase2Error(RuntimeError):
     pass
 
@@ -287,10 +300,10 @@ class StudioPhase2:
             raise Phase2Error(
                 f"fps do edit-data ({data['fps']}) não bate com o cut.mp4 ({info['fps']}) — "
                 "a Fase 2 inteira sai fora de sincronia")
-        if width != info["width"] or height != info["height"]:
+        if render_scale(width, height, info["width"], info["height"]) is None:
             raise Phase2Error(
                 f"dimensões do edit-data ({data['width']}x{data['height']}) não batem com o "
-                f"cut.mp4 ({info['width']}x{info['height']})")
+                f"cut.mp4 ({info['width']}x{info['height']}) nem como múltiplo inteiro dele")
         if duration <= 0:
             raise Phase2Error("durationSec precisa ser maior que zero")
         outro = data.get("outro") or {}
@@ -411,9 +424,24 @@ class StudioPhase2:
         return {"ok": True, "action": "approve", **approval}
 
     # ---- render ----
-    def build_render_command(self, output: Path) -> list[str]:
-        return ["npx", "--no-install", "remotion", "render", COMPOSITION, str(output),
-                "--log", "error"]
+    def build_render_command(self, output: Path, scale: int = 1) -> list[str]:
+        # Qualidade primeiro (regra de 2026-09-22): quadros JPEG a 95 em vez do
+        # padrão 80 do Remotion e CRF 16. Com o corte em 4K, --scale 2 desenha o
+        # layout de 1080×1920 em 2160×3840 e o vídeo entra na resolução inteira.
+        cmd = ["npx", "--no-install", "remotion", "render", COMPOSITION, str(output),
+               "--log", "error", "--jpeg-quality", "95", "--crf", "16"]
+        if scale > 1:
+            cmd += ["--scale", str(scale)]
+        return cmd
+
+    def _render_scale(self) -> int:
+        try:
+            data = json.loads((self.public / "edit-data.json").read_text())
+            info = self._cut_info()
+            return render_scale(int(data["width"]), int(data["height"]),
+                                info["width"], info["height"]) or 1
+        except Exception:  # noqa: BLE001 — sem escala o render sai no tamanho do layout
+            return 1
 
     def _gate(self, argv: list[str], label: str) -> None:
         run = self.runner(argv, capture_output=True, text=True)
@@ -439,7 +467,8 @@ class StudioPhase2:
         staged = self.edit / f".final-phase2-r{revision}-{data_hash[:12]}.mp4"
         staged.unlink(missing_ok=True)
         try:
-            run = self.runner(self.build_render_command(staged), cwd=str(self.remotion),
+            run = self.runner(self.build_render_command(staged, self._render_scale()),
+                              cwd=str(self.remotion),
                               capture_output=True, text=True)
             if getattr(run, "returncode", 1) != 0:
                 detail = (getattr(run, "stderr", "") or "")[:600]
