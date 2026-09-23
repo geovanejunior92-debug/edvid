@@ -177,3 +177,24 @@ ampliado pelo `fit: cover` e perde largura, com perda de nitidez. Recorte a font
 fonte de close o valor antigo põe as linhas em cima dos olhos e da boca. Ele pediu
 a correção **para todas as edições**. Não descer abaixo de ~0,06: mais alto encosta
 na barra superior do Reels.
+
+## Três correções dele em 2026-09-23 (Vídeo 06)
+
+- **A costura cruza o TERÇO SUPERIOR da cabeça, pegando só parte do cabelo.**
+  *"A divisão está abaixo da minha orelha; essa linha deve ficar no terço
+  superior da minha cabeça."* A "fração 0,40" do `seam_check.py` é medida a
+  partir da caixa do DETECTOR DE ROSTO, que começa na testa e ignora o cabelo.
+  Numa fonte em plano médio isso pôs a costura a 52–59% da cabeça real, nos
+  olhos. Meça o topo do cabelo pelo alfa da máscara (`person_matte.py`, primeiro
+  quadro da janela) e use `focusY = topo + 0,13 × (queixo − topo)`. A costura
+  cai em source-y = focusY, qualquer que seja o zoom ou o bandH.
+- **Legenda stacked não se move com `captions.windows`.** Quando a pessoa desce
+  no quadro, a legenda cai na boca. Ajuste por janela: `bandH` 700 e
+  `zoomPulse` para o queixo ficar em ~1330 e a base do vídeo cobrir até 1920
+  (`z ≥ 1220 / (1920 − focusY)`, com zoom-base ~1,3 do SplitFrame).
+- **Sem trilha com batida marcada.** A `trilha.mp3` reaproveitada dos projetos
+  anteriores tem chimbal a 130 bpm e virou um "tic tic tic" embaixo da fala.
+  Sem uma trilha ambiente, `soundtrack.enabled: false`; os SFX com par visual
+  continuam.
+- **Cor da fonte intacta.** Ele pediu o vídeo "sem LUT (alteração de cor)":
+  `grade` vazio no EDL, sem `skin_protect`. Cor só quando ele pedir.

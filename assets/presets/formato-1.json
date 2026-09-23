@@ -99,7 +99,8 @@
       1.04
     ],
     "_regra": "bandH 508 + SEAM_BLEND 100 = 608 = altura natural de um 16:9 em 1080 de largura. É isso que faz a costura ser a borda inferior do próprio clipe, sem sombra. Mexer em bandH obriga a recalcular focusY.",
-    "_primeira_janela": "nunca antes de 4s — só depois que a capa some"
+    "_primeira_janela": "nunca antes de 4s — só depois que a capa some",
+    "_focusY_2026-09-23": "focusY = topo do cabelo (alfa da máscara) + 0,13 × (queixo − topo): a costura cruza o terço superior da cabeça, pegando só parte do cabelo. NÃO usar a fração do detector de rosto."
   },
   "splitInserts": "PREENCHER",
   "transitions": "PREENCHER — {at: start, variant: 'corte'} em cada janela + {at: end, variant: 'saida', intensity: 0.85} onde a faixa realmente sai (janelas coladas não levam saída entre elas)",
@@ -110,7 +111,8 @@
     "enabled": true,
     "file": "trilha.mp3",
     "volume": 0.07,
-    "_regra": "trilha.mp3 PRECISA existir em public/ — o render morre com 404 se enabled:true e o arquivo faltar. Sem trilha nova, reusar a do projeto anterior do canal ou pôr enabled:false."
+    "_regra": "trilha.mp3 PRECISA existir em public/ — o render morre com 404 se enabled:true e o arquivo faltar. Sem trilha nova, reusar a do projeto anterior do canal ou pôr enabled:false.",
+    "_regra_2026-09-23": "nunca a trilha de 130 bpm com chimbal (soa tic tic tic); sem trilha ambiente, enabled:false"
   },
   "outro": {
     "enabled": true,
