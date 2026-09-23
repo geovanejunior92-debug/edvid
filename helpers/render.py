@@ -477,6 +477,15 @@ def extract_segment(
             # IG/TikTok/Shorts capture, and the Remotion template's frame timings),
             # else the 24 standard.
             cmd += ["-r", shortform_target_fps(source)]
+        # Quadros EXATOS (2026-09-22). Numa fonte VFR (iPhone reexportado pelo
+        # CapCut, ~59,98 fps) o `-r` de saída arredonda as bordas e cada segmento
+        # saía com 2 quadros a mais. O J-cut posiciona o som pela duração
+        # PLANEJADA e a imagem pela REAL, então o erro somava a cada emenda:
+        # medido +0,9 s de som adiantado no fim de um corte de 17 takes.
+        rate = native_fps_rate(source) if NATIVE_FPS else shortform_target_fps(source)
+        num, _, den = rate.partition("/")
+        fps_val = float(num) / float(den or 1)
+        cmd += ["-frames:v", str(max(1, round(out_duration * fps_val)))]
     else:
         cmd += ["-vn"]
 
