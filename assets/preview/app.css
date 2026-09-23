@@ -1578,3 +1578,35 @@ body.embedded-studio>main{padding:8px;gap:8px}
 .seam-panel input[type=range] { flex: 1 1 120px; min-width: 0; }
 .seam-panel .seam-actions { justify-content: flex-end; }
 .seam-note { display: block; color: var(--dim, #9aa4b2); font-size: 12px; line-height: 1.45; padding-top: 4px; }
+
+/* Gavetas dentro da barra lateral "workspace-tools" (2026-09-23). A regra de
+   gaveta aberta acima (flex 1 1 auto + min-height 0) foi feita para a coluna
+   do editor, que não rola. Na barra lateral, que tem rolagem própria, ela
+   espremia "Imagem e filtros" em 29px com 823px de conteúdo, e o conteúdo
+   vazava POR CIMA de "Vídeos e conversa" (visto pelo usuário). Aqui a gaveta
+   ocupa a altura natural e empurra o resto para baixo; quem rola é a barra. */
+.workspace-tools > .img-adjust-panel,
+.workspace-tools > .diag-panel,
+body.drawer-open .workspace-tools > .img-adjust-panel:has(.drawer-body:not(.hidden)),
+body.drawer-open .workspace-tools > .diag-panel:has(.diag-body:not(.hidden)) {
+  flex: 0 0 auto; min-height: auto; overflow: visible;
+}
+body.drawer-open .workspace-tools .drawer-body,
+body.drawer-open .workspace-tools .diag-body,
+.workspace-tools .img-adjust-panel .drawer-body { max-height: none; overflow: visible; flex: 0 0 auto; }
+/* Mesma causa, outro sintoma: as regras de "gaveta aberta" (.player-wrap com
+   altura fixa no retrato e 26vh na paisagem) só fazem sentido quando a gaveta
+   divide a coluna do editor. Com a gaveta aberta na BARRA LATERAL, elas faziam
+   o player ocupar a coluna inteira e empurravam transporte e timeline para
+   fora da tela (medido: timeline em y=1062 numa janela de 954px). */
+body.drawer-open:has(.workspace-tools .drawer-body:not(.hidden)) .player-wrap {
+  flex: 1 1 auto; height: auto; min-height: 0;
+}
+body.drawer-open:has(.workspace-tools .drawer-body:not(.hidden)) .editor-col { flex: 0 0 auto; }
+/* Na barra lateral o cabeçalho da gaveta é estreito: o título quebrava em
+   duas linhas espremido pelo resumo e pelo Redefinir. Título numa linha só;
+   o resumo desce para a linha de baixo se não couber. */
+.workspace-tools .img-adjust-panel .group-head { flex-wrap: wrap; row-gap: 4px; }
+.workspace-tools .img-adjust-panel .drawer-toggle .group-title { white-space: nowrap; }
+.workspace-tools .img-adjust-panel #imgReset { margin-left: auto; }
+.workspace-tools .img-adjust-panel .drawer-hint { order: 3; flex-basis: 100%; margin-left: 22px; }

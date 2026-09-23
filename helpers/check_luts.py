@@ -222,8 +222,20 @@ def main() -> None:
             print(f"[5] servidas pelo preview: pulado (servidor nao respondeu em {base}: {e})")
         else:
             bad = 0
+            # Com --library, cada projeto é servido em /p/<id>/ e a raiz é o
+            # projeto padrão do servidor: consultar /media/ direto testava o
+            # projeto ERRADO e dava 404 em tudo (2026-09-23).
+            prefix = ""
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+                from preview_library import project_key
+                key = project_key(Path(args.edit_dir))
+                urllib.request.urlopen(f"{base}/p/{key}/api/state", timeout=3).read()
+                prefix = f"/p/{key}"
+            except Exception:  # noqa: BLE001 — servidor sem biblioteca: raiz
+                prefix = ""
             for i in expected:
-                url = f"{base}/media/.preview_cache/luts/{i}.jpg"
+                url = f"{base}{prefix}/media/.preview_cache/luts/{i}.jpg"
                 # GET, not HEAD: preview_server.py implements do_GET only and
                 # answers HEAD with 501. GET is also the stronger claim — it
                 # proves the bytes actually come out, not just that a route
