@@ -39,8 +39,8 @@ If the user asks to START a short-form edit in Premiere (no sequence yet), creat
 the sequence with these defaults:
 
 - **Resolution 1080×1920** (vertical 9:16).
-- **Frame rate 30 fps** when the source is ≥30 fps (else 24) — mirrors the Edvid
-  short-form fps rule.
+- **Frame rate = the source's** (iPhone 4K60 → 60) — mirrors the Edvid rule
+  since 2026-09-22 (30/24 only if the user asks).
 - **Maximum Bit Depth: ON** and **Maximum Render Quality: ON** — always check both
   in the sequence settings (`set_sequence_settings` / at creation).
 - **Scale for the source→sequence ratio:** a **4K source in the 1080 sequence →

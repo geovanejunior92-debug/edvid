@@ -257,12 +257,11 @@ _STANDARD_RATES = [(23.976, "24000/1001"), (24.0, "24"), (25.0, "25"),
                    (59.94, "60000/1001"), (60.0, "60")]
 
 
-# fps nativo (60 continua 60) só no longform (--keep-resolution) ou com
-# --native-fps. O template Remotion do short-form tem ~70 animações contadas em
-# quadros e calibradas para 24/30fps: a 60 todas correriam no dobro da
-# velocidade. Resolução nativa vale sempre; fps nativo no short-form só depois
-# de o template virar independente de fps.
-NATIVE_FPS = False
+# fps nativo é o padrão em tudo, short-form incluído (60 continua 60), desde
+# que o template Remotion ficou independente de fps (2026-09-22: as durações
+# contadas em quadros passam por F(), ver assets/shortform/src/fps.ts).
+# `--shortform-fps` volta ao modo antigo (30 para fonte 30fps+, senão 24).
+NATIVE_FPS = True
 
 
 def native_fps_rate(video: Path) -> str:
@@ -473,9 +472,8 @@ def extract_segment(
             # nativo: mesma taxa da fonte, mas constante (VFR quebra concat/J-cut)
             cmd += ["-r", native_fps_rate(source)]
         else:
-            # short-form fps: 30 if the source is 30fps+ (natural motion, matches
-            # IG/TikTok/Shorts capture, and the Remotion template's frame timings),
-            # else the 24 standard.
+            # --shortform-fps (modo antigo, só a pedido): 30 se a fonte for 30fps+,
+            # senão o padrão 24.
             cmd += ["-r", shortform_target_fps(source)]
         # Quadros EXATOS (2026-09-22). Numa fonte VFR (iPhone reexportado pelo
         # CapCut, ~59,98 fps) o `-r` de saída arredonda as bordas e cada segmento
@@ -740,8 +738,15 @@ def concat_segments(segment_paths: list[Path], out_path: Path, edit_dir: Path) -
 # would eventually decapitate a word on footage whose take ends tight — so the trim
 # is capped by the silence actually present at the end of that range, keeping 10ms.
 
+# Contados a 30fps (e usados literalmente a 24/30). Acima de 30 são convertidos
+# pelo tempo: a 60fps o lead padrão vira 10 quadros, os mesmos ~167ms. Um valor
+# explícito no EDL ou na linha de comando é usado como está, em quadros reais.
 JCUT_LEAD_FRAMES = 5
 JCUT_TAIL_TRIM_FRAMES = 2
+
+
+def _frames_at(n: int, fps: float) -> int:
+    return n if fps <= 30 else round(n * fps / 30)
 
 
 def jcut_settings(edl: dict, fps: int) -> dict | None:
@@ -757,8 +762,8 @@ def jcut_settings(edl: dict, fps: int) -> dict | None:
     if not isinstance(cfg, dict):
         cfg = {}
     return {
-        "lead_frames": max(0, int(cfg.get("lead_frames", JCUT_LEAD_FRAMES))),
-        "tail_trim_frames": max(0, int(cfg.get("tail_trim_frames", JCUT_TAIL_TRIM_FRAMES))),
+        "lead_frames": max(0, int(cfg.get("lead_frames", _frames_at(JCUT_LEAD_FRAMES, fps)))),
+        "tail_trim_frames": max(0, int(cfg.get("tail_trim_frames", _frames_at(JCUT_TAIL_TRIM_FRAMES, fps)))),
         "fps": fps,
     }
 
@@ -1501,14 +1506,19 @@ def main() -> None:
     ap.add_argument(
         "--keep-resolution",
         action="store_true",
-        help="LONGFORM (16:9 YouTube): além da resolução nativa (já padrão desde "
-             "2026-09-22), mantém o fps da fonte (60 continua 60).",
+        help="LONGFORM (16:9 YouTube). Resolução e fps da fonte já são o padrão "
+             "desde 2026-09-22; a flag continua aceita por compatibilidade.",
     )
     ap.add_argument(
         "--native-fps",
         action="store_true",
-        help="Mantém o fps da fonte também no short-form. Só com Fase 2 que não "
-             "use o template Remotion (animações calibradas em 24/30fps).",
+        help="Sem efeito: o fps da fonte já é o padrão (60 continua 60). Aceita "
+             "por compatibilidade com comandos antigos.",
+    )
+    ap.add_argument(
+        "--shortform-fps",
+        action="store_true",
+        help="Modo antigo, só se o usuário pedir: 30fps para fonte 30fps+, senão 24.",
     )
     ap.add_argument(
         "--delivery-1080",
@@ -1543,20 +1553,22 @@ def main() -> None:
         "--jcut-lead",
         type=int,
         default=None,
-        help=f"Frames the audio leads the picture (default {JCUT_LEAD_FRAMES}).",
+        help=f"Frames the audio leads the picture (default {JCUT_LEAD_FRAMES} at "
+             "24/30fps, scaled to the same ~167ms above 30).",
     )
     ap.add_argument(
         "--jcut-tail-trim",
         type=int,
         default=None,
         help=f"Max frames trimmed off each outgoing take's tail (default "
-             f"{JCUT_TAIL_TRIM_FRAMES}). Capped by the silence actually there.",
+             f"{JCUT_TAIL_TRIM_FRAMES} at 24/30fps, scaled above 30). Capped by the "
+             "silence actually there.",
     )
     args = ap.parse_args()
     # Resolução/fps nativos são o padrão (4K60 do iPhone sai 4K60); 1080 só a pedido.
     keep_res = not args.delivery_1080
     global NATIVE_FPS
-    NATIVE_FPS = bool(args.keep_resolution or args.native_fps)
+    NATIVE_FPS = not args.shortform_fps
 
     global HW_ENCODE, HW_FINAL
     if args.no_hw:

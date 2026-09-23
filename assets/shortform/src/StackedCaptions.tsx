@@ -25,6 +25,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+import {useF} from './fps';
 import {loadFont as loadPoppins} from '@remotion/google-fonts/Poppins';
 import {loadFont as loadPlayfair} from '@remotion/google-fonts/PlayfairDisplay';
 import cues from '../public/caption-cues.json';
@@ -103,19 +104,20 @@ type CueData = {
 const Cue: React.FC<{cue: CueData; cueDurationFrames: number}> = ({cue, cueDurationFrames}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
+  const F = useF();
 
   const scale = (width / 1080) * FONT_SCALE;
   const avail = width - 180;
   const baseY = Math.round(height * OFFSET_Y);
 
-  const ENTER = Math.max(3, Math.min(8, Math.floor(cueDurationFrames * 0.45)));
-  const EXIT = Math.max(2, Math.min(7, Math.floor(cueDurationFrames * 0.35)));
+  const ENTER = Math.max(F(3), Math.min(F(8), Math.floor(cueDurationFrames * 0.45)));
+  const EXIT = Math.max(F(2), Math.min(F(7), Math.floor(cueDurationFrames * 0.35)));
   const lastLocalStart = Math.max(
     ...cue.lines.flat().map((w) => ((w.fromMs - cue.startMs) / 1000) * fps),
   );
   const exitStart = Math.max(
     cueDurationFrames - EXIT,
-    Math.min(lastLocalStart + ENTER, cueDurationFrames - 2),
+    Math.min(lastLocalStart + ENTER, cueDurationFrames - F(2)),
   );
   const exitProg = interpolate(frame, [exitStart, cueDurationFrames], [0, 1], {
     extrapolateLeft: 'clamp',
@@ -129,12 +131,12 @@ const Cue: React.FC<{cue: CueData; cueDurationFrames: number}> = ({cue, cueDurat
     cTranslateY = -55 * exitProg;
     cBlur = 14 * exitProg;
   } else {
-    cOpacity = frame >= cueDurationFrames - 2 ? 0 : 1;
+    cOpacity = frame >= cueDurationFrames - F(2) ? 0 : 1;
   }
 
   const wordAnim = (w: Word, strong: boolean) => {
     const localStart = ((w.fromMs - cue.startMs) / 1000) * fps;
-    const enter = Math.max(2, Math.min(ENTER, Math.floor(exitStart - localStart - 1)));
+    const enter = Math.max(F(2), Math.min(ENTER, Math.floor(exitStart - localStart - F(1))));
     const p = interpolate(frame, [localStart, localStart + enter], [0, 1], {
       extrapolateLeft: 'clamp',
       extrapolateRight: 'clamp',
@@ -229,9 +231,9 @@ const Cue: React.FC<{cue: CueData; cueDurationFrames: number}> = ({cue, cueDurat
   } else {
     const w = cue.lines[0][0];
     const a = wordAnim(w, false);
-    const oStart = a.localStart + 2;
-    const oEnd = Math.min(oStart + 10, exitStart - 1, cueDurationFrames - 2);
-    const outlineProg = interpolate(frame, [oStart, Math.max(oEnd, oStart + 3)], [0, 1], {
+    const oStart = a.localStart + F(2);
+    const oEnd = Math.min(oStart + F(10), exitStart - F(1), cueDurationFrames - F(2));
+    const outlineProg = interpolate(frame, [oStart, Math.max(oEnd, oStart + F(3))], [0, 1], {
       extrapolateLeft: 'clamp',
       extrapolateRight: 'clamp',
     });
@@ -270,13 +272,14 @@ const Cue: React.FC<{cue: CueData; cueDurationFrames: number}> = ({cue, cueDurat
 
 export const StackedCaptions: React.FC = () => {
   const {fps, durationInFrames} = useVideoConfig();
+  const F = useF();
   const CUES = cues as unknown as CueData[];
   return (
     <AbsoluteFill>
       {CUES.map((cue) => {
         const from = Math.round((cue.startMs / 1000) * fps);
         const end = Math.round((cue.endMs / 1000) * fps);
-        const dur = Math.max(2, Math.min(end, durationInFrames) - from);
+        const dur = Math.max(F(2), Math.min(end, durationInFrames) - from);
         if (dur <= 0) return null;
         const isSolo = cue.preset === 'SOLO_BIG' || cue.preset === 'SOLO_OUTLINE';
         const isCircled = cue.preset === 'SOLO_OUTLINE';
@@ -287,7 +290,7 @@ export const StackedCaptions: React.FC = () => {
               <Audio src={staticFile('sfx/caption-click.mp3')} volume={CLICK_VOL} />
             ) : null}
             {SFX_ON && isCircled ? (
-              <Sequence from={2} layout="none">
+              <Sequence from={F(2)} layout="none">
                 <Audio src={staticFile('sfx/caption-scratch.mp3')} volume={SCRATCH_VOL} />
               </Sequence>
             ) : null}

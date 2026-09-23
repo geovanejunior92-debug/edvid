@@ -8,7 +8,7 @@ what changes is the cut intent, output spec, captions, and the Phase-2 visuals.
 
 | | Short-form | **Longform** |
 |---|---|---|
-| Aspect / res | 1080×1920 @ 24 | **16:9 at source res/fps** (`render.py --keep-resolution`) |
+| Aspect / res | 1080×1920 layout at source res/fps (`--scale`) | **16:9 at source res/fps** (`render.py --keep-resolution`) |
 | Cut goal | max compression | **retention arc**, keep pacing/breath |
 | Silence trim | aggressive (30–80ms pads) | **gentle** — cut fillers/mistakes/dead-air > ~0.8s; keep 300–600ms beats |
 | Captions | karaoke burned | **`.srt` for YouTube CC** (not burned) — `captions_srt.py` |

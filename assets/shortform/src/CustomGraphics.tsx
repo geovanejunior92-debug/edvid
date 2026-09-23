@@ -10,6 +10,11 @@
  *
  * Timings: get the payoff word's timestamp from the cut transcript and land
  * the animation on it. Keep 0.5–2s per accent; whoosh on entry, pop on shapes.
+ *
+ * fps: the render runs at the SOURCE's fps (60 for the iPhone). Write every
+ * duration as a frame count at 30fps wrapped in F() — `const F = useF();` at
+ * the top of the component, before any early return — or drive frame-based
+ * motion off `toBase(frame, fps)`. A bare `8` plays twice as fast at 60fps.
  */
 import React from 'react';
 import {
@@ -40,6 +45,7 @@ import {loadFont as loadCaveat} from '@remotion/google-fonts/Caveat';
 // tracking). BehindVideos usa ele para o matte da pessoa herdar exatamente a
 // mesma câmera do vídeo-base.
 import {DynamicVideo, Sfx} from './Main';
+import {toBase, useF} from './fps';
 import editData from '../public/edit-data.json';
 // Cues re-hosted at the bottom of the frame while a split window is up (see
 // SplitCaptionsBottom). Statically imported, so the file must ALWAYS exist —
@@ -77,8 +83,10 @@ type SplitInsert = {
   // Generate/trim the clip to match (end-start) in the first place so this
   // is rarely needed. Only set this when the source clip's own length is
   // shorter than the window and you want it to loop rather than freeze on
-  // its last frame — the clip's OWN duration in frames (OffthreadVideo has
-  // no native `loop` prop; this drives a wrapping `<Loop>`).
+  // its last frame — the clip's OWN duration in frames COUNTED AT 30fps
+  // (seconds × 30, whatever the clip's or the render's fps; scaled through
+  // F() like every other count here). OffthreadVideo has no native `loop`
+  // prop; this drives a wrapping `<Loop>`.
   loopFrames?: number;
   start: number;
   end: number;
@@ -271,7 +279,8 @@ type GAnotacao = GraphicBase & {
 };
 type Graphic = GLowerThird | GStat | GList | GCompare | GQuote | GProgress | GCallout | GAnotacao;
 
-const G_ENTER = 8; // frames de entrada (~270ms @30fps)
+// Contagens de quadros a 30fps; F() converte para o fps real (ver fps.ts).
+const G_ENTER = 8; // frames de entrada (~270ms)
 const G_EXIT = 6;
 const G_TOP = 300; // topo da zona dos cartões (px, quadro 1080x1920)
 const G_SIDE = 84;
@@ -289,20 +298,21 @@ const gAccent = (name?: string) => {
 const useGraphicWindow = (g: GraphicBase) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const F = useF();
   const a = Math.round(g.start * fps);
   const b = Math.round(g.end * fps);
   if (frame < a || frame >= b) return null;
   const local = frame - a;
-  const enter = interpolate(local, [0, G_ENTER], [0, 1], {
+  const enter = interpolate(local, [0, F(G_ENTER)], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.out(Easing.cubic),
   });
-  const exit = interpolate(local, [b - a - G_EXIT, b - a], [1, 0], {
+  const exit = interpolate(local, [b - a - F(G_EXIT), b - a], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  return {local, enter, exit, opacity: Math.min(enter, exit), total: b - a, fps};
+  return {local, enter, exit, opacity: Math.min(enter, exit), total: b - a, fps, F};
 };
 
 // Conta de 0 ao número dentro de `value` ("70%", "R$ 1.200", "3x") mantendo o
@@ -393,7 +403,7 @@ const CardShell: React.FC<{opacity: number; enter: number; children: React.React
 const StatEl: React.FC<{g: GStat}> = ({g}) => {
   const w = useGraphicWindow(g);
   if (!w) return null;
-  const t = interpolate(w.local, [0, Math.min(36, w.total - 4)], [0, 1], {
+  const t = interpolate(w.local, [0, Math.min(w.F(36), w.total - w.F(4))], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.out(Easing.cubic),
@@ -411,7 +421,7 @@ const StatEl: React.FC<{g: GStat}> = ({g}) => {
 const ListEl: React.FC<{g: GList}> = ({g}) => {
   const w = useGraphicWindow(g);
   if (!w) return null;
-  const stagger = 7;
+  const stagger = w.F(7);
   const accent = gAccent(g.accent);
   return (
     <CardShell opacity={w.opacity} enter={w.enter} align="left">
@@ -419,7 +429,7 @@ const ListEl: React.FC<{g: GList}> = ({g}) => {
         <div style={{fontFamily, fontWeight: 800, fontSize: 52, color: '#fff', marginBottom: 22, lineHeight: 1.1}}>{g.title}</div>
       ) : null}
       {g.items.map((item, i) => {
-        const p = interpolate(w.local, [G_ENTER + i * stagger, G_ENTER + i * stagger + 6], [0, 1], {
+        const p = interpolate(w.local, [w.F(G_ENTER) + i * stagger, w.F(G_ENTER) + i * stagger + w.F(6)], [0, 1], {
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
           easing: Easing.out(Easing.cubic),
@@ -467,7 +477,7 @@ const CompareEl: React.FC<{g: GCompare}> = ({g}) => {
   if (!w) return null;
   const accent = gAccent(g.accent);
   const box = (side: {title: string; value: string}, hot: boolean, delay: number) => {
-    const p = interpolate(w.local, [delay, delay + 8], [0, 1], {
+    const p = interpolate(w.local, [w.F(delay), w.F(delay) + w.F(8)], [0, 1], {
       extrapolateLeft: 'clamp',
       extrapolateRight: 'clamp',
       easing: Easing.out(Easing.cubic),
@@ -524,7 +534,7 @@ const QuoteEl: React.FC<{g: GQuote}> = ({g}) => {
 const ProgressEl: React.FC<{g: GProgress}> = ({g}) => {
   const w = useGraphicWindow(g);
   if (!w) return null;
-  const t = interpolate(w.local, [G_ENTER, Math.min(G_ENTER + 40, w.total - 4)], [0, 1], {
+  const t = interpolate(w.local, [w.F(G_ENTER), Math.min(w.F(G_ENTER) + w.F(40), w.total - w.F(4))], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.inOut(Easing.cubic),
@@ -752,22 +762,27 @@ export const Graphics: React.FC<{items: Graphic[]}> = ({items}) => (
 // light look like the thing that caused the change.
 // `at` is the cut time exactly as segments.json states it — VIDEO_LAG lines it
 // up with the frame the picture actually changes on, same as the split windows.
+// Frame counts at 30fps, scaled through F() — at 60fps the lead is 4 frames,
+// still the same ~67ms before the cut.
 const FLASH_LEAD = 2; // frames before the cut
-const FLASH_LEN = 7; // total, ~230ms at 30fps
+const FLASH_LEN = 7; // total, ~230ms
 
 const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
   const frame = useCurrentFrame();
   const {fps, width} = useVideoConfig();
+  const F = useF();
+  const lead = F(FLASH_LEAD);
+  const len = F(FLASH_LEN);
 
   const active = items.find((it) => {
     const c = Math.round(it.at * fps) + VIDEO_LAG;
-    return frame >= c - FLASH_LEAD && frame < c - FLASH_LEAD + FLASH_LEN;
+    return frame >= c - lead && frame < c - lead + len;
   });
   if (!active) return null;
 
   const c = Math.round(active.at * fps) + VIDEO_LAG;
   const k = active.intensity ?? 1;
-  const p = (frame - (c - FLASH_LEAD)) / (FLASH_LEN - 1); // 0..1 pela janela
+  const p = (frame - (c - lead)) / (len - 1); // 0..1 pela janela
 
   // SAÍDA da tela dividida: um clarão curto e simétrico, SEM o facho lateral.
   // A volta para a tela cheia estava seca e lia como imperfeição (pedido do
@@ -775,7 +790,7 @@ const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
   // sentido dele, que é marcar troca de layout. Por isso é outro desenho:
   // clarão + respiro de escala, mais rápido que o de entrada.
   if (active.variant === 'saida') {
-    const pop = interpolate(frame, [c - 2, c, c + 3], [0, 0.62 * k, 0], {
+    const pop = interpolate(frame, [c - F(2), c, c + F(3)], [0, 0.62 * k, 0], {
       extrapolateLeft: 'clamp',
       extrapolateRight: 'clamp',
     });
@@ -789,7 +804,7 @@ const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
             filter: `blur(${(1 - pop) * 8}px)`,
           }}
         />
-        <Sequence from={c - 1} durationInFrames={8} layout="none">
+        <Sequence from={c - F(1)} durationInFrames={F(8)} layout="none">
           <Sfx src={active.sfx ?? 'whoosh.mp3'} volume={active.volume ?? 0.5} />
         </Sequence>
       </AbsoluteFill>
@@ -803,7 +818,7 @@ const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
     extrapolateRight: 'clamp',
   });
   // the bloom is short and lands ON the cut, not spread across the window
-  const bloom = interpolate(frame, [c - 1, c, c + 2], [0, 0.5 * k, 0], {
+  const bloom = interpolate(frame, [c - F(1), c, c + F(2)], [0, 0.5 * k, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
@@ -828,7 +843,7 @@ const CutFlashes: React.FC<{items: CutFlash[]}> = ({items}) => {
           }}
         />
       </AbsoluteFill>
-      <Sequence from={c} durationInFrames={10} layout="none">
+      <Sequence from={c} durationInFrames={F(10)} layout="none">
         <Sfx src={active.sfx ?? 'cut-click.mp3'} volume={active.volume ?? 0.9} />
       </Sequence>
     </AbsoluteFill>
@@ -914,6 +929,7 @@ const SplitFrame: React.FC<{
   // Largura da dissolução DESTA janela; ver o campo homônimo em SplitInsert.
   seamBlend?: number;
 }> = ({src, kind, loopFrames, bandH, fit, progress, layout, matte, artZoom, windowFrom, windowDur, zoomOverride, focusYOverride, zoomPulse, seamBlend}) => {
+  const F = useF();
   // slow Ken-Burns so the band is not a dead still
   const artScale = 1 + 0.03 * progress;
   const zoomBase = zoomOverride ?? LAYOUT[layout].zoom;
@@ -1003,7 +1019,7 @@ const SplitFrame: React.FC<{
           ) : null}
           {kind === 'video' ? (
             loopFrames ? (
-              <Loop durationInFrames={loopFrames}>
+              <Loop durationInFrames={F(loopFrames)}>
                 <OffthreadVideo
                   src={staticFile(src)}
                   muted
@@ -1138,16 +1154,18 @@ type Outro = {
   color?: string;
 };
 
+// Contagens a 30fps, convertidas por F().
 const HOOK_ENTER = 5; // frames de subida por linha
 const HOOK_STAGGER = 3; // frames entre uma linha e a próxima
 
 const HookStackedCard: React.FC<{cfg: HookStacked}> = ({cfg}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const F = useF();
   const end = Math.round(cfg.endSec * fps);
   if (frame >= end) return null;
   const color = cfg.color ?? '#ffffff';
-  const out = interpolate(frame, [end - 8, end], [1, 0], {
+  const out = interpolate(frame, [end - F(8), end], [1, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
@@ -1178,8 +1196,8 @@ const HookStackedCard: React.FC<{cfg: HookStacked}> = ({cfg}) => {
     >
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.02}}>
         {cfg.lines.map((ln, i) => {
-          const t0 = i * HOOK_STAGGER;
-          const p = interpolate(frame, [t0, t0 + HOOK_ENTER], [0, 1], {
+          const t0 = i * F(HOOK_STAGGER);
+          const p = interpolate(frame, [t0, t0 + F(HOOK_ENTER)], [0, 1], {
             extrapolateLeft: 'clamp',
             extrapolateRight: 'clamp',
             easing: Easing.bezier(0.16, 1, 0.3, 1),
@@ -1217,11 +1235,12 @@ type Logo = {enabled?: boolean; src: string; endSec: number; width?: number; bot
 const LogoOpening: React.FC<{cfg: Logo}> = ({cfg}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const F = useF();
   const end = Math.round(cfg.endSec * fps);
   if (frame >= end) return null;
   const op = Math.min(
-    interpolate(frame, [0, 12], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
-    interpolate(frame, [end - 12, end], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
+    interpolate(frame, [0, F(12)], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
+    interpolate(frame, [end - F(12), end], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}),
   );
   return (
     <AbsoluteFill style={{alignItems: 'center', justifyContent: 'flex-end', pointerEvents: 'none'}}>
@@ -1248,6 +1267,7 @@ const OUTRO_GOLD = '#d4b25f';
 const OutroCard: React.FC<{cfg: Outro}> = ({cfg}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const F = useF();
   const a = Math.round(cfg.startSec * fps);
   const b = a + Math.round(cfg.durationSec * fps);
   if (frame < a || frame >= b) return null;
@@ -1256,11 +1276,11 @@ const OutroCard: React.FC<{cfg: Outro}> = ({cfg}) => {
   // últimos frames o card ficava translúcido, deixando o vídeo reaparecer por
   // baixo — o vídeo tem que TERMINAR na tela da marca (pego na revisão de 100%,
   // 2026-08-17).
-  const fade = interpolate(local, [0, 10], [0, 1], {
+  const fade = interpolate(local, [0, F(10)], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
-  const rise = interpolate(local, [0, 16], [18, 0], {
+  const rise = interpolate(local, [0, F(16)], [18, 0], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.bezier(0.16, 1, 0.3, 1),
@@ -1305,6 +1325,7 @@ const OutroCard: React.FC<{cfg: Outro}> = ({cfg}) => {
 const BehindVideos: React.FC<{items: BehindVideo[]}> = ({items}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const F = useF();
   // Mesma indexação por frame do SplitScreen: as bordas da janela SÃO cortes.
   const active = items.find((it) => {
     const a = Math.round(it.start * fps) + VIDEO_LAG;
@@ -1321,7 +1342,7 @@ const BehindVideos: React.FC<{items: BehindVideo[]}> = ({items}) => {
   const art =
     (active.kind ?? 'video') === 'video' ? (
       active.loopFrames ? (
-        <Loop durationInFrames={active.loopFrames}>
+        <Loop durationInFrames={F(active.loopFrames)}>
           <OffthreadVideo
             src={staticFile(active.src)}
             muted
@@ -1358,8 +1379,13 @@ const TL_H = 378;
 const PAD = 46;
 const INNER = TL_W - PAD * 2;
 
-const TimelineInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
-  const f = useCurrentFrame();
+// Worked examples are written in 30fps frames throughout (wobbles included), so
+// they rescale the CLOCK instead of every literal: `f` and `total` are in 30fps
+// units at any render fps (see toBase in fps.ts).
+const TimelineInner: React.FC<{totalFrames: number}> = ({totalFrames: totalReal}) => {
+  const {fps} = useVideoConfig();
+  const f = toBase(useCurrentFrame(), fps);
+  const totalFrames = toBase(totalReal, fps);
   const appear = interpolate(f, [0, 9], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
   const exit = interpolate(f, [totalFrames - 7, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const rise = interpolate(appear, [0, 1], [26, 0]);
@@ -1428,11 +1454,13 @@ export const TimelineGraphic: React.FC<{startSec: number; endSec: number}> = ({s
 
 // ============ WORKED EXAMPLE 2: script sheet with typewriter text ===============
 // For "ela leu o roteiro" — a tilted paper card, lines typing in with a cursor.
-const ScriptInner: React.FC<{totalFrames: number; lines: string[]}> = ({totalFrames, lines}) => {
-  const f = useCurrentFrame();
+const ScriptInner: React.FC<{totalFrames: number; lines: string[]}> = ({totalFrames: totalReal, lines}) => {
+  const {fps} = useVideoConfig();
+  const f = toBase(useCurrentFrame(), fps);
+  const totalFrames = toBase(totalReal, fps);
   const appear = interpolate(f, [0, 8], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
   const exit = interpolate(f, [totalFrames - 7, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
-  const cps = 1.7; // chars per frame
+  const cps = 1.7; // chars per 30fps frame
 
   return (
     <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center'}}>
@@ -1470,7 +1498,8 @@ export const ScriptGraphic: React.FC<{startSec: number; endSec: number; lines: s
 
 // ============ WORKED EXAMPLE 3: playful shapes pop (for "animações") ============
 const Shape: React.FC<{i: number; color: string; round: number}> = ({i, color, round}) => {
-  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const frame = toBase(useCurrentFrame(), fps);
   const appear = interpolate(frame, [i * 3, i * 3 + 8], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.back(1.6))});
   const pulse = 1 + 0.16 * Math.sin((frame + i * 6) * 0.28);
   const rot = Math.sin((frame + i * 8) * 0.12) * 22;
@@ -1490,8 +1519,10 @@ const Shape: React.FC<{i: number; color: string; round: number}> = ({i, color, r
   );
 };
 
-const ShapesInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
-  const frame = useCurrentFrame();
+const ShapesInner: React.FC<{totalFrames: number}> = ({totalFrames: totalReal}) => {
+  const {fps} = useVideoConfig();
+  const frame = toBase(useCurrentFrame(), fps);
+  const totalFrames = toBase(totalReal, fps);
   const exit = interpolate(frame, [totalFrames - 7, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const rise = interpolate(frame, [0, 8], [24, 0], {extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
   return (
@@ -1563,10 +1594,11 @@ const TITLE_ACCENT_FALLBACK = TITLE_ACCENT_PALETTE.dourado;
 type TitleLine = {text: string; weight?: 'light' | 'bold' | 'script'; color?: string};
 type TitleCard = {start: number; end: number; lines: TitleLine[]; align?: 'left' | 'center'};
 
-const TITLE_STAGGER = 5; // frames between each line's entry (~165ms @30fps)
+const TITLE_STAGGER = 5; // frames @30fps between each line's entry (~165ms), via F()
 const TITLE_ENTER = 4; // frames to fade in — the brief's "fade de 4 frames, no máximo"
 
 const TitleCardFrame: React.FC<{card: TitleCard; localFrame: number}> = ({card, localFrame}) => {
+  const F = useF();
   const centered = card.align === 'center';
   return (
     <AbsoluteFill
@@ -1587,8 +1619,8 @@ const TitleCardFrame: React.FC<{card: TitleCard; localFrame: number}> = ({card, 
         }}
       >
         {card.lines.map((ln, i) => {
-          const start = i * TITLE_STAGGER;
-          const op = interpolate(localFrame, [start, start + TITLE_ENTER], [0, 1], {
+          const start = i * F(TITLE_STAGGER);
+          const op = interpolate(localFrame, [start, start + F(TITLE_ENTER)], [0, 1], {
             extrapolateLeft: 'clamp',
             extrapolateRight: 'clamp',
           });

@@ -34,7 +34,7 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
 
 ```jsonc
 {
-  "width": 1080, "height": 1920, "fps": 30,  // MATCH cut.mp4 (ffprobe it): 30 for 30fps+ sources, else 24
+  "width": 1080, "height": 1920, "fps": 60,  // MATCH cut.mp4 (ffprobe it): the source's fps (iPhone 4K60 → 60)
   "durationSec": 87.5,              // EXACT cut.mp4 duration (ffprobe)
   "camera": {                        // hard zoom on cuts + push-in + eye track
     "enabled": true,
@@ -83,7 +83,9 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
 
 ## The style (locked defaults encoded in src/)
 
-- **1080×1920**, **30fps when the source is 30fps+** (else 24) — `fps` in
+- **1080×1920** layout at the **source's fps** (60 stays 60; the template is
+  fps-independent — every frame-count duration goes through `F()` in
+  `src/fps.ts`, identical to before at 30) — `fps` in
   edit-data.json must equal cut.mp4's fps; base `<OffthreadVideo src=cut.mp4>` with the dynamic
   camera (hard zoom per segment + slow push-in + clamped eye-tracking).
 - **Captions**: two styles via `captions.style`. **karaoke** (default) — one

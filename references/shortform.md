@@ -6,10 +6,22 @@ approved. Everything here rides on the **data-driven template** at
 
 ## The style (the proven default)
 
-- **Frame rate:** render at **30fps when the source is 30fps or higher** (natural
-  motion, matches Instagram/TikTok/Shorts capture); only slower sources use 24.
-  `render.py` picks this automatically for `cut.mp4` — then set `edit-data.json`
-  `fps` to the SAME value as `cut.mp4` (ffprobe it) so the Remotion render matches.
+- **Frame rate (2026-09-22):** o `cut.mp4` sai no **fps da fonte** — o iPhone
+  grava 4K60, então o Reels sai a 60. `render.py` faz isso sozinho (trava numa
+  taxa padrão constante); `--shortform-fps` volta ao modo antigo (30 para fonte
+  30fps+, senão 24) só se ele pedir. Set `edit-data.json` `fps` to the SAME value
+  as `cut.mp4` (ffprobe it) so the Remotion render matches.
+- **O template é independente de fps.** Toda duração de animação foi escrita como
+  contagem de quadros a 30fps e passa por `F(n)` (`src/fps.ts`), que devolve `n`
+  intacto a 30 e o mesmo tempo em segundos a 24/60. Ao escrever um gráfico novo
+  no `CustomGraphics.tsx`: `const F = useF();` no topo do componente (antes de
+  qualquer `return`) e toda contagem literal vira `F(8)`, `totalFrames - F(7)`,
+  `<Sequence from={c - F(1)} durationInFrames={F(10)}>`. Movimento que depende
+  do próprio quadro (`Math.sin(frame * 0.2)`, "caracteres por quadro") usa
+  `toBase(frame, fps)` como relógio, como os worked examples. **Não** passam por
+  `F()`: `VIDEO_LAG` e o `frame - 1` da câmera — são UM quadro de decodificação
+  em qualquer fps, não uma duração. Conferir sempre com um still a 30 e a 60 no
+  mesmo segundo.
 - **Resolução (2026-09-22, obrigatório):** o `cut.mp4` sai na resolução da fonte
   (4K do iPhone = 2160×3840). O `edit-data.json` continua com `width: 1080,
   height: 1920` (o layout do template é desenhado nessa grade) e o render usa
@@ -1000,11 +1012,13 @@ stamp the tags. `setparams` is what makes them stick: the bare `-color_primaries
 
 ```bash
 VD=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of default=nw=1:nk=1 out/render.mp4)
+# um quadro do render, em ms: 33 a 30fps, 17 a 60fps (ver a nota do VIDEO_LAG abaixo)
+LAG=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nw=1:nk=1 out/render.mp4 | python3 -c "import sys;n,d=sys.stdin.read().strip().split('/');print(round(1000*int(d)/int(n)))")
 FADE=$(python3 -c "print(f'{$VD-1.5:.3f}')")
 ffmpeg -y -i out/render.mp4 -i ../cut.mp4 -i public/trilha.mp3 \
   -filter_complex "[0:v]scale=in_range=full:out_range=limited,format=yuv420p,\
 setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv[vid];\
-                   [1:a]adelay=33:all=1[v];\
+                   [1:a]adelay=$LAG:all=1[v];\
                    [2:a]volume=0.10,afade=t=in:st=0:d=0.4,afade=t=out:st=$FADE:d=1.5[m];\
                    [v][m]amix=inputs=2:duration=first:normalize=0[mix];\
                    [mix]loudnorm=I=-14:TP=-1:LRA=11[out]" \
@@ -1032,19 +1046,19 @@ a 7.6s edit: +42.7ms at the head, the tail and the whole — constant, and only 
 from the picture's own +33ms lag. There, `-map 0:a` through the same loudnorm beats
 the re-mux. Say which one you used and why.
 
-`adelay=33` is one frame at 30fps: OffthreadVideo draws the source frame one
+`adelay=$LAG` is ONE frame of the render (33ms at 30fps, 17ms at 60fps): OffthreadVideo draws the source frame one
 composition frame late (the same VIDEO_LAG the overlays compensate for), so the
 picture sits a frame behind cut.mp4's timeline and the voice must follow it.
 `-t "$VD"` keeps the audio from outliving the video. **Verify** by correlating the
 delivered voice against `cut.mp4` at three points — the offset must be CONSTANT
-(≈+33ms). Use 15s windows: short windows lock onto the wrong syllable and report
+(≈ one frame: +33ms at 30fps, +17ms at 60fps). Use 15s windows: short windows lock onto the wrong syllable and report
 a drift that is not there. Drop this re-mux ONLY if Phase 2 baked SFX into the
 audio (stacked captions' click/scratch), and then verify sync by hand.
 
 If the video has no soundtrack, the same shape without input 2:
 
 ```bash
-ffmpeg -y -i out/render.mp4 -i ../cut.mp4 -filter_complex "[1:a]adelay=33:all=1,loudnorm=I=-14:TP=-1:LRA=11[out]" \
+ffmpeg -y -i out/render.mp4 -i ../cut.mp4 -filter_complex "[1:a]adelay=$LAG:all=1,loudnorm=I=-14:TP=-1:LRA=11[out]" \
   -map 0:v -map "[out]" -c:v copy -c:a aac -b:a 192k -ar 48000 -t "$VD" -movflags +faststart ../final.mp4
 ```
 

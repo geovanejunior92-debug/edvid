@@ -23,6 +23,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+import {useF} from './fps';
 import {loadFont} from '@remotion/google-fonts/Lora';
 import {measureText} from '@remotion/layout-utils';
 import captions from '../public/captions.json';
@@ -150,14 +151,16 @@ function buildCues(words: Word[]): Cue[] {
 
 const CUES = buildCues(captions as Word[]);
 
-const ENTER = 7; // frames — fade + drop
-const HI_ENTER = 10; // frames — blur resolve
-const EXIT = 8; // frames — the cue leaves
+// Frame counts at 30fps — scaled to the real fps through F() (see fps.ts).
+const ENTER = 7; // fade + drop
+const HI_ENTER = 10; // blur resolve
+const EXIT = 8; // the cue leaves
 
 const CueView: React.FC<{cue: Cue; endFrame: number}> = ({cue, endFrame}) => {
   const frame = useCurrentFrame();
   const {fps, height} = useVideoConfig();
-  const exitStart = endFrame - EXIT;
+  const F = useF();
+  const exitStart = endFrame - F(EXIT);
   const out = interpolate(frame, [exitStart, endFrame], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
@@ -189,7 +192,7 @@ const CueView: React.FC<{cue: Cue; endFrame: number}> = ({cue, endFrame}) => {
           >
             {ln.map((p, wi) => {
               const start = (p.startMs / 1000) * fps;
-              const dur = p.hi ? HI_ENTER : ENTER;
+              const dur = F(p.hi ? HI_ENTER : ENTER);
               const t = interpolate(frame, [start, start + dur], [0, 1], {
                 extrapolateLeft: 'clamp',
                 extrapolateRight: 'clamp',

@@ -37,6 +37,7 @@ import {CustomGraphics} from './CustomGraphics';
 import {StackedCaptions} from './StackedCaptions';
 import {ScatterCaptions} from './ScatterCaptions';
 import {SimpleCaptions, SIMPLE_VARIANTS} from './SimpleCaptions';
+import {useF} from './fps';
 
 const {fontFamily} = loadFont('normal', {weights: ['400', '600', '900']});
 
@@ -203,8 +204,9 @@ export const DynamicVideo: React.FC<{src?: string; frameOffset?: number; transpa
 // to the TOP of the frame (a centered element hides behind the torso).
 const BehindImageEl: React.FC<{src: string; totalFrames: number}> = ({src, totalFrames}) => {
   const f = useCurrentFrame();
-  const enter = interpolate(f, [0, 9], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
-  const exit = interpolate(f, [totalFrames - 8, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const F = useF();
+  const enter = interpolate(f, [0, F(9)], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
+  const exit = interpolate(f, [totalFrames - F(8), totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const op = Math.min(enter, exit);
   const grow = interpolate(f, [0, totalFrames], [1, 1.08], {extrapolateRight: 'clamp'});
   const scale = interpolate(enter, [0, 1], [0.94, 1]) * grow;
@@ -222,7 +224,8 @@ const BehindImageEl: React.FC<{src: string; totalFrames: number}> = ({src, total
 const BehindWordsEl: React.FC<{words: {t: string; at: number}[]; startSec: number; totalFrames: number}> = ({words, startSec, totalFrames}) => {
   const f = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const scrim = interpolate(f, [0, 8, totalFrames - 8, totalFrames], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const F = useF();
+  const scrim = interpolate(f, [0, F(8), totalFrames - F(8), totalFrames], [0, 1, 1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   return (
     <AbsoluteFill style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: 180}}>
       <AbsoluteFill style={{background: 'rgba(0,0,0,0.26)', opacity: scrim}} />
@@ -231,8 +234,8 @@ const BehindWordsEl: React.FC<{words: {t: string; at: number}[]; startSec: numbe
         const to = i + 1 < words.length ? Math.round((words[i + 1].at - startSec) * fps) : totalFrames;
         if (f < from || f >= to) return null;
         const local = f - from;
-        const pop = interpolate(local, [0, 6], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.back(1.7))});
-        const op = interpolate(local, [0, 4], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+        const pop = interpolate(local, [0, F(6)], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.back(1.7))});
+        const op = interpolate(local, [0, F(4)], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
         return (
           <div key={i} style={{position: 'absolute', fontFamily, fontWeight: 900, fontSize: 360, color: '#fff', opacity: op, scale: String(0.72 + 0.28 * pop), letterSpacing: -12, textShadow: '0 6px 30px rgba(0,0,0,0.5)'}}>
             {w.t}
@@ -287,8 +290,9 @@ const LINES = buildLines(captions as Caption[], D.captions.maxWords);
 const Word: React.FC<{caption: Caption; lineFromFrame: number}> = ({caption, lineFromFrame}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
+  const F = useF();
   const startLocal = (caption.startMs / 1000) * fps - lineFromFrame;
-  const p = interpolate(frame, [startLocal, startLocal + 7], [0, 1], {
+  const p = interpolate(frame, [startLocal, startLocal + F(7)], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.out(Easing.cubic),
@@ -386,8 +390,9 @@ const CARD_TOP = 90;
 
 const InsertCard: React.FC<{src: string; totalFrames: number}> = ({src, totalFrames}) => {
   const frame = useCurrentFrame();
-  const enter = interpolate(frame, [0, 9], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
-  const exit = interpolate(frame, [totalFrames - 7, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const F = useF();
+  const enter = interpolate(frame, [0, F(9)], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
+  const exit = interpolate(frame, [totalFrames - F(7), totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const opacity = Math.min(enter, exit);
   // dynamic zoom: the image itself grows slowly while on screen (Ken-Burns)
   const grow = interpolate(frame, [0, totalFrames], [1, 1.08], {extrapolateRight: 'clamp'});
@@ -423,12 +428,13 @@ const Inserts: React.FC = () => {
 // ============ SOUNDTRACK (Treblo AI track or a local file) — background bed ====
 const Soundtrack: React.FC = () => {
   const {durationInFrames} = useVideoConfig();
+  const F = useF();
   const S = D.soundtrack;
   return (
     <Audio
       src={staticFile(S.file)}
       volume={(f) =>
-        interpolate(f, [0, 10, durationInFrames - 24, durationInFrames], [0, S.volume, S.volume, 0], {
+        interpolate(f, [0, F(10), durationInFrames - F(24), durationInFrames], [0, S.volume, S.volume, 0], {
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
         })
@@ -512,8 +518,9 @@ function fitHeadline(lines: [string, string], s: HlStyle, fam: string): number {
 const HookInner: React.FC<{totalFrames: number}> = ({totalFrames}) => {
   const f = useCurrentFrame();
   const H = D.hook;
-  const enter = interpolate(f, [0, 8], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
-  const exit = interpolate(f, [totalFrames - 9, totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
+  const F = useF();
+  const enter = interpolate(f, [0, F(8)], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic)});
+  const exit = interpolate(f, [totalFrames - F(9), totalFrames], [1, 0], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
   const op = Math.min(enter, exit);
   const y = interpolate(enter, [0, 1], [24, 0]);
 
