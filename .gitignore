@@ -35,6 +35,8 @@ Thumbs.db
 node_modules/
 package-lock.json
 yarn.lock
+.vite/
+out/
 .npm/
 
 # Manim render artifacts (when running skills/manim-video scripts locally)
