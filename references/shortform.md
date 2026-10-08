@@ -934,7 +934,10 @@ rodapé acima da legenda.
 `{"kind": "capa", "start": 0, "end": 6.2, "lines": ["…", "…", "…"], "size": 80, "y": 0.085, "sfx": false}` —
 até 4 linhas centradas, Fraunces 800 branca com contorno escuro fino
 (`6%` do tamanho) e sombra curta: o texto de Reels da referência dele. `size` é
-teto; cada linha encolhe para caber em 960 px. Substitui `hookStacked`/`hook`
+teto; TODAS as linhas usam o mesmo tamanho (o da mais larga, para caber em 960 px).
+`font`: `serifada` (padrão, Fraunces 800, contorno fino) ou `bloco` (Montserrat 900
+em caixa alta, contorno preto grosso — escolhida por ele no vídeo 07). Com `bloco`,
+quebre em 4 linhas curtas: em 3 a letra encolhe demais. Substitui `hookStacked`/`hook`
 (desligue os dois). Em tela dividida, a primeira janela entra no `end` da capa.
 
 ### `anotacao` — legenda manuscrita escrita à mão (2026-09-03)

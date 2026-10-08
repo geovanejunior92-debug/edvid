@@ -46,6 +46,9 @@ import {loadFont as loadCaveat} from '@remotion/google-fonts/Caveat';
 // mais próxima entre as do Google Fonts.
 import {loadFont as loadFraunces} from '@remotion/google-fonts/Fraunces';
 import {measureText} from '@remotion/layout-utils';
+// Opção `font: 'bloco'` da capa (2026-10-07): Montserrat 900 em CAIXA ALTA
+// com contorno preto grosso — o texto de capa "A MAIORIA FAZ ISSO" da 2ª referência.
+import {loadFont as loadMontserrat} from '@remotion/google-fonts/Montserrat';
 // DynamicVideo = o wrapper de câmera do template (zoom por corte + push-in +
 // tracking). BehindVideos usa ele para o matte da pessoa herdar exatamente a
 // mesma câmera do vídeo-base.
@@ -287,7 +290,7 @@ type GAnotacao = GraphicBase & {
 // contorno escuro fino e sombra curta — o visual de texto de Reels que ele
 // mandou como referência. `size` é TETO: cada linha encolhe para caber em
 // CAPA_MAXW. `y` = fração do topo onde o bloco começa.
-type GCapa = GraphicBase & {kind: 'capa'; lines: string[]; size?: number; y?: number; color?: string};
+type GCapa = GraphicBase & {kind: 'capa'; lines: string[]; size?: number; y?: number; color?: string; font?: 'serifada' | 'bloco'};
 type Graphic = GLowerThird | GStat | GList | GCompare | GQuote | GProgress | GCallout | GAnotacao | GCapa;
 
 // Contagens de quadros a 30fps; F() converte para o fps real (ver fps.ts).
@@ -739,34 +742,50 @@ const AnotacaoEl: React.FC<{g: GAnotacao}> = ({g}) => {
 };
 
 const FRAUNCES = loadFraunces('normal', {weights: ['800']}).fontFamily;
+const MONTSERRAT = loadMontserrat('normal', {weights: ['900']}).fontFamily;
+// serifada: Fraunces 800, contorno fino. bloco: Archivo Black maiúscula, contorno grosso.
+const CAPA_FONTS = {
+  serifada: {family: FRAUNCES, weight: '800', upper: false, stroke: 0.06, tracking: -1, lh: 1.12},
+  bloco: {family: MONTSERRAT, weight: '900', upper: true, stroke: 0.24, tracking: 1, lh: 1.1},
+} as const;
 const CAPA_MAXW = 960;
 
 const CapaEl: React.FC<{g: GCapa}> = ({g}) => {
   const w = useGraphicWindow(g);
   if (!w) return null;
+  const P = CAPA_FONTS[g.font ?? 'serifada'];
   const size0 = g.size ?? 96;
   const rise = (1 - w.enter) * 24;
+  // Um tamanho só para todas as linhas (o da linha mais larga) — na referência
+  // o bloco é uniforme; linhas de tamanhos diferentes pareciam erro.
+  const sizeAll = Math.min(
+    ...g.lines.map((l) => {
+      const t = P.upper ? l.toUpperCase() : l;
+      const wpx = measureText({text: t, fontFamily: P.family, fontSize: size0, fontWeight: P.weight, letterSpacing: `${P.tracking}px`}).width;
+      return wpx > CAPA_MAXW ? Math.floor((size0 * CAPA_MAXW) / wpx) : size0;
+    }),
+  );
   return (
     <AbsoluteFill
       style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: (g.y ?? 0.1) * 1920}}
     >
       <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: w.opacity, transform: `translateY(${rise}px)`}}>
-        {g.lines.map((ln, i) => {
-          const wpx = measureText({text: ln, fontFamily: FRAUNCES, fontSize: size0, fontWeight: '800'}).width;
-          const size = wpx > CAPA_MAXW ? Math.floor((size0 * CAPA_MAXW) / wpx) : size0;
+        {g.lines.map((ln0, i) => {
+          const ln = P.upper ? ln0.toUpperCase() : ln0;
+          const size = sizeAll;
           return (
             <div
               key={i}
               style={{
-                fontFamily: FRAUNCES,
-                fontWeight: 800,
+                fontFamily: P.family,
+                fontWeight: Number(P.weight),
                 fontSize: size,
-                lineHeight: 1.12,
-                letterSpacing: -1,
+                lineHeight: P.lh,
+                letterSpacing: P.tracking,
                 color: g.color ?? '#ffffff',
                 textAlign: 'center',
                 whiteSpace: 'pre',
-                WebkitTextStroke: `${Math.max(3, Math.round(size * 0.06))}px #111`,
+                WebkitTextStroke: `${Math.max(3, Math.round(size * P.stroke))}px #111`,
                 paintOrder: 'stroke fill',
                 textShadow: '0 4px 10px rgba(0,0,0,0.55)',
               }}
