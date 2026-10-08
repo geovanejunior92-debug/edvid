@@ -41,6 +41,11 @@ import {loadFont as loadHand} from '@remotion/google-fonts/ArchitectsDaughter';
 import {loadFont as loadMarker} from '@remotion/google-fonts/PermanentMarker';
 import {loadFont as loadPatrick} from '@remotion/google-fonts/PatrickHand';
 import {loadFont as loadCaveat} from '@remotion/google-fonts/Caveat';
+// Serifada pesada da capa `kind: 'capa'` (2026-10-07) — a referência que ele
+// mandou usa uma serifada grossa de terminais arredondados; Fraunces 800 é a
+// mais próxima entre as do Google Fonts.
+import {loadFont as loadFraunces} from '@remotion/google-fonts/Fraunces';
+import {measureText} from '@remotion/layout-utils';
 // DynamicVideo = o wrapper de câmera do template (zoom por corte + push-in +
 // tracking). BehindVideos usa ele para o matte da pessoa herdar exatamente a
 // mesma câmera do vídeo-base.
@@ -245,6 +250,7 @@ export const CustomGraphics: React.FC = () => {
 //   quote       {start,end,text,source?}                citação com aspas grandes
 //   progress    {start,end,label,from,to,suffix?}       barra que enche de `from` a `to`
 //   callout     {start,end,text,x,y}                    pílula com anel pulsante num ponto (0–1)
+//   capa        {start,end,lines[],size?,y?}            título de capa serifado, branco, contorno fino + sombra
 //
 // `sfx: false` desliga o whoosh de entrada de um gráfico. Cores: `accent` aceita
 // um nome da TITLE_ACCENT_PALETTE (dourado, azul…) ou um hex.
@@ -277,7 +283,12 @@ type GAnotacao = GraphicBase & {
     color?: string;
   }[];
 };
-type Graphic = GLowerThird | GStat | GList | GCompare | GQuote | GProgress | GCallout | GAnotacao;
+// Capa serifada (2026-10-07): até 4 linhas centradas, Fraunces 800 branca com
+// contorno escuro fino e sombra curta — o visual de texto de Reels que ele
+// mandou como referência. `size` é TETO: cada linha encolhe para caber em
+// CAPA_MAXW. `y` = fração do topo onde o bloco começa.
+type GCapa = GraphicBase & {kind: 'capa'; lines: string[]; size?: number; y?: number; color?: string};
+type Graphic = GLowerThird | GStat | GList | GCompare | GQuote | GProgress | GCallout | GAnotacao | GCapa;
 
 // Contagens de quadros a 30fps; F() converte para o fps real (ver fps.ts).
 const G_ENTER = 8; // frames de entrada (~270ms)
@@ -727,6 +738,48 @@ const AnotacaoEl: React.FC<{g: GAnotacao}> = ({g}) => {
   );
 };
 
+const FRAUNCES = loadFraunces('normal', {weights: ['800']}).fontFamily;
+const CAPA_MAXW = 960;
+
+const CapaEl: React.FC<{g: GCapa}> = ({g}) => {
+  const w = useGraphicWindow(g);
+  if (!w) return null;
+  const size0 = g.size ?? 96;
+  const rise = (1 - w.enter) * 24;
+  return (
+    <AbsoluteFill
+      style={{justifyContent: 'flex-start', alignItems: 'center', paddingTop: (g.y ?? 0.1) * 1920}}
+    >
+      <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: w.opacity, transform: `translateY(${rise}px)`}}>
+        {g.lines.map((ln, i) => {
+          const wpx = measureText({text: ln, fontFamily: FRAUNCES, fontSize: size0, fontWeight: '800'}).width;
+          const size = wpx > CAPA_MAXW ? Math.floor((size0 * CAPA_MAXW) / wpx) : size0;
+          return (
+            <div
+              key={i}
+              style={{
+                fontFamily: FRAUNCES,
+                fontWeight: 800,
+                fontSize: size,
+                lineHeight: 1.12,
+                letterSpacing: -1,
+                color: g.color ?? '#ffffff',
+                textAlign: 'center',
+                whiteSpace: 'pre',
+                WebkitTextStroke: `${Math.max(3, Math.round(size * 0.06))}px #111`,
+                paintOrder: 'stroke fill',
+                textShadow: '0 4px 10px rgba(0,0,0,0.55)',
+              }}
+            >
+              {ln}
+            </div>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const Graphics: React.FC<{items: Graphic[]}> = ({items}) => (
   <>
     {items.map((g, i) => {
@@ -746,6 +799,8 @@ export const Graphics: React.FC<{items: Graphic[]}> = ({items}) => (
           return <React.Fragment key={key}><GraphicSfx g={g} /><ProgressEl g={g} /></React.Fragment>;
         case 'callout':
           return <React.Fragment key={key}><GraphicSfx g={g} /><CalloutEl g={g} /></React.Fragment>;
+        case 'capa':
+          return <React.Fragment key={key}><GraphicSfx g={g} /><CapaEl g={g} /></React.Fragment>;
         case 'anotacao':
           // sem GraphicSfx: o som desta é a digitação, não o whoosh de cartão
           return <AnotacaoEl key={key} g={g} />;

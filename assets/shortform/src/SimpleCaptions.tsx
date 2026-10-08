@@ -63,9 +63,20 @@ type Variant = {
   italic?: boolean;
   center?: boolean; // vertical middle of frame instead of the shared low `bottom` band
   color?: string; // defaults to OFFWHITE below — "premium" wants true white, not cream
+  lowercase?: boolean; // measured AND rendered lowercase — "discreta"
+  noPunct?: boolean; // drop , . ! ? ; : from the cue text — "discreta"
+  shadow?: string; // textShadow override — default is the soft wide shadow below
 };
 
 const C = (editData as any).captions ?? {};
+// Casing + punctuation the variant asks for, applied identically when
+// measuring and when painting (same reason uppercase is measured, see widthOf).
+const caseOf = (t: string, V: {uppercase?: boolean; lowercase?: boolean; noPunct?: boolean}) => {
+  let x = V.noPunct ? t.replace(/[,.!?;:…]+/g, '') : t;
+  if (V.uppercase) x = x.toUpperCase();
+  else if (V.lowercase) x = x.toLowerCase();
+  return x;
+};
 export const SIMPLE_VARIANTS: Record<string, Variant> = {
   simples: {
     family: POPPINS,
@@ -156,6 +167,28 @@ export const SIMPLE_VARIANTS: Record<string, Variant> = {
     maxW: 820,
     color: '#ffffff',
   },
+  // "discreta" (2026-10-07, vídeo 07) — copiada de uma referência que ele
+  // mandou: legenda PEQUENA, toda em minúsculas, sem pontuação, branca, uma
+  // linha de 2–4 palavras, sombra curta e escura, sem animação e sem cor de
+  // destaque. Na referência ela fica no peito, logo abaixo do queixo; aqui a
+  // faixa baixa compartilhada (bottom 430) cai exatamente no peito dele e
+  // nunca cobre o rosto, inclusive dentro da tela dividida.
+  discreta: {
+    family: POPPINS,
+    weight: 600,
+    size: 46,
+    maxWords: 4,
+    lines: 1,
+    squeeze: 1,
+    squeezeY: 1,
+    tracking: 0,
+    bottom: 430,
+    maxW: 760,
+    color: '#ffffff',
+    lowercase: true,
+    noPunct: true,
+    shadow: '0 2px 6px rgba(0,0,0,0.65), 0 0 2px rgba(0,0,0,0.5)',
+  },
 };
 
 const clean = (t: string) => t.replace(/[.,!?…]+$/, '');
@@ -167,7 +200,7 @@ const isBreak = (t: string) => /[.,!?…]$/.test(t);
 // budget silently drifts short of what's actually painted.
 const widthOf = (words: Word[], V: Variant) =>
   measureText({
-    text: words.map((w) => (V.uppercase ? clean(w.text).toUpperCase() : clean(w.text))).join(' '),
+    text: words.map((w) => caseOf(clean(w.text), V)).join(' '),
     fontFamily: V.family,
     fontSize: V.size,
     fontWeight: V.weight,
@@ -265,7 +298,7 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
           fontFamily: V.family,
           fontWeight: V.weight,
           fontStyle: V.italic ? 'italic' : 'normal',
-          textTransform: V.uppercase ? 'uppercase' : undefined,
+          textTransform: V.uppercase ? 'uppercase' : V.lowercase ? 'lowercase' : undefined,
           fontSize: V.size,
           letterSpacing: V.tracking,
           lineHeight: 1.18,
@@ -277,11 +310,11 @@ export const SimpleCaptions: React.FC<{variant: string}> = ({variant}) => {
             V.squeeze === 1 && V.squeezeY === 1
               ? undefined
               : `scale(${V.squeeze}, ${V.squeezeY})`,
-          textShadow: '0 4px 18px rgba(0,0,0,0.55)',
+          textShadow: V.shadow ?? '0 4px 18px rgba(0,0,0,0.55)',
         }}
       >
         {lines.map((ln, i) => (
-          <div key={i}>{ln.map((w) => clean(w.text)).join(' ')}</div>
+          <div key={i}>{ln.map((w) => caseOf(clean(w.text), V)).join(' ')}</div>
         ))}
       </div>
     </AbsoluteFill>

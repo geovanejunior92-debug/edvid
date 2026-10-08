@@ -68,7 +68,7 @@ the Estilo tab at the end of Fase 1; every key maps to something here:
 | `headline: "outline" \| "card" \| "realce" \| "misto"` | `hook.style` in edit-data.json |
 | `headline: "none"` | **no headline at all** — `hook.enabled: false`. The template already gates on that flag, so nothing else changes |
 | `headlineFont: "poppins" \| "bebas" \| "anton" \| "playfair"` (2026-08-15) | `hook.font` in edit-data.json — the TYPEFACE, independent of `hook.style` above. Default `"poppins"` if the field is absent (older `preview_style.json`) |
-| `captions: "karaoke" \| "stacked" \| "scatter" \| "simples" \| "serifada" \| "classica" \| "impacto" \| "editorial"` | `captions.style` in edit-data.json (+ the director step for stacked) |
+| `captions: "karaoke" \| "stacked" \| "scatter" \| "simples" \| "serifada" \| "classica" \| "impacto" \| "editorial" \| "premium" \| "discreta"` | `captions.style` in edit-data.json (+ the director step for stacked) |
 | `captions: "none"` | **no captions at all** — `captions.enabled: false`. Skip `captions_for_remotion.py` too; nothing reads the file |
 | `accent` (hex) | `hook.accent` + `captions.accent`. Only `realce`/`misto`/`stacked` paint it; `accentUsed:false` means the picked styles have none |
 | `elements.tracking` | `face_track.py` + `track.json`; OFF → skip it, fixed frame |
@@ -279,6 +279,14 @@ backwards on every long word.
   ≤5 words. Reuses the same italic-900 Playfair load already used by the
   `stacked` caption style and by `hook.font:"playfair"` — no new font weight
   introduced.
+- `discreta` (2026-10-07, referência dele no vídeo 07) — Poppins 600 at 46,
+  true white, **lowercase and without punctuation** (both applied when
+  measuring AND painting — `caseOf` in `SimpleCaptions.tsx`), one line, ≤4
+  words, short dark shadow, no accent, no animation. Same low band (bottom
+  430): on his framing that is the chest, under the chin, also inside split
+  windows. A static style keeps the last cue up to 1s after its last word —
+  if the outro follows the speech directly, append an empty word at
+  `outro.startSec` to `captions.json` or the caption bleeds onto the blue card.
 - **The horizontal squeeze changes the line grouping** (narrower glyphs → more
   words fit); the vertical one does not (grouping is measured on width). Worth
   knowing before "just squashing it a bit".
@@ -920,6 +928,14 @@ rodapé acima da legenda.
   {"kind": "callout", "start": 42.0, "end": 45.0, "text": "olha aqui", "x": 0.62, "y": 0.48}
 ]
 ```
+
+### `capa` — título de capa serifado (2026-10-07)
+
+`{"kind": "capa", "start": 0, "end": 6.2, "lines": ["…", "…", "…"], "size": 80, "y": 0.085, "sfx": false}` —
+até 4 linhas centradas, Fraunces 800 branca com contorno escuro fino
+(`6%` do tamanho) e sombra curta: o texto de Reels da referência dele. `size` é
+teto; cada linha encolhe para caber em 960 px. Substitui `hookStacked`/`hook`
+(desligue os dois). Em tela dividida, a primeira janela entra no `end` da capa.
 
 ### `anotacao` — legenda manuscrita escrita à mão (2026-09-03)
 

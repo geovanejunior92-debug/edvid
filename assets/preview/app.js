@@ -183,6 +183,7 @@ const STYLE_CATALOG = {
     {id: 'impacto', name: 'Impacto', stat: 'impacto'},
     {id: 'editorial', name: 'Editorial', stat: 'editorial'},
     {id: 'premium', name: 'Premium', stat: 'premium'},
+    {id: 'discreta', name: 'Discreta', stat: 'discreta'},
     {id: 'none', name: 'Nenhum', none: true},
   ],
   elements: [
@@ -700,6 +701,8 @@ const STATIC_VARIANTS = {
   // read a per-variant color today (every other style shares the CSS
   // #f4f1e9), so this one card gets its color forced after the loop below.
   premium: {family: "'Poppins',sans-serif", weight: 800, size: 76, maxWords: 3, lines: 1, sx: 1, sy: 1, tracking: -1, maxW: 820, color: '#ffffff'},
+  // 2026-10-07 — minúsculas e sem pontuação no render (SimpleCaptions.tsx); a prévia mostra o tamanho e a posição.
+  discreta: {family: "'Poppins',sans-serif", weight: 600, size: 46, maxWords: 4, lines: 1, sx: 1, sy: 1, tracking: 0, maxW: 760, color: '#ffffff'},
 };
 const ORPHAN_PT = /^(o|a|os|as|e|é|de|do|da|em|no|na|um|uma|que|se|ao|à|por|com)$/i;
 
