@@ -653,6 +653,10 @@ not permission to skip the approval.
   the Phase-2 render stops matching the cut the user approved. Phone/mirrorless
   sources routinely write bt2020 primaries with `color_transfer=unknown`; that is
   wide-gamut SDR, **not** HDR, and an HDR-only check will miss it.
+  The same rule holds for the Phase-2 render: the template's `remotion.config.ts`
+  makes Remotion write `yuv420p` bt709/tv with the right matrix. Without it the
+  render comes out full-range bt470bg and qc_final flags "esmagado/estourado
+  100%" — that is the encoder, not the logo or a lamp in the shot (2026-10-14).
 
 ### Fase-1 image sliders (manual grade controls, 2026-08-15, moved from Estilo)
 

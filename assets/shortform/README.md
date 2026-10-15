@@ -111,6 +111,8 @@ Then copy `cut.mp4` into `public/` and generate the data files below.
 
 `npx remotion render Reels out/render.mp4 --scale <k> --jpeg-quality 95 --crf 16`, onde `k` = largura do `cut.mp4` ÷ `width` do edit-data (4K = 2; 1080 = omita `--scale`), loudnorm → `edit/final.mp4`. O layout continua em 1080×1920; a escala
 desenha tudo na resolução do corte (regra de 2026-09-22: nunca reduzir o 4K).
+A cor sai igual à do corte (`yuv420p`, bt709, faixa tv) por causa do
+`remotion.config.ts`; não apague nem troque por uma config antiga (2026-10-14).
 Verify stills at cut boundaries (no black edges) before the full render.
 `generate_sfx.py` regenerates the sfx pack if ever needed.
 

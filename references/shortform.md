@@ -188,7 +188,8 @@ question is settled.
    for the hook still (user approval), then ONE contact sheet for spot checks:
    `contact_sheet.py <render> --times t1 t2 t3 -o sheet.png` — one image, not N.
 5. **Render:** `npx remotion render Reels out/render.mp4 --scale <k> --jpeg-quality 95 --crf 16`, onde `k` = largura do `cut.mp4` ÷ `width` do edit-data (4K = 2; 1080 = omita `--scale`), then loudnorm →
-   `edit/final.mp4` (see Phase 3).
+   `edit/final.mp4` (see Phase 3). O render tem de sair `yuv420p | bt709 | tv`
+   (o `remotion.config.ts` do template cuida disso; ver Phase 3 se não sair).
 
 Never edit `src/Main.tsx`. Bespoke graphics go in `src/CustomGraphics.tsx`
 (the ONE editable file — read it only when the video needs a custom graphic).
@@ -1020,14 +1021,29 @@ unnoticeable at the start and obvious by the end. Its audio track also comes out
 ~0.7s longer than its video. So never re-encode Remotion's audio; re-mux the
 approved master instead and mix the soundtrack here:
 
-**Remotion's picture is FULL-RANGE and mis-tagged — never `-c:v copy` it.** Its
-output is `yuvj420p`, `color_range=pc`, `color_primaries=bt470bg` (PAL!), transfer
-unknown. Measured: luma 0–255 where `cut.mp4` sits at 16–235. Copying the stream
-carries all of that into the delivery, so a compliant player shifts the hue off the
-PAL primaries and a player that ignores the range tag crushes the blacks — the
-Phase-1 grade the user approved drifts at the very last step. Convert the range and
-stamp the tags. `setparams` is what makes them stick: the bare `-color_primaries` /
-`-color_trc` output flags silently leave both `unknown` here.
+**A cor do render vem certa da origem desde 2026-10-14 — confira antes de mixar.**
+O `remotion.config.ts` do template pede `colorSpace bt709` e corrige o zscale do
+Remotion (que lia o JPEG bt601 de faixa cheia como bt709 e esquentava o croma).
+O render sai `yuv420p`, `bt709`, faixa `tv`; medido no vídeo 08, metade de cima do
+quadro contra o `cut.mp4`: U/V a ±0,15, Y ~1,5 abaixo (decodificação do vídeo no
+Chrome, a mesma em PNG; invisível). Sem essa config, o Remotion grava `yuvj420p`,
+`color_range=pc`, matriz `bt470bg`: Y 0–255 contra 16–235 do corte, e o qc_final
+acusa "esmagado/estourado 100%" (foi o que aconteceu nos vídeos 07 e 08).
+```bash
+ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt,color_space,color_range \
+  -of compact out/render.mp4   # tem de ler yuv420p | bt709 | tv
+```
+Leu `yuvj420p`/`pc`/`bt470bg`? É projeto copiado de um template antigo: copie
+`<skill>/assets/shortform/remotion.config.ts` para `remotion/` e renderize de novo.
+Se não der para renderizar de novo, converta a matriz E a faixa (só a faixa, com
+`scale=in_range=full:out_range=limited`, deixa o croma deslocado; e `iall=bt601-6-625`
+converte também as primárias PAL, que o Chrome nunca usou):
+`colorspace=space=bt709:trc=bt709:primaries=bt709:ispace=bt470bg:itrc=bt709:iprimaries=bt709:irange=pc:range=tv`
+no lugar do `format=yuv420p` abaixo. Nunca rode esse filtro num render que já é
+`tv`: a faixa seria comprimida duas vezes e a imagem sairia lavada.
+
+`setparams` continua no comando porque é ele que grava as etiquetas: só as flags
+`-color_primaries` / `-color_trc` de saída deixam as duas `unknown` aqui.
 
 ```bash
 VD=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of default=nw=1:nk=1 out/render.mp4)
@@ -1035,7 +1051,7 @@ VD=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of defa
 LAG=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nw=1:nk=1 out/render.mp4 | python3 -c "import sys;n,d=sys.stdin.read().strip().split('/');print(round(1000*int(d)/int(n)))")
 FADE=$(python3 -c "print(f'{$VD-1.5:.3f}')")
 ffmpeg -y -i out/render.mp4 -i ../cut.mp4 -i public/trilha.mp3 \
-  -filter_complex "[0:v]scale=in_range=full:out_range=limited,format=yuv420p,\
+  -filter_complex "[0:v]format=yuv420p,\
 setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv[vid];\
                    [1:a]adelay=$LAG:all=1[v];\
                    [2:a]volume=0.10,afade=t=in:st=0:d=0.4,afade=t=out:st=$FADE:d=1.5[m];\
