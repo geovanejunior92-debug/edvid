@@ -25,7 +25,7 @@ class WebLayoutTests(unittest.TestCase):
             "width: min(1420px, 100%)",
             "max-width: 860px",
             "grid-template-rows: 132px 1fr",
-            "font-size: clamp(34px, 4.2vw, 58px)",
+            "font-size: clamp(46px, 10.5vw, 112px)",  # herói do estilo Painel da Clínica (2026-10-17)
         ):
             self.assertIn(marker, css)
 

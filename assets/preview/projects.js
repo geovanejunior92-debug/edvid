@@ -59,7 +59,12 @@ function render(){
  const box=document.getElementById('archived');const list=document.getElementById('archived-list');
  box.hidden=!view.archived.length;
  document.getElementById('archived-count').textContent=`Arquivados (${view.archived.length})`;
- list.replaceChildren();for(const p of view.archived)list.append(card(p));}
+ list.replaceChildren();for(const p of view.archived)list.append(card(p));
+ // números do topo da lista e "luz" da esfera: contam a biblioteca inteira, não a busca
+ const ativos=items.filter(p=>!p.archived);
+ const stats={ativos:ativos.length,revisar:ativos.filter(p=>p.status==='ready').length,
+  atencao:ativos.filter(p=>p.status==='missing'||p.status==='error').length,arquivados:items.length-ativos.length};
+ window.EDVID_STATS=stats;window.EdvidFX?.atualiza(stats);window.EdvidFX?.revela(projects);}
 document.getElementById('search').addEventListener('input',render);
 fetch('/api/projects').then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{items=data.projects;render();}).catch(()=>notice.textContent='Não foi possível carregar os projetos. Recarregue para tentar novamente.');
 const IMPORT_STATE = 'edvid-import-v1';
