@@ -61,6 +61,7 @@ MIME = {
     ".js": "text/javascript; charset=utf-8",
     ".json": "application/json; charset=utf-8",
     ".png": "image/png",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
     ".jpg": "image/jpeg",
     ".webp": "image/webp",
     ".mp4": "video/mp4",
@@ -240,6 +241,8 @@ class Handler(BaseHTTPRequestHandler):
         self.project_scoped = path.startswith('/p/')
         if self.project_scoped:
             parts = path.split('/', 3)
+            if len(parts) >= 4 and parts[2] not in self.server.projects:
+                refresh_projects(self.server)
             if len(parts) < 4 or parts[2] not in self.server.projects:
                 self._json({'error': 'Projeto não encontrado'}, 404)
                 return False
@@ -329,8 +332,27 @@ class Handler(BaseHTTPRequestHandler):
             temp.unlink(missing_ok=True)
         self._json({'ok': True})
 
+    def _proxy_ok(self) -> bool:
+        """Pedido que chega pelo `tailscale serve` (HTTPS, celular): só passa com
+        a identidade Tailscale de um login permitido (`--tailscale-login`).
+
+        O proxy conecta de 127.0.0.1, então sem esta guarda qualquer aparelho da
+        tailnet entraria como se estivesse no próprio Mac. Sem login permitido
+        configurado, pedido via proxy é recusado: negar é o padrão."""
+        proxied = any(self.headers.get(h) for h in ("Tailscale-User-Login", "X-Forwarded-For", "X-Forwarded-Host"))
+        if not proxied:
+            return True
+        login = (self.headers.get("Tailscale-User-Login") or "").strip().lower()
+        allowed = getattr(self.server, "tailscale_logins", set())
+        if login and login in allowed:
+            return True
+        self._json({"error": "Acesso negado: entre pela Tailscale com a conta do dono deste Mac."}, 403)
+        return False
+
     # ---- routes ----
     def do_GET(self) -> None:  # noqa: N802
+        if not self._proxy_ok():
+            return
         if getattr(self.server, "auth_required", False):
             authorized, bootstrap = self._authorize()
             if not authorized:
@@ -361,6 +383,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({'files': sorted(files, key=lambda x: x['name'])})
             return
         if path == '/api/projects':
+            refresh_projects(self.server)
             self._projects()
             return
         if path == '/api/seam-head':
@@ -368,6 +391,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == '/projects':
             self._send_file(APP_DIR / 'projects.html')
+            return
+        # instalação como app: manifesto e worker na raiz (o escopo do worker é a pasta dele)
+        if path in ('/manifest.webmanifest', '/sw.js') and not self.project_scoped:
+            self._send_file(APP_DIR / path.lstrip('/'))
             return
         if path in ("/", "/index.html"):
             self._send_file(APP_DIR / ("index.html" if self.project_scoped else "projects.html"))
@@ -430,6 +457,8 @@ class Handler(BaseHTTPRequestHandler):
                     'reference': seam_check.REFERENCE})
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._proxy_ok():
+            return
         if getattr(self.server, "auth_required", False):
             if not self._cookie_ok():
                 self._auth_error()
@@ -691,6 +720,20 @@ def discover_projects(library: Path, active: Path) -> dict[str, Path]:
     return projects
 
 
+def refresh_projects(server) -> None:
+    """Projeto criado depois de o servidor subir (pelo agente ou pelo Studio)
+    aparece sem reiniciar: o servidor fixo do celular fica no ar por dias.
+    A varredura custa milissegundos; só acrescenta, nunca tira."""
+    library = getattr(server, "library", None)
+    if library is None:
+        return
+    try:
+        for key, root in discover_projects(library, server.default_root).items():
+            server.projects.setdefault(key, root)
+    except OSError:
+        pass
+
+
 def make_server(root: Path, library: Path, host: str = "127.0.0.1", port: int = 4820,
                 automatic_factory=preview_automatic.AutomaticRequestQueue,
                 require_auth: bool | None = None, token: str | None = None) -> ThreadingHTTPServer:
@@ -706,6 +749,7 @@ def make_server(root: Path, library: Path, host: str = "127.0.0.1", port: int = 
     srv.token = token or secrets.token_urlsafe(32)
     srv.session = secrets.token_urlsafe(32)
     srv.automatic_requests = automatic_factory(srv.projects)
+    srv.tailscale_logins = set()
     Handler.root = root
     return srv
 
@@ -718,6 +762,8 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1",
                     help="0.0.0.0 libera o preview para a rede local (celular na mesma Wi-Fi)")
     ap.add_argument("--token", help="token opcional para o acesso pela rede local")
+    ap.add_argument("--tailscale-login", action="append", default=[],
+                    help="login Tailscale aceito quando o pedido chega pelo `tailscale serve` (repetível)")
     args = ap.parse_args()
 
     root = args.root.resolve()
@@ -733,6 +779,7 @@ def main() -> None:
     # celular enquanto o Mac faz o trabalho (2026-08-17).
     library = (args.library or root.parent).resolve()
     srv = make_server(root, library, args.host, args.port, token=args.token)
+    srv.tailscale_logins = {x.strip().lower() for x in args.tailscale_login if x.strip()}
     suffix = f"/?token={srv.token}" if srv.auth_required else "/"
     display_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
     print(f"Edvid preview → http://{display_host}:{srv.server_port}{suffix}  (root: {root})", flush=True)

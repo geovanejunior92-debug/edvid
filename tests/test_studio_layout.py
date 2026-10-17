@@ -12,7 +12,7 @@ class StudioLayoutTests(unittest.TestCase):
     def test_library_and_editor_have_the_same_information_hierarchy_as_web(self):
         html = (STUDIO / "index.html").read_text()
         for marker in (
-            "Comece um vídeo novo.",
+            "Comece um vídeo <em>novo.</em>",
             'id="project-list"',
             'class="editor-shell"',
             'class="toolbox"',

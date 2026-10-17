@@ -9,6 +9,13 @@
   const calmo = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const celularMq = matchMedia('(max-width: 700px)');
   const celular = celularMq.matches;
+  // a página pode rolar num elemento (o app nativo rola #studio-main) em vez da janela
+  const rolador = document.querySelector('[data-esfera-rolagem]');
+  const rolagemTopo = () => (rolador ? rolador.scrollTop : scrollY);
+  const rolagemMax = () => (rolador ? rolador.scrollHeight - rolador.clientHeight : document.documentElement.scrollHeight - innerHeight);
+  // data-pausa-classe="has-project": some e para quando o body ganha essa classe (projeto aberto)
+  const pausaClasse = canvas.dataset.pausaClasse;
+  const pausada = () => !!pausaClasse && document.body.classList.contains(pausaClasse);
 
   let renderer;
   try {
@@ -122,7 +129,7 @@
     if (melhor && (melhor !== secaoAtual || forca)) { secaoAtual = melhor; vaiPara(melhor, false); }
   }
   if (secoes.length) { secaoAtual = secoes[0]; vaiPara(secoes[0], true); pos.s = calmo ? alvo.s : alvo.s * 0.6; }
-  addEventListener('scroll', () => escolheSecao(false), { passive: true });
+  addEventListener('scroll', () => escolheSecao(false), { passive: true, capture: true });
 
   // ---------- agitação: mais coisa pedindo atenção, mais ruído ----------
   const agit = { forca: 0.10, vel: 0.22 };
@@ -166,8 +173,8 @@
     ultimo = agora;
     tempo += dt * agit.vel;
     giro += dt * 0.06;
-    const max = Math.max(1, document.documentElement.scrollHeight - innerHeight);
-    const rolagem = (scrollY / max) * 2.2 * Math.PI * 2;
+    const max = Math.max(1, rolagemMax());
+    const rolagem = (rolagemTopo() / max) * 2.2 * Math.PI * 2;
     comuns.uTempo.value = tempo;
     comuns.uForca.value = agit.forca;
     if (!window.gsap && !calmo) { // sem gsap: aproxima na mão
@@ -180,11 +187,15 @@
     if (rodando) requestAnimationFrame(quadro);
   }
   function liga() {
-    if (rodando || calmo) return;
+    if (rodando || calmo || pausada()) return;
     rodando = true; ultimo = performance.now(); requestAnimationFrame(quadro);
   }
   function desliga() { rodando = false; }
   document.addEventListener('visibilitychange', () => (document.hidden ? desliga() : liga()));
+  if (pausaClasse) new MutationObserver(() => {
+    canvas.classList.toggle('pausada', pausada());
+    if (pausada()) desliga(); else { escolheSecao(true); liga(); }
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
   canvas.classList.add('viva');
   if (calmo) { // parada: um quadro só

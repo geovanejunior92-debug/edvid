@@ -128,6 +128,11 @@ function renderProjects() {
   $("archived-count").textContent = `Arquivados (${archived.length})`;
   const archivedList = $("archived-list"); archivedList.replaceChildren();
   archived.forEach((project) => archivedList.append(projectCard(project)));
+  // números da biblioteca e "luz" da esfera (mesmo efeito da versão web): contam tudo, não a busca
+  const ativos = state.projects.filter((project) => !project.archived);
+  const stats = { ativos: ativos.length, revisar: ativos.filter((project) => project.available).length,
+    atencao: ativos.filter((project) => !project.available).length, arquivados: state.projects.length - ativos.length };
+  window.EDVID_STATS = stats; window.EdvidFX?.atualiza(stats); window.EdvidFX?.revela(list);
 }
 
 function setStudioTab(name, { toggle = false } = {}) {

@@ -5,13 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Edvid Studio</title>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/studio/style.css">
 </head>
 <body>
+  <!-- esfera 3D só na biblioteca: some quando um projeto abre (o editor precisa de fundo neutro) -->
+  <canvas id="esfera" data-pausa-classe="has-project" aria-hidden="true"></canvas>
+  <div id="cursor" class="cursor" aria-hidden="true"></div>
   <header class="topbar">
     <button id="back-library" class="brand" type="button" aria-label="Voltar para a biblioteca">
       <img src="/assets/edvid-logo-white.png" alt="Edvid">
-      <span>Seu espaço de edição</span>
+      <span>Seu espaço de <em>edição</em></span>
     </button>
     <div id="top-project" class="top-project" hidden>
       <span class="eyebrow">Projeto</span>
@@ -20,13 +24,13 @@
     </div>
     <span id="service-status" class="status">serviço local</span>
   </header>
-  <main id="studio-main">
+  <main id="studio-main" data-esfera-rolagem>
     <aside id="library-view" class="library-view">
-      <section class="library-intro">
-        <span class="eyebrow">Biblioteca local</span>
-        <h1>Comece um vídeo novo.</h1>
-        <p class="intro">Seus cortes, escolhas e próximos passos, organizados por projeto.</p>
-        <form id="project-form" class="new-project">
+      <section class="library-intro" data-esfera="2.15,0.1,1.25" data-esfera-celular="0,1.05,0.95">
+        <span id="eyebrow" class="eyebrow rv">Biblioteca local</span>
+        <h1 class="rv">Comece um vídeo <em>novo.</em></h1>
+        <p class="intro rv">Seus cortes, escolhas e próximos passos, organizados por projeto.</p>
+        <form id="project-form" class="new-project rv">
           <label for="project-path">Pasta do projeto</label>
           <div class="field-row">
             <input id="project-path" name="path" autocomplete="off" placeholder="/Users/…/Meu projeto" required>
@@ -34,12 +38,19 @@
           </div>
           <label class="check"><input id="create-project" type="checkbox"> Criar a pasta se ela ainda não existir</label>
           <p>Escolha uma pasta do Mac. O Studio prepara a área de edição sem mover os vídeos originais.</p>
-          <button type="submit">Adicionar projeto</button>
+          <button type="submit" class="btn-cta"><span>Adicionar projeto</span><i aria-hidden="true">→</i></button>
         </form>
         <p id="project-error" class="error" role="alert"></p>
       </section>
-      <section class="library-list">
-        <h2>Seus projetos</h2>
+      <section class="library-list" data-esfera="3.1,1.25,0.8" data-esfera-celular="1.2,1.9,0.55">
+        <span class="eyebrow rv">Biblioteca · projetos</span>
+        <h2 class="rv">Seus <em>projetos.</em></h2>
+        <div class="kpis" aria-label="Resumo da biblioteca">
+          <div class="kpi rv"><span>Projetos ativos</span><b data-kpi="ativos">0</b><small>na biblioteca</small></div>
+          <div class="kpi rv principal"><span>Prontos para abrir</span><b data-kpi="revisar">0</b><small>pasta encontrada</small></div>
+          <div class="kpi rv"><span>Pasta a localizar</span><b data-kpi="atencao">0</b><small>indisponível no Mac</small></div>
+          <div class="kpi rv"><span>Arquivados</span><b data-kpi="arquivados">0</b><small>nenhum arquivo apagado</small></div>
+        </div>
         <label class="search" for="project-search">Buscar projeto
           <input id="project-search" type="search" placeholder="Nome do vídeo ou projeto">
         </label>
@@ -181,5 +192,9 @@
   <script src="/studio/pipeline.js"></script>
   <script src="/studio/phase2.js"></script>
   <script src="/studio/finish.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+  <script src="/assets/biblioteca-fx.js" defer></script>
+  <script src="/assets/esfera.js" defer></script>
 </body>
 </html>

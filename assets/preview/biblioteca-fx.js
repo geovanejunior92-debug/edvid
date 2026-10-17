@@ -71,7 +71,7 @@
     },
     revela(container) {
       if (!container) return;
-      const cards = [...container.querySelectorAll(':scope > .card:not(.rv)')];
+      const cards = [...container.querySelectorAll(':scope > .card:not(.rv), :scope > .project-card:not(.rv)')];
       cards.forEach((c) => c.classList.add('rv'));
       prepara(cards);
     },
@@ -87,7 +87,7 @@
     addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
       x = e.clientX; y = e.clientY; c.classList.add('on');
-      c.classList.toggle('grande', !!e.target.closest('a, button, summary, label, input, .card'));
+      c.classList.toggle('grande', !!e.target.closest('a, button, summary, label, input, .card, .project-card'));
     });
     document.addEventListener('pointerleave', () => c.classList.remove('on'));
     (function segue() {
