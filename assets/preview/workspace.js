@@ -13,13 +13,13 @@
   toolHead.append(title);
   sidebar.append(toolHead);
 
-  for (const selector of ['#tabs', '.project-status', '#imgAdjustPanel', '#styleSetup', '#diagPanel', '#takesPanel']) {
+  for (const selector of ['#tabs', '.project-status', '#imgAdjustPanel', '#styleSetup', '#claudePanel', '#diagPanel', '#takesPanel']) {
     const panel = document.querySelector(selector);
     if (panel) sidebar.append(panel);
   }
   const help = document.createElement('div');
   help.className = 'workspace-guide';
-  help.innerHTML = '<strong>Edite com Astra ou Claude</strong><p>Marque um intervalo na timeline e descreva o ajuste. Salve as marcações e volte à conversa para aplicar.</p><span>Espaço · reproduzir &nbsp; M · marcar trecho</span>';
+  help.innerHTML = '<strong>Edite com Astra ou Claude</strong><p>Marque um intervalo na timeline e descreva o ajuste. Salve as marcações e volte à conversa para aplicar.</p><span>Espaço · reproduzir &nbsp; M · marcar trecho<br>Shift+M · o Claude monta &nbsp; H · modo limpo</span>';
   sidebar.append(help);
 
   const main = document.querySelector('main');
@@ -41,6 +41,7 @@
     <button class="rail-tool" type="button" data-tool="style" title="Estilo" aria-label="Abrir escolhas de estilo"><span aria-hidden="true">✦</span></button>
     <button class="rail-tool" type="button" data-tool="visual" title="Visual" aria-label="Abrir edição visual"><span aria-hidden="true">▧</span></button>
     <span class="rail-rule" aria-hidden="true"></span>
+    <button class="rail-tool rail-context" type="button" data-tool="claude" title="Decisões do Claude" aria-label="Abrir decisões do Claude"><span aria-hidden="true">C</span></button>
     <button class="rail-tool rail-context" type="button" data-tool="diagnostics" title="Diagnóstico" aria-label="Abrir diagnóstico"><span aria-hidden="true">≋</span></button>
     <button class="rail-tool rail-context" type="button" data-tool="takes" title="Tomadas" aria-label="Abrir tomadas do roteiro"><span aria-hidden="true">▤</span></button>`;
   sidebar.before(rail);
@@ -59,10 +60,11 @@
     visual: document.querySelector('.tab[data-tab="2"]'),
   };
   const panels = {
+    claude: document.getElementById('claudePanel'),
     diagnostics: document.getElementById('diagPanel'),
     takes: document.getElementById('takesPanel'),
   };
-  const labels = { cut: 'Corte', style: 'Estilo', visual: 'Visual', diagnostics: 'Diagnóstico', takes: 'Tomadas do roteiro' };
+  const labels = { cut: 'Corte', style: 'Estilo', visual: 'Visual', claude: 'Decisões do Claude', diagnostics: 'Diagnóstico', takes: 'Tomadas do roteiro' };
   let selectedTool = 'cut';
 
   function setDrawer(open) {
@@ -73,14 +75,14 @@
 
   function syncRail() {
     const activePhase = Object.entries(phaseTabs).find(([, tab]) => tab?.classList.contains('active'))?.[0] || 'cut';
-    if (!['diagnostics', 'takes'].includes(selectedTool)) selectedTool = activePhase;
+    if (!['claude', 'diagnostics', 'takes'].includes(selectedTool)) selectedTool = activePhase;
     for (const button of rail.querySelectorAll('.rail-tool')) {
       const key = button.dataset.tool;
       if (key === 'library') continue;
       const target = phaseTabs[key] || panels[key];
       const unavailable = phaseTabs[key] ? !!target?.disabled : !target || target.classList.contains('hidden');
       button.disabled = unavailable;
-      button.hidden = ['diagnostics', 'takes'].includes(key) && unavailable;
+      button.hidden = ['claude', 'diagnostics', 'takes'].includes(key) && unavailable;
       button.classList.toggle('active', key === selectedTool);
       button.setAttribute('aria-pressed', String(key === selectedTool));
     }

@@ -1610,3 +1610,46 @@ body.drawer-open:has(.workspace-tools .drawer-body:not(.hidden)) .editor-col { f
 .workspace-tools .img-adjust-panel .drawer-toggle .group-title { white-space: nowrap; }
 .workspace-tools .img-adjust-panel #imgReset { margin-left: auto; }
 .workspace-tools .img-adjust-panel .drawer-hint { order: 3; flex-basis: 100%; margin-left: 22px; }
+
+
+/* ---------- funções do "Estúdio de edição" (2026-10-17) ---------- */
+.claude-mark {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: #d97757; color: #fff; font-size: 11px; font-weight: 800;
+}
+.claude-body { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 30vh; overflow-y: auto; }
+.claude-body.hidden { display: none; }
+.claude-msg { padding: 8px 11px; border-radius: 10px; background: rgba(255,255,255,0.05); }
+.claude-msg.voce { background: rgba(255,255,255,0.09); margin-left: 18%; }
+.claude-msg .quem { display: block; font-size: 10.5px; letter-spacing: .4px; text-transform: uppercase; color: var(--dim); margin-bottom: 2px; }
+.claude-msg p { margin: 0; line-height: 1.45; }
+.claude-notas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.claude-nota {
+  padding: 7px 10px 7px 12px; border-radius: 9px; cursor: pointer; border-left: 3px solid rgba(255,119,19,0.35);
+  background: rgba(255,255,255,0.03); transition: background .15s ease, border-color .15s ease;
+}
+.claude-nota:hover { background: rgba(255,255,255,0.07); }
+.claude-nota.on { background: rgba(255,119,19,0.13); border-left-color: #ff7713; }
+.claude-nota .topo { display: flex; gap: 8px; align-items: baseline; }
+.claude-nota .topo b { font-variant-numeric: tabular-nums; color: #ffb37a; font-size: 11px; }
+.claude-nota .topo .beat { font-weight: 650; flex: 1; }
+.claude-nota .topo s { text-decoration: none; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 11px; }
+.claude-nota q { display: block; margin: 3px 0 2px; color: #cfd4de; font-style: italic; }
+.claude-nota q::before, .claude-nota q::after { content: '"'; }
+.claude-nota p { margin: 2px 0 0; color: #aab1bd; line-height: 1.4; }
+.claude-nota p.vazio { opacity: .55; font-style: italic; }
+
+/* montagem: cada bloco entra com atraso próprio (style.animationDelay) */
+@keyframes edvidMonta {
+  from { opacity: 0; transform: translateY(7px) scale(0.94); filter: blur(4px); clip-path: inset(0 100% 0 0); }
+  60% { opacity: 1; filter: blur(0); }
+  to { opacity: 1; transform: none; filter: none; clip-path: inset(0 0 0 0); }
+}
+.montando { animation: edvidMonta 0.42s cubic-bezier(.2,.8,.2,1) both; }
+body.em-montagem .timeline-panel { pointer-events: none; }
+body.em-montagem #btnMontar { opacity: .5; }
+
+/* modo limpo (H): só o player, o transporte e a timeline — para gravar a tela */
+body.limpo > header, body.limpo #tabs, body.limpo .diag-panel, body.limpo .img-adjust-panel,
+body.limpo .seam-panel, body.limpo .word-bar, body.limpo .help-fab,
+body.limpo .workspace-rail, body.limpo .workspace-tools { display: none !important; }

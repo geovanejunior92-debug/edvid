@@ -1029,7 +1029,8 @@ async function applyState(data) {
   // SHORTER than end-start and the takes do not simply abut. Without this the
   // filmstrip and the needle drift a little further at each junction.
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
-  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '' }));
+  S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '',
+    quote: r.quote || '', reason: r.reason || '' }));
   S.draft = S.rendered.map((r) => ({ ...r, removed: false, orig: { start: r.start, end: r.end } }));
   S.selected = -1;
 
@@ -1282,6 +1283,7 @@ function updateScrollRange() {
 function renderAll() {
   updateImgDrawerHint();
   renderTakes();
+  renderClaude();
   timelineEl.style.width = `${contentWidth()}px`;
   renderClips();
   renderWords();
@@ -1292,6 +1294,7 @@ function renderAll() {
   drawWave();
   updateScrollRange();
   positionNeedle();
+  if (MONTAGEM.ini) MONTAGEM.carimba();
 }
 
 // ---------- transcrição clicável ----------
@@ -1518,6 +1521,9 @@ function renderDiag() {
 // Uma classe no body diz ao CSS que alguma gaveta está aberta — é ela que
 // manda o player ceder altura em vez de a timeline sair da tela.
 function syncDrawerState() {
+  // claudeBody fica de fora: a gaveta mora na barra lateral (workspace.js), não
+  // divide altura com o player — com ela aqui, abrir a gaveta jogava a timeline
+  // para fora da tela no modo retrato (medido 2026-10-17: topo 995 numa janela de 887).
   const open = ['imgDrawerBody', 'diagBody'].some((id) => {
     const e = $(id);
     return e && !e.classList.contains('hidden') && e.closest('section') &&
@@ -1546,7 +1552,148 @@ function wireDrawer(toggleId, bodyId, key) {
 wireDrawer('imgDrawerToggle', 'imgDrawerBody', 'edvid.imgDrawer');
 wireDrawer('diagToggle', 'diagBody', 'edvid.diagDrawer');
 wireDrawer('takesToggle', 'takesBody', 'edvid.takesDrawer');
+wireDrawer('claudeToggle', 'claudeBody', 'edvid.claudeDrawer');
 syncDrawerState();
+
+// ---------- funções do "Estúdio de edição" (2026-10-17) ----------
+// Trazidas do motor do comercial animado para o Preview, sobre o corte DELE:
+// a gaveta com as decisões do Claude, a montagem animada da timeline e o modo
+// limpo para gravar a tela. Nenhuma delas escreve nada: são leitura do que o
+// edl.json já guarda (beat, quote, reason) e apresentação.
+function claudeTakes() {
+  const rl = renderedLayout();
+  return S.rendered.map((r, i) => ({ ...r, i, out: rl[i]?.out ?? 0, dur: rl[i]?.dur ?? (r.end - r.start) }));
+}
+function renderClaude() {
+  const panel = $('claudePanel'), body = $('claudeBody');
+  const takes = claudeTakes();
+  const has = takes.length > 0 && S.videoDuration > 0;
+  panel.classList.toggle('hidden', !has);
+  if (!has) return;
+  const comMotivo = takes.filter((t) => t.reason || t.quote).length;
+  $('claudeHint').textContent = `${takes.length} takes · ${fmt(S.videoDuration)}` +
+    (comMotivo < takes.length ? ` · ${takes.length - comMotivo} sem motivo anotado` : '');
+  if (body.classList.contains('hidden')) return; // fechada: não desenha à toa
+  const assinatura = JSON.stringify([S.state.pedido, takes.map((t) => [t.beat, t.quote, t.reason, t.out.toFixed(2)])]);
+  if (body.dataset.sig === assinatura) return; // o poll chama a cada 2 s; sem mudança, nada a refazer
+  body.dataset.sig = assinatura;
+  body.innerHTML = '';
+  const pedido = S.state.pedido || S.state.request || '';
+  if (pedido) {
+    const voce = el('div', 'claude-msg voce', body);
+    el('span', 'quem', voce).textContent = 'Você';
+    el('p', '', voce).textContent = pedido;
+  }
+  const resumo = el('div', 'claude-msg', body);
+  el('span', 'quem', resumo).textContent = 'Claude';
+  el('p', '', resumo).textContent =
+    `Montei ${takes.length} take${takes.length > 1 ? 's' : ''} em ${fmt(S.videoDuration)}. Minhas escolhas, uma por uma:`;
+  const lista = el('ol', 'claude-notas', body);
+  for (const t of takes) {
+    const li = el('li', 'claude-nota', lista);
+    li.dataset.i = t.i;
+    const topo = el('div', 'topo', li);
+    el('b', '', topo).textContent = String(t.i + 1).padStart(2, '0');
+    el('span', 'beat', topo).textContent = t.beat || t.source;
+    el('s', '', topo).textContent = fmt(t.out);
+    if (t.quote) el('q', '', li).textContent = t.quote;
+    el('p', t.reason ? '' : 'vazio', li).textContent = t.reason || 'sem motivo anotado no edl.json';
+    li.addEventListener('click', () => {
+      if (S.draft[t.i]?.removed) { toast('Esse take está removido no rascunho', 2000); return; }
+      seekDraft(renderedToDraft(t.out + 0.01));
+    });
+  }
+  SEL_TAKE = -2; // força marcar o atual de novo
+}
+let SEL_TAKE = -1, SEL_TAKE_T = 0;
+function marcaTakeAtual() {
+  const now = performance.now();
+  if (now - SEL_TAKE_T < 150) return;
+  SEL_TAKE_T = now;
+  const body = $('claudeBody');
+  if (!body || body.classList.contains('hidden')) return;
+  const t = video.currentTime, rl = renderedLayout();
+  let idx = -1;
+  for (let i = rl.length - 1; i >= 0; i--) if (t >= rl[i].out - 0.001) { idx = i; break; }
+  if (idx === SEL_TAKE) return;
+  SEL_TAKE = idx;
+  body.querySelectorAll('.claude-nota').forEach((li) => li.classList.toggle('on', +li.dataset.i === idx));
+  const on = body.querySelector('.claude-nota.on');
+  if (on && !video.paused) on.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// Montagem: os blocos entram na timeline um a um, faixa por faixa, como no
+// estúdio; no fim a agulha volta ao início e o vídeo toca. O tempo de cada
+// bloco é um atraso de animação CSS relativo ao início da montagem, então um
+// renderAll() no meio (o poll redesenha) continua do ponto certo em vez de
+// recomeçar — atraso negativo começa a animação pela metade.
+const MONTAGEM = {
+  ini: 0, fim: 0, timer: null,
+  ordem() {
+    const lanes = [['#laneVideo', '.clip:not(.removed)', .16], ['#laneWords', '.word', .012],
+      ['#laneCaptions', '.chip', .02], ['#insertTracks', '.chip', .06], ['#laneAudioA1', '*', .08], ['#laneAudioA2', '*', .08],
+      ['#laneNotes', '.note-chip', .05]];
+    const out = [];
+    let q = 0.25;
+    for (const [sel, filho, passo] of lanes) {
+      const host = document.querySelector(sel);
+      if (!host || host.closest('.hidden')) continue;
+      const itens = [...host.querySelectorAll(filho)].filter((e) => e.parentElement === host || filho !== '*')
+        .filter((e) => e.offsetWidth > 0)
+        .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+      if (!itens.length) continue;
+      for (const e of itens) { out.push([e, q]); q += passo; }
+      q += 0.12;
+    }
+    return { out, total: q + 0.5 };
+  },
+  carimba() {
+    const passou = (performance.now() - this.ini) / 1000;
+    for (const [e, q] of this.ordem().out) {
+      e.classList.add('montando');
+      e.style.animationDelay = `${(q - passou).toFixed(3)}s`;
+    }
+  },
+  inicia() {
+    if (!S.videoDuration || !S.rendered.length) { toast('Ainda não há corte para montar', 2000); return; }
+    if (this.ini) return;
+    video.pause();
+    seekDraft(0);
+    panel.scrollLeft = 0;
+    // a montagem é o Claude explicando: abre a gaveta dele junto (pelo trilho, quando existe)
+    const trilho = document.querySelector('.rail-tool[data-tool="claude"]');
+    if (trilho && !trilho.classList.contains('active')) trilho.click();
+    else if (!trilho && $('claudeBody').classList.contains('hidden')) $('claudeToggle').click();
+    this.ini = performance.now();
+    document.body.classList.add('em-montagem');
+    $('stateMessage').dataset.antes = $('stateMessage').textContent;
+    $('stateMessage').textContent = 'O Claude está montando a edição…';
+    this.carimba();
+    const total = this.ordem().total;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.termina(), total * 1000);
+  },
+  termina() {
+    this.ini = 0;
+    document.body.classList.remove('em-montagem');
+    document.querySelectorAll('.montando').forEach((e) => { e.classList.remove('montando'); e.style.animationDelay = ''; });
+    $('stateMessage').textContent = $('stateMessage').dataset.antes || '';
+    seekDraft(0);
+    setTimeout(() => video.play().catch(() => {}), 300);
+  },
+};
+$('btnMontar').addEventListener('click', () => MONTAGEM.inicia());
+
+function alternaLimpo() {
+  document.body.classList.toggle('limpo');
+  requestAnimationFrame(() => { LUT_ENGINE.syncRect(); fitZoom(); renderAll(); });
+}
+function alternaTelaCheia() {
+  try {
+    const r = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+    if (r && r.catch) r.catch(() => {});
+  } catch (e) { /* navegador sem tela cheia: o atalho só não faz nada */ }
+}
 
 // ---------- correction markers ----------
 function renderNotes() {
@@ -2703,6 +2850,7 @@ function rafLoop() {
     for (const step of capAnims) step(now);
   }
   positionNeedle();
+  marcaTakeAtual();
   if (!video.paused && !video.ended) {
     // keep needle visible
     const x = LABEL_W + renderedToDraft(video.currentTime) * S.pps;
@@ -2824,7 +2972,15 @@ laneVideo.addEventListener('dblclick', (e) => {
 
 // keyboard
 document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if ((e.key === 'm' || e.key === 'M') && e.shiftKey) {
+    e.preventDefault();
+    MONTAGEM.inicia();
+    return;
+  }
+  if ((e.key === 'h' || e.key === 'H') && !e.shiftKey) { e.preventDefault(); alternaLimpo(); return; }
+  if ((e.key === 'f' || e.key === 'F') && !e.shiftKey) { e.preventDefault(); alternaTelaCheia(); return; }
   if (e.key === 'm' || e.key === 'M') {
     e.preventDefault();
     toggleMark();
