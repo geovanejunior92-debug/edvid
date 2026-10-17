@@ -322,6 +322,8 @@ of data simply will not appear.
 only appears when the EDL carries a `jcut_timeline`. The hatched orange head on a
 block is the lead — how much voice arrives before that take's picture.
 
+**Funções do estúdio de edição no Preview (2026-10-17, pedido dele).** Trazidas do motor do comercial animado para o corte DELE: (1) **Decisões do Claude** — botão "C" no trilho lateral; mostra o pedido (`state.json` → `pedido`, o pedido dele com as palavras dele) e, take por take, `beat`, `quote` e `reason` do `edl.json`, com o take que está tocando aceso; clique leva a agulha. **Por isso, todo range do EDL leva `reason` em uma frase de decisão de edição** ("tirei a primeira tentativa, a segunda tem a ênfase no número") e o `state.json` leva `pedido` — sem eles a gaveta diz "sem motivo anotado". (2) **Montagem** — botão "montar" ou Shift+M: os blocos entram na timeline um a um, abre as decisões e dá play (é o take do "olha o Claude editando"). (3) **H** modo limpo (só player, transporte e timeline, para gravar a tela) e **F** tela cheia. Nada disso escreve arquivo. M continua sendo IN/OUT.
+
 **What the user can do in the UI:** scrub, trim take edges, delete takes, drag
 insert/hook chips — and **mark correction ranges**: park the needle, press `M`
 (or the IN button), move to the end of the problem, press `M` again — the note box

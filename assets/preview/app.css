@@ -1653,3 +1653,6 @@ body.em-montagem #btnMontar { opacity: .5; }
 body.limpo > header, body.limpo #tabs, body.limpo .diag-panel, body.limpo .img-adjust-panel,
 body.limpo .seam-panel, body.limpo .word-bar, body.limpo .help-fab,
 body.limpo .workspace-rail, body.limpo .workspace-tools { display: none !important; }
+/* no shell do workspace, o main passa a ocupar a grade inteira */
+body.workspace-editor.limpo { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding-top: 12px; }
+body.workspace-editor.limpo > main { grid-column: 1; grid-row: 1; }
