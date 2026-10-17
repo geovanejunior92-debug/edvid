@@ -1,0 +1,946 @@
+<!doctype html>
+<!-- Motor do "Estúdio de edição", skill gratuita de Amanda Diniz (Divos da IA), adaptado ao edvid em 2026-10-17:
+     fontes locais (fontes.arquivos), exportação direta em MP4 (#exportar) e quadros de conferência (#tempos).
+     A ficha é escrita por helpers/comercial.py; não edite o PROJETO à mão. -->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estúdio edvid</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --fundo: #121214; --painel: #1b1b1e; --painel2: #222226; --borda: #2b2b30;
+    --texto: #d6d6db; --suave: #85858e; --fraco: #5a5a62; --ativo: #e9a04b; --play: #e5484d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--fundo); color: var(--texto); overflow: hidden;
+    font: 12px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; user-select: none; }
+  body.sem-cursor, body.sem-cursor * { cursor: none !important; }
+  #app { display: grid; grid-template-rows: 34px minmax(0, 1fr) auto 30px; height: 100vh; }
+
+  header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 12px; background: #18181b; border-bottom: 1px solid var(--borda); }
+  header .menus { display: flex; gap: 14px; color: var(--suave); white-space: nowrap; overflow: hidden; }
+  header .menus b { color: var(--texto); font-weight: 600; margin-right: 6px; }
+  header .titulo { text-align: center; line-height: 1.15; }
+  header .titulo strong { font-weight: 600; font-size: 12px; }
+  header .titulo span { color: var(--suave); font-size: 10px; margin-left: 6px; }
+  header .titulo small { display: block; color: var(--suave); font-size: 9.5px; letter-spacing: .04em; }
+  header .estado { justify-self: end; display: flex; align-items: center; gap: 8px; color: var(--suave); }
+  header .estado i { width: 7px; height: 7px; border-radius: 50%; background: #3ecf6e; box-shadow: 0 0 6px #3ecf6e; }
+
+  #meio { display: grid; grid-template-columns: 232px minmax(0, 1fr) 300px; min-height: 0; }
+  body.limpo #meio { grid-template-columns: minmax(0, 1fr); }
+  body.limpo #meio > aside { display: none !important; }
+  .lateral { background: var(--painel); border-right: 1px solid var(--borda); display: flex; flex-direction: column; min-height: 0; }
+  .lateral.dir { border-right: 0; border-left: 1px solid var(--borda); }
+  .abas { display: flex; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--borda); }
+  .abas span { padding: 3px 8px; border-radius: 4px; color: var(--suave); }
+  .abas span.on { background: var(--painel2); color: var(--texto); }
+  #midia { padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow: hidden; align-content: start; }
+  #midia .item { cursor: pointer; }
+  #midia canvas { width: 100%; aspect-ratio: 16/9; border-radius: 3px; display: block; outline: 1px solid #000; }
+  #midia .item.on canvas { outline: 2px solid var(--ativo); }
+  #midia .item p { font-size: 10px; color: var(--suave); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #midia .item.on p { color: var(--texto); }
+  #midia .som { grid-column: span 2; display: flex; align-items: center; gap: 8px; padding: 5px 6px; background: var(--painel2); border-radius: 4px; color: var(--suave); font-size: 10.5px; }
+  #midia .som i { width: 22px; height: 16px; border-radius: 3px; display: inline-block; }
+
+  #centro { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #0e0e10; }
+  .barra-visor { display: flex; justify-content: space-between; align-items: center; padding: 5px 12px; color: var(--suave); font-size: 10.5px; background: var(--painel); border-bottom: 1px solid var(--borda); }
+  #palco { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px; }
+  #visor { background: #000; display: block; box-shadow: 0 0 0 1px #000, 0 10px 40px rgba(0,0,0,.5); }
+  #medidor { display: flex; gap: 3px; align-self: stretch; padding: 4px 0; }
+  #medidor div { width: 6px; background: #1d1d20; border-radius: 1px; position: relative; overflow: hidden; }
+  #medidor div i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(to top, #3fbf6a 0%, #3fbf6a 65%, #e8c547 82%, #e5484d 100%); background-size: 100% var(--alto); background-position: bottom; }
+  .transporte { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 14px; background: var(--painel); border-top: 1px solid var(--borda); }
+  #tc { font: 600 17px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #f0f0f2; letter-spacing: .02em; }
+  .botoes { display: flex; gap: 14px; align-items: center; }
+  .botoes span { cursor: pointer; }
+  .botoes svg { width: 15px; height: 15px; fill: #b9b9c0; display: block; }
+  .botoes .play svg { width: 17px; height: 17px; fill: #f0f0f2; }
+  body.tocando .botoes .play svg { fill: var(--play); }
+  .transporte .dir { justify-self: end; display: flex; gap: 12px; color: var(--suave); font-size: 10.5px; align-items: center; }
+  .transporte .dir .on { color: var(--ativo); }
+
+  #claude { display: flex; flex-direction: column; min-height: 0; }
+  .cab-claude { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-bottom: 1px solid var(--borda); }
+  .cab-claude .av { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, #d97b4a, #b9542d); display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; }
+  .cab-claude strong { font-size: 12.5px; font-weight: 600; }
+  #status { font-size: 10.5px; color: var(--suave); margin-top: 1px; display: flex; align-items: center; gap: 6px; }
+  #status i { width: 6px; height: 6px; border-radius: 50%; background: #3ecf6e; }
+  body.montando #status i { background: var(--ativo); animation: pisca .6s infinite alternate; }
+  @keyframes pisca { to { opacity: .2; } }
+  #conversa { flex: 1; overflow: hidden; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .balao { background: var(--painel2); border-radius: 10px; padding: 8px 10px; font-size: 11.5px; color: #e6e6ea; }
+  .balao.voce { align-self: flex-end; background: #2c2620; max-width: 92%; }
+  .balao.voce b { display: block; font-size: 10px; color: var(--suave); font-weight: 500; margin-bottom: 2px; }
+  #notas { list-style: none; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+  #notas li { padding: 6px 8px 6px 10px; border-radius: 6px; border-left: 3px solid transparent; transition: background .15s; cursor: pointer; }
+  #notas li .topo { display: flex; gap: 6px; align-items: baseline; font-size: 10.5px; color: var(--suave); }
+  #notas li .topo b { color: var(--texto); font-weight: 600; }
+  #notas li .topo s { text-decoration: none; margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 9.5px; }
+  #notas li p { font-size: 11px; color: #a9a9b1; margin-top: 2px; }
+  #notas li.on { background: #2a241e; border-left-color: var(--cor, var(--ativo)); }
+  #notas li.on p { color: #ececf0; }
+  body.montando #notas li { display: none; }
+  body.montando #notas li.pronta { display: block; animation: entra .25s ease-out; }
+  @keyframes entra { from { opacity: 0; transform: translateY(6px); } }
+
+  #linha { background: var(--painel); border-top: 1px solid var(--borda); }
+  .ferramentas { display: flex; align-items: center; gap: 14px; padding: 5px 12px; border-bottom: 1px solid var(--borda); color: var(--suave); font-size: 10.5px; }
+  .ferramentas svg { width: 14px; height: 14px; fill: #9a9aa2; display: block; }
+  .ferramentas .on svg { fill: var(--ativo); }
+  .ferramentas .sep { width: 1px; height: 14px; background: var(--borda); }
+  .ferramentas .fim { margin-left: auto; }
+  #tl { display: block; width: 100%; height: 300px; cursor: text; }
+  footer { display: flex; justify-content: center; align-items: center; gap: 26px; background: #18181b; border-top: 1px solid var(--borda); color: var(--fraco); font-size: 10.5px; position: relative; }
+  footer span.on { color: var(--ativo); }
+  footer b { position: absolute; left: 12px; color: var(--suave); font-weight: 600; }
+  #dica { position: fixed; left: 50%; top: 46px; transform: translateX(-50%); background: rgba(30,30,34,.96); border: 1px solid var(--borda); padding: 8px 14px; border-radius: 8px; color: var(--suave); font-size: 11.5px; transition: opacity .6s; z-index: 5; white-space: nowrap; }
+  #dica b { color: var(--texto); }
+  #carregando { position: fixed; inset: 0; display: grid; place-items: center; background: var(--fundo); color: var(--suave); z-index: 20; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="carregando">montando o estúdio…</div>
+<div id="app">
+  <header>
+    <div class="menus"><b id="nomeEstudio">Estúdio</b><span>Arquivo</span><span>Editar</span><span>Linha do tempo</span><span>Clipe</span><span>Marcar</span><span>Ver</span><span>Reproduzir</span></div>
+    <div class="titulo"><strong id="nomeProjeto"></strong><span>Editado</span><small id="subProjeto"></small></div>
+    <div class="estado"><i></i><span>Claude · conectado</span></div>
+  </header>
+  <div id="meio">
+    <aside class="lateral">
+      <div class="abas"><span class="on">Mídia</span><span>Efeitos</span><span>Textos</span></div>
+      <div id="midia"></div>
+    </aside>
+    <section id="centro">
+      <div class="barra-visor"><span id="nomeLinha"></span><span>1920 × 1080 · 30 fps · 100%</span></div>
+      <div id="palco">
+        <canvas id="visor" width="1920" height="1080"></canvas>
+        <div id="medidor"><div><i></i></div><div><i></i></div></div>
+      </div>
+      <div class="transporte">
+        <div id="tc">01:00:00:00</div>
+        <div class="botoes">
+          <span data-acao="inicio"><svg viewBox="0 0 16 16"><path d="M3 3h2v10H3zM13 3v10L6 8z"/></svg></span>
+          <span data-acao="volta"><svg viewBox="0 0 16 16"><path d="M8 3v10L2 8zM15 3v10L9 8z"/></svg></span>
+          <span data-acao="parar"><svg viewBox="0 0 16 16"><path d="M4 4h8v8H4z"/></svg></span>
+          <span data-acao="play" class="play"><svg viewBox="0 0 16 16"><path id="iconePlay" d="M4 2.5v11L13.5 8z"/></svg></span>
+          <span data-acao="avanca"><svg viewBox="0 0 16 16"><path d="M1 3v10l6-5zM8 3v10l6-5z"/></svg></span>
+          <span data-acao="fim"><svg viewBox="0 0 16 16"><path d="M11 3h2v10h-2zM3 3v10l7-5z"/></svg></span>
+          <span data-acao="repetir"><svg viewBox="0 0 16 16"><path d="M4 5h7V3l3 3-3 3V7H5v2H3V6a1 1 0 0 1 1-1zm8 6H5v2l-3-3 3-3v2h6V7h2v3a1 1 0 0 1-1 1z"/></svg></span>
+        </div>
+        <div class="dir"><span id="rotSom">som ligado</span><span id="rotRep">repetir</span><span id="duracaoTotal"></span></div>
+      </div>
+    </section>
+    <aside class="lateral dir" id="claude">
+      <div class="cab-claude">
+        <div class="av">C</div>
+        <div><strong>Claude</strong><div id="status"><i></i><span id="statusTxt">Edição pronta</span></div></div>
+      </div>
+      <div id="conversa">
+        <div class="balao voce"><b>Você</b><span id="pedido"></span></div>
+        <div class="balao" id="resumo"></div>
+        <ul id="notas"></ul>
+      </div>
+    </aside>
+  </div>
+  <section id="linha">
+    <div class="ferramentas">
+      <span class="on"><svg viewBox="0 0 16 16"><path d="M3 1l10 7-4.5 1L11 14l-2 1-2.5-5L3 13z"/></svg></span>
+      <span><svg viewBox="0 0 16 16"><path d="M7 1h2v6l4 8h-2L8 9l-3 6H3l4-8z"/></svg></span>
+      <span><svg viewBox="0 0 16 16"><path d="M2 2h4v6a2 2 0 0 0 4 0V2h4v6a6 6 0 0 1-12 0z"/></svg></span>
+      <span class="sep"></span>
+      <span>Linha do tempo · <b id="nomeLinha2" style="font-weight:600;color:#d6d6db"></b></span>
+      <span class="fim" id="infoClipes"></span>
+    </div>
+    <canvas id="tl"></canvas>
+  </section>
+  <footer>
+    <b id="rodape">Estúdio</b>
+    <span>Mídia</span><span>Corte</span><span class="on">Edição</span><span>Cor</span><span>Áudio</span><span>Exportar</span>
+  </footer>
+</div>
+<div id="dica"><b>Espaço</b> play · <b>M</b> o Claude monta a edição · <b>F</b> tela cheia · <b>H</b> só visor e barra · <b>S</b> som · <b>L</b> repetir</div>
+
+<script>
+// =====================================================================================
+// A FICHA DO COMERCIAL. É a única parte que muda de um comercial pro outro.
+// O formato de cada campo e o catálogo de cenas estão em referencias/ficha.md da skill.
+// =====================================================================================
+const PROJETO = /*PROJETO*/{
+  "estudio": "Estúdio",
+  "marca": "Ateliê Lume",
+  "titulo": "Comercial Ateliê Lume",
+  "pedido": "Faz um comercial das minhas velas no estilo Apple, sem voz, com um cronômetro que segura a pessoa até o fim.",
+  "duracao": 26,
+  "cores": { "fundo": "#0a0807", "texto": "#fbf4ea", "destaque": "#f3c98b", "acento": "#d9894a", "suave": "#b8a99a", "claro": "#f6ecdf" },
+  "fontes": { "titulo": "Inter", "peso": 600, "texto": "Inter" },
+  "cronometro": { "segundos": 15, "aparece": 3.0, "comeca": 3.6, "zera": 18.6, "some": 20.2 },
+  "trilha": { "tom": "maior", "volume": 0.16, "pausa": [16.6, 17.6] },
+  "imagens": {},
+  "cenas": [
+    { "id": "S01", "nome": "Rolagem", "tipo": "rolagem", "ini": 0, "fim": 1.0, "nota": "Abro com o feed passando rápido: quem assiste se reconhece rolando." },
+    { "id": "S02", "nome": "Calma", "tipo": "rolagem", "ini": 1.0, "fim": 2.2, "params": { "parado": true }, "nota": "Freio seco com baque grave e o fundo congelado." },
+    { "id": "S03", "nome": "15 segundos", "tipo": "numero", "ini": 2.2, "fim": 3.8, "params": { "texto": "15" }, "nota": "Aqui nasce o gancho: o cronômetro entra e não sai mais." },
+    { "id": "S04", "nome": "O tempo da chama", "tipo": "anel", "ini": 3.8, "fim": 5.8, "params": { "marcas": 15, "progresso": "cronometro" }, "nota": "Amarro o tempo do vídeo ao tempo de acender a vela." },
+    { "id": "S05", "nome": "Feita à mão", "tipo": "particulas", "ini": 5.8, "fim": 8.2, "nota": "Brilhos lentos, como a luz de uma chama." },
+    { "id": "S06", "nome": "Lista", "tipo": "lista", "ini": 8.2, "fim": 11.2, "params": { "itens": ["Cera vegetal", "Pavio de algodão", "Óleos essenciais"] }, "nota": "Três provas curtas em vez de um parágrafo." },
+    { "id": "S07", "nome": "Horas de queima", "tipo": "contador", "ini": 11.2, "fim": 13.6, "params": { "ate": 45, "sufixo": "h" }, "nota": "O número vira o título." },
+    { "id": "S08", "nome": "O mundo espera", "tipo": "notificacoes", "ini": 13.6, "fim": 16.6, "params": { "itens": [["Mensagens", "12 novas mensagens no grupo"], ["Agenda", "Reunião em 5 minutos"], ["E-mail", "Re: proposta (urgente)"]] }, "nota": "Quebro o ritmo com o barulho do dia." },
+    { "id": "S09", "nome": "Respira.", "tipo": "fundo", "ini": 16.6, "fim": 17.6, "params": { "estilo": "claro" }, "nota": "Inverto as cores: fundo claro e uma palavra." },
+    { "id": "S10", "nome": "Acende", "tipo": "medidor", "ini": 17.6, "fim": 20.2, "params": { "valor": 100, "max": 100, "unidade": "%", "rotulo": "presença" }, "nota": "O ponteiro fecha junto com o cronômetro." },
+    { "id": "S11", "nome": "Assinatura", "tipo": "assinatura", "ini": 20.2, "fim": 26, "params": { "monograma": "L" }, "nota": "Assinatura limpa: a marca e a frase." }
+  ],
+  "textos": [
+    { "ini": 1.05, "fim": 2.15, "linhas": ["Calma."], "tam": 210 },
+    { "ini": 2.25, "fim": 3.75, "linhas": ["Me dá 15 segundos."], "tam": 140, "destaque": [0, "15 segundos."] },
+    { "ini": 3.9, "fim": 5.7, "linhas": ["É o tempo de", "acender uma vela."], "tam": 120, "destaque": [1, "vela."] },
+    { "ini": 5.9, "fim": 8.1, "linhas": ["Feita à mão."], "tam": 150, "sub": "Em pequenos lotes." },
+    { "ini": 11.3, "fim": 13.5, "linhas": ["de queima."], "tam": 64, "y": 760, "peso": 500, "cor": "suave" },
+    { "ini": 14.6, "fim": 16.5, "linhas": ["O mundo", "pode esperar."], "tam": 140 },
+    { "ini": 16.65, "fim": 17.55, "linhas": ["Respira."], "tam": 240, "cor": "escuro" },
+    { "ini": 20.5, "fim": 25.6, "linhas": ["Ateliê Lume."], "tam": 190, "cor": "grad", "sub": "Acende o seu tempo.", "y": 600 }
+  ],
+  "sons": [
+    { "t": 0, "tipo": "rolagem", "dur": 1.0 }, { "t": 1.0, "tipo": "baque" }, { "t": 2.0, "tipo": "whoosh" },
+    { "t": 2.9, "tipo": "entra" }, { "t": 5.6, "tipo": "whoosh" }, { "t": 8.0, "tipo": "whoosh" },
+    { "t": 11.0, "tipo": "whoosh" }, { "t": 13.8, "tipo": "notificacoes" }, { "t": 16.1, "tipo": "impacto" },
+    { "t": 17.4, "tipo": "whoosh" }, { "t": 18.6, "tipo": "destrava" }, { "t": 20.2, "tipo": "assinatura" }
+  ]
+}/*FIM-PROJETO*/;
+
+// =====================================================================================
+// Daqui pra baixo é o motor do estúdio. Não precisa mexer pra fazer um comercial novo.
+// =====================================================================================
+const W = 1920, H = 1080, FPS = 30, DUR = PROJETO.duracao, P = PROJETO;
+const hex6 = h => { h = String(h || '').trim().replace(/^#/, ''); if (h.length === 3 || h.length === 4) h = [...h.slice(0, 3)].map(c => c + c).join(''); return /^[0-9a-f]{6}/i.test(h) ? '#' + h.slice(0, 6) : null; };
+const C = Object.assign({ fundo: '#0a0807', texto: '#fbf4ea', destaque: '#f3c98b', acento: '#d9894a', suave: '#b8a99a', claro: '#f6ecdf' }, P.cores || {});
+for (const k of Object.keys(C)) C[k] = hex6(C[k]) || '#888888';   // aceita #fff e #rrggbbaa; cor inválida vira cinza em vez de quebrar
+const FT = `"${(P.fontes && P.fontes.titulo) || 'Inter'}", system-ui, -apple-system, "Segoe UI", Arial, sans-serif`;
+const PESO = (P.fontes && P.fontes.peso) || 600;
+const CORES_CENA = ['#e8743b', '#f2a541', '#e6c84a', '#9ccc3c', '#3fae5b', '#2aa198', '#3d8fd1', '#33539e', '#8e5bd6', '#b05bd6', '#e05aa0', '#d94f5c', '#c9a77c', '#d8c7a0', '#9a6a43', '#6f8f9e', '#6b4a32'];
+P.cenas.forEach((c, i) => { c.cor = c.cor || CORES_CENA[i % CORES_CENA.length]; c.params = c.params || {}; });
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, p) => a + (b - a) * p;
+const easeOut = p => 1 - Math.pow(1 - clamp(p), 3);
+const easeOutExpo = p => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * clamp(p)));
+const easeInOut = p => { p = clamp(p); return p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; };
+const mola = (p, k = 7, w = 9) => (p <= 0 ? 0 : 1 - Math.exp(-k * p) * Math.cos(w * p));
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const pad = n => String(n).padStart(2, '0');
+const tc = t => { const f = Math.min(FPS - 1, Math.floor((t % 1) * FPS + 1e-6)); return `01:00:${pad(Math.floor(t))}:${pad(f)}`; };
+function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function retArred(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+function mistura(h1, h2, p) { const a = parseInt(h1.slice(1), 16), b = parseInt(h2.slice(1), 16); const c = s => Math.round(lerp((a >> s) & 255, (b >> s) & 255, p)); return '#' + [16, 8, 0].map(s => c(s).toString(16).padStart(2, '0')).join(''); }
+const CACHE = {};
+function memo(chave, w, h, desenha) { if (!CACHE[chave]) { const c = canvas(w, h); desenha(c.getContext('2d')); CACHE[chave] = c; } return CACHE[chave]; }
+const IMG = {};
+
+// ---------- texto animado ----------
+function corTexto(ctx, item, x0, y, largura, destaque) {
+  if (item.cor === 'escuro') return C.fundo;
+  if (item.cor === 'suave') return C.suave;
+  if (item.cor === 'grad' || destaque) {
+    const g = ctx.createLinearGradient(x0, y - item.tam, x0 + largura, y);
+    g.addColorStop(0, mistura(C.destaque, '#ffffff', .35)); g.addColorStop(.5, C.destaque); g.addColorStop(1, C.acento);
+    return g;
+  }
+  return C.texto;
+}
+function desenhaTexto(ctx, item, t) {
+  const lt = t - item.ini, dur = item.fim - item.ini;
+  if (lt < 0 || lt > dur) return;
+  const saida = clamp((lt - (dur - 0.3)) / 0.3);
+  const tam = item.tam || 140, peso = item.peso || PESO;
+  ctx.save();
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `${peso} ${tam}px ${FT}`;
+  ctx.letterSpacing = `${(-tam * 0.022).toFixed(1)}px`;
+  const esp = ctx.measureText(' ').width + tam * 0.03;
+  const altLinha = tam * 1.06, subTam = Math.max(34, Math.round(tam * 0.26));
+  const altBloco = altLinha * item.linhas.length + (item.sub ? subTam * 1.9 : 0);
+  let y = (item.y ?? 540) - altBloco / 2 + tam * 0.86, k = 0;
+  item.linhas.forEach((linha, li) => {
+    const palavras = linha.split(' ');
+    const larg = palavras.map(p => ctx.measureText(p).width);
+    const total = larg.reduce((a, b) => a + b, 0) + esp * (palavras.length - 1);
+    let x = item.alinhar === 'esq' ? (item.x ?? 170) : W / 2 - total / 2;
+    const x0 = x;
+    const dest = item.destaque && item.destaque[0] === li ? item.destaque[1].split(' ') : [];
+    palavras.forEach((p, pi) => {
+      const ehDest = dest.length && pi >= palavras.length - dest.length;
+      const a = easeOut((lt - k * 0.055) / 0.55), op = a * (1 - saida);
+      if (op > 0.002) {
+        const blur = (1 - a) * 18 + saida * 12;
+        ctx.filter = blur > 0.4 ? `blur(${blur.toFixed(1)}px)` : 'none';
+        ctx.globalAlpha = op;
+        ctx.fillStyle = corTexto(ctx, item, x0, y, total, ehDest);
+        ctx.fillText(p, x, y + (1 - a) * tam * 0.22 - saida * tam * 0.1);
+      }
+      x += larg[pi] + esp; k++;
+    });
+    y += altLinha;
+  });
+  if (item.sub) {
+    const a = easeOut((lt - 0.35) / 0.6);
+    ctx.font = `500 ${subTam}px ${FT}`; ctx.letterSpacing = '0px';
+    const ls = ctx.measureText(item.sub).width;
+    const x = item.alinhar === 'esq' ? (item.x ?? 170) + 4 : W / 2 - ls / 2;
+    const blur = (1 - a) * 10 + saida * 10;
+    ctx.filter = blur > 0.4 ? `blur(${blur.toFixed(1)}px)` : 'none';
+    ctx.globalAlpha = a * (1 - saida); ctx.fillStyle = C.suave;
+    ctx.fillText(item.sub, x, y - altLinha + tam * 0.14 + subTam * 1.5 + (1 - a) * 14);
+  }
+  ctx.restore();
+}
+
+// ---------- cronômetro (opcional) ----------
+function cadeado(ctx, x, y, s, aberto) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.lineWidth = 3.4; ctx.strokeStyle = C.texto; ctx.fillStyle = C.texto;
+  ctx.save(); ctx.translate(aberto * 9, -aberto * 7); ctx.rotate(-aberto * 0.5);
+  ctx.beginPath(); ctx.moveTo(-7, -2); ctx.lineTo(-7, -9); ctx.arc(0, -9, 7, Math.PI, 0); ctx.lineTo(7, -2 + aberto * -4); ctx.stroke();
+  ctx.restore();
+  retArred(ctx, -11, -3, 22, 17, 4); ctx.fill();
+  ctx.restore();
+}
+function desenhaCronometro(ctx, t) {
+  const c = P.cronometro;
+  if (!c || t < c.aparece || t > c.some) return;
+  const ent = mola((t - c.aparece) / 0.75, 6, 10), sai = clamp((t - (c.some - 0.45)) / 0.45);
+  const resto = t < c.comeca ? c.segundos : clamp(Math.ceil(c.zera - t - 1e-6), 0, c.segundos);
+  const desde = t < c.comeca ? 1 : (t - c.comeca) % 1, rola = easeOut(desde / 0.22);
+  const aberto = easeOutExpo((t - c.zera) / 0.4);
+  const pulso = t >= c.zera ? Math.sin(clamp((t - c.zera) / 0.35) * Math.PI) * 0.08 : 0;
+  ctx.save(); ctx.globalAlpha = 1 - sai;
+  ctx.translate(W / 2, lerp(-70, 96, ent) - sai * 30); ctx.scale(1 + pulso, 1 + pulso);
+  const pw = 264, ph = 80;
+  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8;
+  retArred(ctx, -pw / 2, -ph / 2, pw, ph, ph / 2); ctx.fillStyle = rgba(mistura(C.fundo, '#000000', .2), .84); ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(C.texto, .16); ctx.stroke();
+  cadeado(ctx, -pw / 2 + 52, 0, 1.25, aberto);
+  ctx.save(); retArred(ctx, -40, -ph / 2 + 6, 150, ph - 12, 8); ctx.clip();
+  ctx.font = `600 46px ${FT}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  const cor = resto <= 5 && t >= c.comeca ? C.destaque : C.texto, xs = [-20, 2, 30, 60];
+  const escreve = (n, dy, a) => { ctx.globalAlpha = a * (1 - sai); ctx.fillStyle = cor; [...`${Math.floor(n / 60)}:${pad(n % 60)}`].forEach((ch, i) => ctx.fillText(ch, xs[i] ?? (60 + (i - 3) * 30), 2 + dy)); };
+  if (rola < 1 && t >= c.comeca + 0.001) { escreve(resto + 1, -rola * 34, 1 - rola); escreve(resto, (1 - rola) * 34, rola); } else escreve(resto, 0, 1);
+  ctx.restore(); ctx.restore();
+}
+const decorridoEm = t => P.cronometro ? clamp(t - P.cronometro.comeca, 0, P.cronometro.segundos) : 0;
+
+// ---------- recursos pré-desenhados ----------
+const GRAO = canvas(512, 512);
+(() => { const g = GRAO.getContext('2d'), img = g.createImageData(512, 512), r = rng(3);
+  for (let i = 0; i < img.data.length; i += 4) { const v = 128 + (r() - .5) * 255; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+  g.putImageData(img, 0, 0); })();
+const VINHETA = canvas(W, H);
+(() => { const g = VINHETA.getContext('2d'), gr = g.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * 1.02);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.6)'); g.fillStyle = gr; g.fillRect(0, 0, W, H); })();
+function fundoBrilho(ctx, x, y, r, intensidade = 1) {
+  ctx.fillStyle = C.fundo; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, rgba(C.acento, 0.22 * intensidade)); g.addColorStop(1, rgba(C.acento, 0));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+// feed genérico pra cena de rolagem
+const FEED = (() => { const r = rng(11), cards = []; let y = 0;
+  const pares = [[C.acento, C.destaque], ['#3b4a6b', '#c47a5a'], ['#2d5a4f', '#d8b36a'], ['#5b3a5f', '#e08a6a'], ['#24364f', '#7fb0c9'], [mistura(C.fundo, C.acento, .5), C.claro]];
+  for (let i = 0; i < 28; i++) { const h = 420 + r() * 260; cards.push({ y, h, cores: pares[Math.floor(r() * pares.length)], sol: r(), linhas: 1 + Math.floor(r() * 2) }); y += h + 30; }
+  return { cards, total: y }; })();
+function desenhaFeed(ctx, desloc, borraVel) {
+  const larg = 700, x = W / 2 - larg / 2, copias = borraVel > 0 ? 4 : 1;
+  for (let k = 0; k < copias; k++) {
+    ctx.save(); ctx.globalAlpha = copias > 1 ? 0.34 : 1;
+    const d = desloc + k * borraVel;
+    for (const c of FEED.cards) {
+      const y = ((c.y - d) % FEED.total + FEED.total) % FEED.total - 200;
+      if (y > H || y + c.h < 0) continue;
+      retArred(ctx, x, y, larg, c.h, 26); ctx.fillStyle = '#1d1d21'; ctx.fill();
+      ctx.fillStyle = '#2c2c31'; ctx.beginPath(); ctx.arc(x + 44, y + 40, 18, 0, 7); ctx.fill();
+      retArred(ctx, x + 74, y + 30, 170, 10, 5); ctx.fill();
+      const ih = c.h - 150, g = ctx.createLinearGradient(x, y + 80, x + larg, y + 80 + ih);
+      g.addColorStop(0, c.cores[0]); g.addColorStop(1, c.cores[1]);
+      ctx.fillStyle = g; ctx.fillRect(x, y + 80, larg, ih);
+      ctx.fillStyle = 'rgba(255,240,220,.3)'; ctx.beginPath(); ctx.arc(x + 120 + c.sol * 440, y + 80 + ih * 0.38, 46, 0, 7); ctx.fill();
+      ctx.fillStyle = '#2c2c31';
+      for (let i = 0; i < c.linhas + 1; i++) { retArred(ctx, x + 22, y + 80 + ih + 24 + i * 18, i ? 300 : 460, 9, 4); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+}
+
+// ---------- catálogo de cenas (cada tipo usa as cores da marca) ----------
+// assinatura de cada uma: (ctx, lt = tempo dentro da cena, d = duração da cena, t = tempo do vídeo, p = params)
+const CENA = {
+  rolagem(ctx, lt, d, t, p) {
+    ctx.fillStyle = '#0a0a0b'; ctx.fillRect(0, 0, W, H);
+    if (!p.parado) { desenhaFeed(ctx, 300 + 3800 * Math.pow(lt / d, 1.2), 26); return; }
+    const parado = memo('feedParado', W, H, g => desenhaFeed(g, 4100, 0));
+    ctx.save(); const s = 1 + 0.03 * (lt / d); ctx.translate(W / 2, H / 2); ctx.scale(s, s); ctx.translate(-W / 2, -H / 2);
+    ctx.filter = `blur(${lerp(4, 22, easeOut(lt / 0.4))}px)`; ctx.drawImage(parado, 0, 0); ctx.restore();
+    ctx.fillStyle = rgba(C.fundo, lerp(.35, .74, easeOut(lt / 0.4))); ctx.fillRect(0, 0, W, H);
+  },
+  fundo(ctx, lt, d, t, p) {
+    if (p.estilo === 'claro') {
+      const g = ctx.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, 1100);
+      g.addColorStop(0, C.claro); g.addColorStop(1, mistura(C.claro, C.acento, .25));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      if (lt < 0.1) { ctx.fillStyle = `rgba(255,255,255,${1 - lt / 0.1})`; ctx.fillRect(0, 0, W, H); }
+      return;
+    }
+    fundoBrilho(ctx, p.x ?? W / 2, p.y ?? H / 2, 900, p.estilo === 'escuro' ? 0.3 : 1);
+  },
+  numero(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W / 2, H / 2, 900);
+    ctx.save(); ctx.translate(W / 2, H / 2 + 40); const s = lerp(1.12, 1, easeOut(lt / d)); ctx.scale(s, s);
+    ctx.font = `700 ${p.tamanho || 820}px ${FT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.letterSpacing = '-24px';
+    ctx.strokeStyle = rgba(C.acento, 0.2 * easeOut(lt / 0.5)); ctx.lineWidth = 2.5; ctx.strokeText(String(p.texto ?? ''), 0, 0);
+    ctx.restore();
+  },
+  anel(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W / 2, H / 2, 820, .8);
+    const n = p.marcas || 24, prog = p.progresso === 'cronometro' && P.cronometro ? decorridoEm(t) / P.cronometro.segundos : (p.progresso ?? lt / d);
+    const e = easeOut(lt / 0.6), r = lerp(500, 450, e), dec = prog * n;
+    ctx.save(); ctx.translate(W / 2, H / 2); ctx.globalAlpha = e; ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const aceso = i < dec;
+      ctx.save(); ctx.rotate(-Math.PI / 2 + (i / n) * Math.PI * 2);
+      if (aceso) { ctx.strokeStyle = rgba(C.acento, .25); ctx.lineWidth = 18; ctx.beginPath(); ctx.moveTo(r - 26, 0); ctx.lineTo(r + 8, 0); ctx.stroke(); }
+      ctx.strokeStyle = aceso ? C.destaque : (i === Math.floor(dec) ? rgba(C.destaque, .55) : rgba(C.texto, .14));
+      ctx.lineWidth = aceso ? 6 : 4; ctx.beginPath(); ctx.moveTo(r - 26, 0); ctx.lineTo(r + 8, 0); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.strokeStyle = rgba(C.destaque, .35); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, r + 30, -Math.PI / 2, -Math.PI / 2 + (dec % 1) * Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  },
+  particulas(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W / 2, H * .7, 1000, .9);
+    const spr = memo('bokeh', 128, 128, g => { const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(.35, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); });
+    const tint = memo('bokehCor', 128, 128, g => { g.drawImage(spr, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = C.destaque; g.fillRect(0, 0, 128, 128); });
+    const r = rng(p.semente || 7), n = p.quantidade || 70;
+    ctx.save(); ctx.globalCompositeOperation = 'screen';
+    for (let i = 0; i < n; i++) {
+      const z = 0.3 + r() * 1.2, x = (r() * W + lt * (r() - .5) * 60) % W, y = (r() * H - lt * (20 + r() * 50) * z + H * 2) % H;
+      const s = 18 + z * 70, a = (0.15 + 0.45 * r()) * (0.6 + 0.4 * Math.sin(lt * 1.5 + i)) * easeOut(lt / 0.5);
+      ctx.globalAlpha = a; ctx.drawImage(tint, x - s / 2, y - s / 2, s, s);
+    }
+    ctx.restore();
+  },
+  foto(ctx, lt, d, t, p) {
+    const im = IMG[p.imagem || 'produto'];
+    fundoBrilho(ctx, W * .68, H * .45, 1000);
+    if (!im) return CENA.particulas(ctx, lt, d, t, p);
+    const z = lerp((p.zoom || [1, 1.07])[0], (p.zoom || [1, 1.07])[1], easeInOut(lt / d)), ent = easeOut(lt / 0.8);
+    ctx.save(); ctx.globalAlpha = ent;
+    if (p.lado === 'cheia') {
+      const e = Math.max(W / im.width, H / im.height) * z, w = im.width * e, h = im.height * e;
+      ctx.drawImage(im, (W - w) * (p.px ?? .5), (H - h) * (p.py ?? .5), w, h);
+      const g = ctx.createLinearGradient(0, 0, W * .62, 0); g.addColorStop(0, rgba(C.fundo, .78)); g.addColorStop(1, rgba(C.fundo, 0));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    } else {
+      const cx = p.lado === 'centro' ? W / 2 : W * .68, maxW = p.lado === 'centro' ? 900 : 780, maxH = 760;
+      const e = Math.min(maxW / im.width, maxH / im.height) * z, w = im.width * e, h = im.height * e;
+      const sombra = memo('sombraFoto', 900, 260, g => { g.filter = 'blur(30px)'; g.fillStyle = 'rgba(0,0,0,.7)'; g.beginPath(); g.ellipse(450, 130, 330, 50, 0, 0, 7); g.fill(); });
+      ctx.drawImage(sombra, cx - 450, H / 2 + h / 2 - 160);
+      ctx.translate(cx, H / 2 + (1 - ent) * 30);
+      if (p.moldura) { ctx.save(); retArred(ctx, -w / 2, -h / 2, w, h, 26); ctx.clip(); ctx.drawImage(im, -w / 2, -h / 2, w, h); ctx.restore(); ctx.strokeStyle = rgba(C.texto, .12); ctx.lineWidth = 2; retArred(ctx, -w / 2, -h / 2, w, h, 26); ctx.stroke(); }
+      else ctx.drawImage(im, -w / 2, -h / 2, w, h);
+    }
+    ctx.restore();
+  },
+  medidor(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W / 2, 500, 1000, .8);
+    const cx = W / 2, cy = 470, r = 320, ini = Math.PI * 0.75, varre = Math.PI * 1.5, max = p.max || 10;
+    const x = lt - 0.25, v = x <= 0 ? 0 : (p.valor ?? max) * (1 - Math.exp(-3 * x) * Math.cos(5.5 * x));
+    ctx.save(); ctx.translate(cx, cy); ctx.lineCap = 'round';
+    ctx.strokeStyle = rgba(C.texto, .08); ctx.lineWidth = 14; ctx.beginPath(); ctx.arc(0, 0, r, ini, ini + varre); ctx.stroke();
+    ctx.strokeStyle = rgba(C.acento, .3); ctx.lineWidth = 34; ctx.beginPath(); ctx.arc(0, 0, r, ini, ini + varre * clamp(v / max)); ctx.stroke();
+    ctx.strokeStyle = C.destaque; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(0, 0, r, ini, ini + varre * clamp(v / max)); ctx.stroke();
+    for (let b = 0; b <= 20; b++) {
+      const a = ini + varre * (b / 20), maior = b % 5 === 0;
+      ctx.save(); ctx.rotate(a); ctx.strokeStyle = b / 20 <= v / max ? C.destaque : rgba(C.texto, .25); ctx.lineWidth = maior ? 4 : 2;
+      ctx.beginPath(); ctx.moveTo(r - 34, 0); ctx.lineTo(r - (maior ? 64 : 50), 0); ctx.stroke(); ctx.restore();
+    }
+    const an = ini + varre * clamp(v / max, 0, 1.04);
+    ctx.save(); ctx.rotate(an); ctx.strokeStyle = C.texto; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-30, 0); ctx.lineTo(r - 80, 0); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = C.fundo; ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill(); ctx.strokeStyle = C.destaque; ctx.lineWidth = 3; ctx.stroke();
+    ctx.globalAlpha = easeOut(lt / 0.4); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.letterSpacing = '-6px';
+    const g = ctx.createLinearGradient(-200, 140, 200, 300); g.addColorStop(0, mistura(C.destaque, '#ffffff', .3)); g.addColorStop(1, C.acento);
+    ctx.fillStyle = g; ctx.font = `${PESO} 190px ${FT}`;
+    const casas = p.casas ?? (Number.isInteger(p.valor ?? max) ? 0 : 1);
+    const txt = v.toFixed(casas).replace('.', ','); ctx.fillText(txt, -20, 290);
+    const lw = ctx.measureText(txt).width;
+    ctx.letterSpacing = '0px'; ctx.font = `500 58px ${FT}`; ctx.fillStyle = C.suave; ctx.textAlign = 'left';
+    ctx.fillText(p.unidade || '', -20 + lw / 2 + 18, 286);
+    ctx.restore();
+  },
+  contador(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W / 2, H / 2, 900);
+    const e = easeOutExpo(clamp((lt - 0.15) / Math.min(1.6, d * .7)));
+    const v = lerp(p.de || 0, p.ate ?? 100, e), casas = p.casas ?? 0;
+    const txt = (p.prefixo || '') + v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas }) + (p.sufixo || '');
+    ctx.save(); ctx.translate(W / 2, H / 2 + 20);
+    const s = lerp(.92, 1, easeOut(lt / .8)); ctx.scale(s, s);
+    ctx.font = `${PESO} ${p.tamanho || 300}px ${FT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.letterSpacing = '-10px';
+    const g = ctx.createLinearGradient(-500, -150, 500, 150); g.addColorStop(0, mistura(C.destaque, '#ffffff', .3)); g.addColorStop(.6, C.destaque); g.addColorStop(1, C.acento);
+    ctx.globalAlpha = easeOut(lt / .3); ctx.fillStyle = g; ctx.fillText(txt, 0, 0);
+    ctx.restore();
+  },
+  lista(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W * .3, H / 2, 900, .8);
+    const itens = p.itens || [], x = p.x ?? 260, passo = 150, y0 = H / 2 - (itens.length - 1) * passo / 2;
+    itens.forEach((txt, i) => {
+      const a = easeOut((lt - 0.2 - i * 0.45) / 0.5); if (a <= 0) return;
+      const y = y0 + i * passo;
+      ctx.save(); ctx.globalAlpha = a; ctx.translate((1 - a) * 40, 0);
+      ctx.fillStyle = C.destaque; ctx.beginPath(); ctx.arc(x, y, 34, 0, 7); ctx.fill();
+      ctx.strokeStyle = C.fundo; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(x - 14, y + 1); ctx.lineTo(x - 3, y + 12); ctx.lineTo(x + 16, y - 12); ctx.stroke();
+      ctx.font = `${PESO} 84px ${FT}`; ctx.letterSpacing = '-2px'; ctx.fillStyle = C.texto; ctx.textBaseline = 'middle';
+      ctx.fillText(txt, x + 80, y + 4);
+      ctx.restore();
+    });
+  },
+  notificacoes(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W / 2, H / 2, 1000, .6);
+    const itens = (p.itens || []).slice(0, 4), paleta = [C.acento, '#3fae5b', '#3d8fd1', '#e05a4f'];
+    const recua = easeInOut((lt - (p.recua_em ?? 1.0)) / 0.7);
+    itens.forEach(([tit, txt, letra], i) => {
+      const chega = mola((lt - 0.1 - i * 0.35) / 0.6, 6, 9); if (chega <= 0) return;
+      const spr = memo('notif' + i, 1110, 200, g => {
+        g.translate(555, 100); g.scale(1.38, 1.38);
+        retArred(g, -390, -62, 780, 124, 32); g.fillStyle = 'rgba(58,52,50,.82)'; g.fill();
+        g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 1.5; g.stroke();
+        retArred(g, -360, -32, 64, 64, 15); g.fillStyle = paleta[i % paleta.length]; g.fill();
+        g.fillStyle = '#fff'; g.font = `700 34px ${FT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText((letra || tit[0] || '•').toUpperCase(), -328, 1);
+        g.textAlign = 'left'; g.fillStyle = '#f2ece6'; g.font = `600 30px ${FT}`; g.fillText(tit, -270, -16);
+        g.fillStyle = '#b8aea6'; g.font = `400 27px ${FT}`; g.fillText(txt || '', -270, 22);
+        g.textAlign = 'right'; g.font = `400 24px ${FT}`; g.fillStyle = '#8f857e'; g.fillText('agora', 360, -16);
+      });
+      ctx.save(); ctx.translate(W / 2, lerp(-200, 235 + i * 190, chega) - recua * (i - 1.5) * 50);
+      const s = 1 - recua * 0.18; ctx.scale(s, s);
+      ctx.globalAlpha = clamp(chega * 1.5) * (1 - recua * 0.75);
+      if (recua > 0.01) ctx.filter = `blur(${(recua * 16).toFixed(1)}px)`;
+      ctx.drawImage(spr, -555, -100); ctx.restore();
+    });
+  },
+  linhas(ctx, lt, d, t, p) {
+    fundoBrilho(ctx, W / 2, H / 2, 1000, .7);
+    const r = rng(9), cx = W / 2, cy = H / 2;
+    ctx.save(); ctx.lineWidth = 2; ctx.lineCap = 'round';
+    for (let i = 0; i < 40; i++) {
+      const a = r() * Math.PI * 2, r0 = 120 + r() * 120, r1 = r0 + 300 + r() * 700, q = (lt * 0.8 + r()) % 1;
+      ctx.strokeStyle = rgba(C.acento, .12); ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); ctx.stroke();
+      const rp = lerp(r0, r1, q);
+      ctx.fillStyle = rgba(C.destaque, .8 * (1 - q)); ctx.beginPath(); ctx.arc(cx + Math.cos(a) * rp, cy + Math.sin(a) * rp, 4, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  },
+  assinatura(ctx, lt, d, t, p) {
+    ctx.fillStyle = mistura(C.fundo, '#000000', .4); ctx.fillRect(0, 0, W, H);
+    const a = easeOut((lt - 0.05) / 0.7), im = IMG[p.imagem || 'logo'];
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, 330 + (1 - a) * 20);
+    if (im) { const e = Math.min(260 / im.width, 200 / im.height), w = im.width * e, h = im.height * e; ctx.drawImage(im, -w / 2, -h / 2, w, h); }
+    else if (p.monograma) {
+      ctx.strokeStyle = C.destaque; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 66, 0, 7); ctx.stroke();
+      ctx.fillStyle = C.destaque; ctx.font = `${PESO} 72px ${FT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.monograma, 0, 4);
+    }
+    ctx.restore();
+  },
+};
+
+// ---------- o quadro completo ----------
+const CAMADA = canvas(W, H), CC = CAMADA.getContext('2d');
+function cenaEm(t) { for (const c of P.cenas) if (t >= c.ini && t < c.fim) return c; return P.cenas[P.cenas.length - 1]; }
+function desenhaQuadro(ctx, t, comGrao = true) {
+  t = clamp(t, 0, DUR - 1e-4);
+  const c = cenaEm(t), lt = t - c.ini, d = c.fim - c.ini, fn = CENA[c.tipo] || CENA.fundo;
+  ctx.save();
+  ctx.filter = 'none'; ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const ent = c.ini > 0 ? easeOut(lt / 0.2) : 1;
+  if (ent < 1) {
+    CC.save(); CC.clearRect(0, 0, W, H); fn(CC, lt, d, t, c.params); CC.restore();
+    ctx.save(); ctx.filter = `blur(${((1 - ent) * 16).toFixed(1)}px)`;
+    const s = 1 + (1 - ent) * 0.04; ctx.translate(W / 2, H / 2); ctx.scale(s, s); ctx.translate(-W / 2, -H / 2);
+    ctx.drawImage(CAMADA, 0, 0); ctx.restore();
+  } else { ctx.save(); fn(ctx, lt, d, t, c.params); ctx.restore(); }
+  for (const tx of P.textos) desenhaTexto(ctx, tx, t);
+  desenhaCronometro(ctx, t);
+  if (!(c.tipo === 'fundo' && c.params.estilo === 'claro')) ctx.drawImage(VINHETA, 0, 0);
+  if (comGrao) {
+    ctx.save(); ctx.globalAlpha = 0.07; ctx.globalCompositeOperation = 'overlay';
+    const f = Math.floor(t * FPS); ctx.translate(-((f * 137) % 512), -((f * 251) % 512));
+    ctx.fillStyle = ctx.createPattern(GRAO, 'repeat'); ctx.fillRect(0, 0, W + 512, H + 512); ctx.restore();
+  }
+  const fimFade = clamp((t - (DUR - 0.5)) / 0.5);
+  if (fimFade > 0) { ctx.fillStyle = `rgba(0,0,0,${fimFade})`; ctx.fillRect(0, 0, W, H); }
+  ctx.restore();
+}
+
+// ---------- sons gerados no navegador (nada pra baixar) ----------
+const DUR_SOM = { whoosh: .48, baque: .7, rolagem: 1, entra: .6, revelacao: 1.6, impacto: 1.2, notificacoes: 1.6, ding: .6, destrava: .8, assinatura: 2.4 };
+const SR = 44100;
+let PICOS = null, BUFFERS = null;
+function ruidoBuffer(oc, seg, semente = 5) { const b = oc.createBuffer(1, Math.ceil(seg * SR), SR), d = b.getChannelData(0), r = rng(semente); for (let i = 0; i < d.length; i++) d[i] = r() * 2 - 1; return b; }
+function env(oc, no, t, pts) { const g = oc.createGain(); g.gain.setValueAtTime(0, t); for (const [dt, v] of pts) g.gain.linearRampToValueAtTime(v, t + dt); no.connect(g); return g; }
+const SOM = {
+  whoosh(oc, t, d = .48, saida) { const s = oc.createBufferSource(); s.buffer = ruidoBuffer(oc, d, 11); const f = oc.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = .8; f.frequency.setValueAtTime(350, t); f.frequency.exponentialRampToValueAtTime(3800, t + d); s.connect(f); env(oc, f, t, [[d * .55, .55], [d, 0]]).connect(saida); s.start(t); },
+  baque(oc, t, d = .7, saida) { const o = oc.createOscillator(); o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(42, t + .5); env(oc, o, t, [[.008, 1], [d, 0]]).connect(saida); o.start(t); o.stop(t + d); },
+  rolagem(oc, t, d = 1, saida) { const s = oc.createBufferSource(); s.buffer = ruidoBuffer(oc, d, 21); const f = oc.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1600; f.Q.value = .5; s.connect(f); env(oc, f, t, [[d * .9, .5], [d, 0]]).connect(saida); s.start(t); },
+  ding(oc, t, d = .6, saida, f0 = 1046) { for (const [f, v] of [[f0, .4], [f0 * 1.5, .18]]) { const o = oc.createOscillator(); o.frequency.value = f; env(oc, o, t, [[.005, v], [d, 0]]).connect(saida); o.start(t); o.stop(t + d); } },
+  entra(oc, t, d, saida) { SOM.whoosh(oc, t, .35, saida); SOM.ding(oc, t + .32, .5, saida, 1318); },
+  notificacoes(oc, t, d, saida) { [0, .35, .7].forEach((dt, i) => SOM.ding(oc, t + dt, .55, saida, [1046, 1175, 988][i])); },
+  impacto(oc, t, d = 1.2, saida) { const s = oc.createBufferSource(); s.buffer = ruidoBuffer(oc, .5, 31); const f = oc.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2500; s.connect(f); env(oc, f, t, [[.48, .5], [.5, 0]]).connect(saida); s.start(t); SOM.baque(oc, t + .5, .7, saida); },
+  revelacao(oc, t, d = 1.6, saida) { SOM.impacto(oc, t, 1.2, saida); SOM.ding(oc, t + .5, 1.1, saida, 523); },
+  destrava(oc, t, d, saida) { [[0, 2600], [.07, 1900]].forEach(([dt, f]) => { const o = oc.createOscillator(); o.type = 'square'; o.frequency.value = f; env(oc, o, t + dt, [[.002, .25], [.03, 0]]).connect(saida); o.start(t + dt); o.stop(t + dt + .05); }); SOM.ding(oc, t + .12, .7, saida, 880); },
+  assinatura(oc, t, d = 2.4, saida) { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { const o = oc.createOscillator(); o.frequency.value = f; env(oc, o, t + i * .06, [[.01, .22], [d - i * .06, 0]]).connect(saida); o.start(t + i * .06); o.stop(t + d); }); SOM.baque(oc, t, 1.2, saida); },
+  tique(oc, t, forte, saida) { const o = oc.createOscillator(); o.type = 'triangle'; o.frequency.value = forte ? 2300 : 1850; env(oc, o, t, [[.001, forte ? .9 : .55], [.03, 0]]).connect(saida); o.start(t); o.stop(t + .04); },
+};
+async function rendePista(montar) {
+  const oc = new OfflineAudioContext(1, Math.ceil(DUR * SR), SR);
+  const saida = oc.createGain(); saida.connect(oc.destination); montar(oc, saida);
+  return oc.startRendering();
+}
+function picosDe(buf) {
+  const d = buf.getChannelData(0), por = 120, passo = Math.floor(SR / por), n = Math.floor(d.length / passo), out = new Float32Array(n);
+  let mx = 1e-6; for (let i = 0; i < n; i++) { let m = 0; for (let k = i * passo; k < (i + 1) * passo; k++) { const v = Math.abs(d[k]); if (v > m) m = v; } out[i] = m; if (m > mx) mx = m; }
+  for (let i = 0; i < n; i++) out[i] /= mx; return out;
+}
+async function sintetiza() {
+  const efeitos = await rendePista((oc, s) => { s.gain.value = .8; for (const e of P.sons || []) (SOM[e.tipo] || SOM.whoosh)(oc, e.t, e.dur ?? DUR_SOM[e.tipo] ?? .5, s); });
+  const c = P.cronometro;
+  const tique = c ? await rendePista((oc, s) => { s.gain.value = .32; for (let i = 1; i < c.segundos; i++) SOM.tique(oc, c.comeca + i, c.segundos - i <= 5, s); }) : null;
+  const tr = P.trilha || {}, maior = [73.42, 110, 185, 277.18, 329.63], menor = [73.42, 110, 174.61, 261.63, 329.63];
+  const trilha = tr.volume === 0 ? null : await rendePista((oc, s) => {
+    const lp = oc.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.connect(s);
+    const g = oc.createGain(); g.connect(lp);
+    g.gain.setValueAtTime(0, 0); g.gain.linearRampToValueAtTime(tr.volume ?? .16, 2.5);
+    if (tr.pausa) { g.gain.setValueAtTime(tr.volume ?? .16, tr.pausa[0] - .05); g.gain.linearRampToValueAtTime(0, tr.pausa[0]); g.gain.setValueAtTime(0, tr.pausa[1]); g.gain.linearRampToValueAtTime(tr.volume ?? .16, tr.pausa[1] + .6); }
+    g.gain.setValueAtTime(tr.volume ?? .16, DUR - 1.4); g.gain.linearRampToValueAtTime(0, DUR - .1);
+    (tr.tom === 'menor' ? menor : maior).forEach((f, i) => [-.12, 0, .13].forEach(dt => { const o = oc.createOscillator(); o.type = i < 2 ? 'sine' : 'triangle'; o.frequency.value = f + dt; const v = oc.createGain(); v.gain.value = .22 / (1 + f / 140); o.connect(v).connect(g); o.start(0); o.stop(DUR); }));
+  });
+  BUFFERS = { efeitos, tique, trilha };
+  PICOS = { porSegundo: 120, efeitos: picosDe(efeitos), tique: tique ? picosDe(tique) : null, trilha: trilha ? picosDe(trilha) : null };
+}
+
+// ---------- interface ----------
+const $ = s => document.querySelector(s);
+const visor = $('#visor'), vctx = visor.getContext('2d'), tl = $('#tl'), tctx = tl.getContext('2d');
+document.title = P.titulo || 'Estúdio';
+$('#nomeEstudio').textContent = $('#rodape').textContent = P.estudio || 'Estúdio';
+$('#nomeProjeto').textContent = P.titulo || P.marca || 'Comercial';
+const SUB = `${(P.marca || 'comercial').toLowerCase()} 16x9 · PROJETO COMPLETO`;
+$('#subProjeto').textContent = $('#nomeLinha').textContent = SUB.toUpperCase();
+$('#nomeLinha2').textContent = (P.marca || 'Comercial') + ' 16x9';
+$('#duracaoTotal').textContent = `duração ${tc(DUR)}`;
+$('#pedido').textContent = P.pedido || '';
+
+const PISTAS = [];
+if (P.cronometro) PISTAS.push({ id: 'V3', nome: 'Cronômetro', h: 28 });
+PISTAS.push({ id: 'V2', nome: 'Textos', h: 32 }, { id: 'V1', nome: 'Cenas', h: 58 });
+if (P.cronometro) PISTAS.push({ id: 'A1', nome: 'Tique-taque', h: 44, audio: true, picos: 'tique' });
+PISTAS.push({ id: P.cronometro ? 'A2' : 'A1', nome: 'Efeitos', h: 44, audio: true, picos: 'efeitos' });
+if (!(P.trilha && P.trilha.volume === 0)) PISTAS.push({ id: P.cronometro ? 'A3' : 'A2', nome: 'Trilha', h: 44, audio: true, picos: 'trilha' });
+const pista = nome => PISTAS.find(p => p.nome === nome)?.id;
+const CLIPES = [];
+P.cenas.forEach((c, i) => CLIPES.push({ pista: 'V1', ini: c.ini, fim: c.fim, nome: `${c.id} · ${c.nome}`, cor: c.cor, cena: i }));
+P.textos.forEach(x => CLIPES.push({ pista: 'V2', ini: x.ini, fim: x.fim, nome: x.linhas.join(' '), cor: '#7a60d0' }));
+if (P.cronometro) {
+  const c = P.cronometro, m = Math.floor(c.segundos / 60);
+  CLIPES.push({ pista: 'V3', ini: c.aparece, fim: c.some, nome: `Cronômetro · ${m}:${pad(c.segundos % 60)} → 0:00`, cor: '#c49438' });
+  CLIPES.push({ pista: 'A1', ini: c.comeca + .9, fim: c.zera + .2, nome: `Tique-taque · ${c.segundos} s`, cor: '#2c6d9c' });
+}
+(P.sons || []).forEach(e => CLIPES.push({ pista: pista('Efeitos'), ini: e.t, fim: Math.min(DUR, e.t + (e.dur ?? DUR_SOM[e.tipo] ?? .5)), nome: e.nome || (e.tipo[0].toUpperCase() + e.tipo.slice(1)), cor: '#2f78a9' }));
+if (pista('Trilha')) {
+  const tr = P.trilha || {}, nome = `Trilha · ${tr.tom === 'menor' ? 'menor' : 'maior'}`;
+  if (tr.pausa) { CLIPES.push({ pista: pista('Trilha'), ini: 0, fim: tr.pausa[0], nome, cor: '#2b7f68' }); CLIPES.push({ pista: pista('Trilha'), ini: tr.pausa[1], fim: DUR, nome: 'Trilha · volta', cor: '#2b7f68' }); }
+  else CLIPES.push({ pista: pista('Trilha'), ini: 0, fim: DUR, nome, cor: '#2b7f68' });
+}
+$('#infoClipes').textContent = `${CLIPES.length} clipes · ${PISTAS.length} pistas · editado pelo Claude`;
+const resumoPronto = `Pronto. Montei ${P.cenas.length} cenas em ${Math.round(DUR)} segundos, com textos, efeitos e trilha. Minhas escolhas, cena por cena:`;
+$('#resumo').textContent = resumoPronto;
+
+// ordem em que o Claude "monta" a edição (tecla M)
+let MONT_FIM = 0;
+(() => { let q = .3; const por = (id, passo) => CLIPES.filter(c => c.pista === id).sort((a, b) => a.ini - b.ini).forEach(c => { c.quando = q; q += passo; });
+  por('V1', .13); q += .08; por('V2', .05); q += .04; PISTAS.filter(p => !['V1', 'V2'].includes(p.id)).forEach(p => { por(p.id, .05); q += .04; }); MONT_FIM = q + .35; })();
+
+const notas = $('#notas'), midia = $('#midia');
+P.cenas.forEach((c, i) => {
+  const li = document.createElement('li'); li.style.setProperty('--cor', c.cor);
+  li.innerHTML = '<div class="topo"><b></b><span></span><s></s></div><p></p>';
+  li.querySelector('b').textContent = c.id; li.querySelector('span').textContent = c.nome;
+  li.querySelector('s').textContent = '0:' + pad(Math.floor(c.ini)); li.querySelector('p').textContent = c.nota || '';
+  li.onclick = () => irPara(c.ini); notas.appendChild(li);
+});
+let MINI = [];
+function montaMidia() {
+  MINI = P.cenas.map(c => { const m = canvas(320, 180); desenhaQuadro(CC, c.ini === 0 ? .5 : Math.min(c.fim - .05, c.ini + (c.fim - c.ini) * .62), false); m.getContext('2d').drawImage(CAMADA, 0, 0, 320, 180); return m; });
+  P.cenas.forEach((c, i) => {
+    const el = document.createElement('div'); el.className = 'item';
+    const cv = canvas(320, 180); cv.getContext('2d').drawImage(MINI[i], 0, 0); el.appendChild(cv);
+    const p = document.createElement('p'); p.textContent = `${c.id} ${c.nome}`; el.appendChild(p);
+    el.onclick = () => irPara(c.ini); midia.appendChild(el);
+  });
+  [['efeitos.wav', '#2f78a9'], ['trilha.wav', '#2b7f68']].concat(P.cronometro ? [['tique.wav', '#2c6d9c']] : []).forEach(([n, c]) => {
+    const el = document.createElement('div'); el.className = 'som'; const i = document.createElement('i'); i.style.background = c; el.append(i, n); midia.appendChild(el);
+  });
+}
+
+// ---------- reprodução (o relógio é o do som, pra imagem e som não descolarem) ----------
+let t = 0, tocando = false, somLigado = true, repetir = false, montagem = null;
+let AC = null, fontes = [], acInicio = 0, tInicio = 0, ultimo = 0, ganho = null;
+function iniciaSom() {
+  if (!BUFFERS) return;
+  try {
+    preparaSom();
+    if (AC.state === 'suspended') AC.resume();
+    ganho.gain.value = somLigado ? 1 : 0;
+    fontes = Object.values(BUFFERS).filter(Boolean).map(b => { const s = AC.createBufferSource(); s.buffer = b; s.connect(ganho); s.start(0, Math.max(0, t)); return s; });
+    acInicio = AC.currentTime; tInicio = t;
+  } catch (e) { AC = null; }
+}
+// o som fica pronto desde a abertura (na mesma taxa dos sons gerados), pra o primeiro play não engasgar
+function preparaSom() {
+  if (AC) return;
+  try { AC = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SR }); }
+  catch (e) { AC = new (window.AudioContext || window.webkitAudioContext)(); }
+  ganho = AC.createGain(); ganho.connect(AC.destination);
+}
+function paraSom() { fontes.forEach(s => { try { s.stop(); } catch (e) {} }); fontes = []; }
+function play() {
+  if (montagem) return;
+  if (t >= DUR - 0.02) t = 0;
+  tocando = true; ultimo = performance.now(); iniciaSom();
+  document.body.classList.add('tocando'); $('#iconePlay').setAttribute('d', 'M4 2.5h3v11H4zM9 2.5h3v11H9z');
+}
+function pausa() { tocando = false; paraSom(); document.body.classList.remove('tocando'); $('#iconePlay').setAttribute('d', 'M4 2.5v11L13.5 8z'); }
+function irPara(nt) { t = clamp(nt, 0, DUR); if (tocando) { paraSom(); iniciaSom(); } }
+function clique() { try { preparaSom(); if (AC.state === 'suspended') AC.resume(); const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = 1900 + Math.random() * 300; g.gain.setValueAtTime(.07, AC.currentTime); g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + .05); o.connect(g).connect(AC.destination); o.start(); o.stop(AC.currentTime + .06); } catch (e) {} }
+function iniciaMontagem() {
+  preparaSom(); if (AC && AC.state === 'suspended') AC.resume();
+  pausa(); t = 0; montagem = { ini: performance.now(), feitos: new Set() };
+  document.body.classList.add('montando'); notas.querySelectorAll('li').forEach(li => li.classList.remove('pronta'));
+  $('#statusTxt').textContent = 'Claude está montando a edição…'; $('#resumo').textContent = 'Montando: encaixo cada cena, depois os textos e os sons.';
+}
+const progressoMontagem = () => montagem ? (performance.now() - montagem.ini) / 1000 : Infinity;
+function terminaMontagem() { montagem = null; document.body.classList.remove('montando'); $('#statusTxt').textContent = 'Edição pronta'; $('#resumo').textContent = resumoPronto; t = 0; setTimeout(play, 350); }
+
+// ---------- linha do tempo ----------
+const CAB = 172, REGUA = 28;
+let dpr = 1, larguraTL = 800, alturaTL = 300;
+function ajustaTamanhos() {
+  redesenhar = true;
+  dpr = window.devicePixelRatio || 1; larguraTL = tl.clientWidth;
+  alturaTL = REGUA + PISTAS.reduce((a, p) => a + p.h + 2, 0) + 14;
+  tl.style.height = alturaTL + 'px'; tl.width = Math.round(larguraTL * dpr); tl.height = Math.round(alturaTL * dpr);
+  const palco = $('#palco'), mw = palco.clientWidth - 40, mh = palco.clientHeight - 20, w = Math.max(200, Math.min(mw, mh * 16 / 9));
+  visor.style.width = w + 'px'; visor.style.height = (w * 9 / 16) + 'px'; $('#medidor').style.height = (w * 9 / 16) + 'px';
+}
+window.addEventListener('resize', ajustaTamanhos);
+const pxSeg = () => (larguraTL - CAB - 30) / (DUR * 1.16);
+const xDe = s => CAB + 14 + s * pxSeg();
+const sDe = x => (x - CAB - 14) / pxSeg();
+function claroDemais(hex) { const n = parseInt(hex.slice(1), 16); return ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114) / 1000 > 165; }
+function desenhaTL(tAtual, cenaAtual) {
+  const c = tctx; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.fillStyle = '#19191c'; c.fillRect(0, 0, larguraTL, alturaTL);
+  const pm = progressoMontagem();
+  c.fillStyle = '#1f1f23'; c.fillRect(CAB, 0, larguraTL - CAB, REGUA);
+  c.strokeStyle = '#3a3a40'; c.fillStyle = '#8a8a93'; c.font = '10px ui-monospace, Menlo, monospace'; c.textBaseline = 'top';
+  for (let s = 0; s <= DUR * 1.16; s += .5) {
+    const x = Math.round(xDe(s)) + .5, cheio = s % 5 === 0;
+    c.beginPath(); c.moveTo(x, REGUA); c.lineTo(x, REGUA - (cheio ? 12 : s % 1 === 0 ? 7 : 4)); c.stroke();
+    if (cheio) c.fillText(tc(s), x + 3, 3);
+  }
+  P.cenas.forEach((cn, i) => { const vis = pm === Infinity ? 1 : clamp((pm - CLIPES[i].quando) / .2); if (vis <= 0) return; c.globalAlpha = vis; c.fillStyle = cn.cor; c.beginPath(); c.arc(xDe(cn.ini) + 3, REGUA - 17, 3.2, 0, 7); c.fill(); });
+  c.globalAlpha = 1;
+  let y = REGUA + 2;
+  PISTAS.forEach((p, pi) => {
+    if (p.audio && !PISTAS[pi - 1].audio) { c.fillStyle = '#0f0f11'; c.fillRect(0, y - 2, larguraTL, 3); y += 2; }
+    c.fillStyle = pi % 2 ? '#1c1c20' : '#1e1e22'; c.fillRect(CAB, y, larguraTL - CAB, p.h);
+    c.fillStyle = '#232327'; c.fillRect(0, y, CAB - 1, p.h);
+    c.fillStyle = p.audio ? '#2c5f86' : '#4b4b52'; c.beginPath(); c.roundRect(8, y + p.h / 2 - 9, 26, 18, 3); c.fill();
+    c.fillStyle = '#e6e6ea'; c.font = '600 10.5px system-ui'; c.textBaseline = 'middle'; c.textAlign = 'center'; c.fillText(p.id, 21, y + p.h / 2);
+    c.textAlign = 'left'; c.fillStyle = '#c9c9cf'; c.font = '11px system-ui'; c.fillText(p.nome, 42, y + p.h / 2 - (p.h > 34 ? 6 : 0));
+    if (p.h > 34) { const n = CLIPES.filter(k => k.pista === p.id).length; c.fillStyle = '#6f6f78'; c.font = '9.5px system-ui'; c.fillText(`${n} ${n > 1 ? 'clipes' : 'clipe'}`, 42, y + p.h / 2 + 8); }
+    c.fillStyle = '#55555d'; c.font = '600 9px system-ui';
+    (p.audio ? ['M', 'S'] : ['◉', '⌂']).forEach((ch, k) => { c.strokeStyle = '#3a3a40'; c.strokeRect(CAB - 46 + k * 20, y + p.h / 2 - 7, 15, 14); c.textAlign = 'center'; c.fillText(ch, CAB - 38.5 + k * 20, y + p.h / 2 + .5); });
+    c.textAlign = 'left';
+    CLIPES.filter(k => k.pista === p.id).forEach(k => {
+      let a = 1, sy = 1;
+      if (pm !== Infinity) { const q = (pm - k.quando) / .22; if (q <= 0) return; a = clamp(q); sy = .5 + .5 * easeOut(q); }
+      const x0 = xDe(k.ini) + 1, x1 = xDe(k.fim) - 1, w = Math.max(2, x1 - x0), hh = (p.h - 4) * sy, yy = y + 2 + (p.h - 4 - hh) / 2;
+      c.save(); c.globalAlpha = a; c.beginPath(); c.roundRect(x0, yy, w, hh, 3); c.clip();
+      c.fillStyle = k.cor; c.globalAlpha = a * .92; c.fillRect(x0, yy, w, hh); c.globalAlpha = a;
+      if (p.id === 'V1' && k.cena !== undefined && hh > 30 && MINI[k.cena]) { const th = hh - 16, tw = th * 16 / 9; for (let xx = x0 + 2; xx < x1 - 4; xx += tw + 2) c.drawImage(MINI[k.cena], xx, yy + 14, Math.min(tw, x1 - 2 - xx), th); }
+      if (p.audio && PICOS && PICOS[p.picos]) {
+        const arr = PICOS[p.picos], ps = PICOS.porSegundo, meio = yy + hh / 2 + 5; c.fillStyle = 'rgba(190,228,255,.85)';
+        for (let xx = Math.ceil(x0); xx < x1; xx++) { const i0 = Math.floor(sDe(xx) * ps), i1 = Math.max(i0 + 1, Math.floor(sDe(xx + 1) * ps)); let m = 0; for (let i = i0; i < i1 && i < arr.length; i++) m = Math.max(m, arr[i] || 0); const amp = Math.max(.5, m * (hh - 16) / 2); c.fillRect(xx, meio - amp, 1, amp * 2); }
+      }
+      c.fillStyle = (p.id === 'V1' || p.audio) ? 'rgba(0,0,0,.28)' : 'rgba(0,0,0,0)'; c.fillRect(x0, yy, w, 13);
+      c.fillStyle = claroDemais(k.cor) && !p.audio && p.id !== 'V1' ? '#1a1a1a' : '#fff'; c.font = '600 9.5px system-ui'; c.textBaseline = 'top';
+      if (w > 18) c.fillText(k.nome, x0 + 4, yy + 2, w - 8);
+      c.restore();
+      c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.beginPath(); c.roundRect(x0 + .5, yy + .5, w - 1, hh - 1, 3); c.stroke();
+      if (p.id === 'V1' && cenaAtual === k.cena && pm === Infinity) { c.strokeStyle = '#f2b35c'; c.lineWidth = 1.6; c.beginPath(); c.roundRect(x0 + .5, yy + .5, w - 1, hh - 1, 3); c.stroke(); }
+    });
+    c.fillStyle = '#141416'; c.fillRect(0, y + p.h, larguraTL, 2); y += p.h + 2;
+  });
+  c.fillStyle = '#2b2b30'; c.fillRect(CAB - 1, 0, 1, alturaTL);
+  const xp = Math.round(xDe(tAtual)) + .5;
+  c.strokeStyle = '#e5484d'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(xp, 4); c.lineTo(xp, alturaTL); c.stroke();
+  c.fillStyle = '#e5484d'; c.beginPath(); c.moveTo(xp - 6, 2); c.lineTo(xp + 6, 2); c.lineTo(xp + 6, 10); c.lineTo(xp, 16); c.lineTo(xp - 6, 10); c.closePath(); c.fill();
+  c.fillStyle = '#1f1f23'; c.fillRect(0, 0, CAB - 1, REGUA);
+  c.fillStyle = '#f0f0f2'; c.font = '600 12px ui-monospace, Menlo, monospace'; c.textBaseline = 'middle'; c.fillText(tc(tAtual), 10, REGUA / 2);
+}
+
+// ---------- medidor de áudio, laço, controles ----------
+const barras = document.querySelectorAll('#medidor i');
+let picoL = 0, picoR = 0, cenaMostrada = -1, ultimoDesenho = null, redesenhar = true;
+window.addEventListener('resize', () => { redesenhar = true; });
+function nivelEm(s) { if (!PICOS) return 0; const i = Math.floor(s * PICOS.porSegundo); return Math.max((PICOS.efeitos[i] || 0) * .85, PICOS.tique ? (PICOS.tique[i] || 0) * .32 : 0, PICOS.trilha ? (PICOS.trilha[i] || 0) * .16 : 0); }
+function laco(agora) {
+  const pm = progressoMontagem(); let tVisor = t;
+  if (montagem) {
+    const feitos = CLIPES.filter(k => k.pista === 'V1' && pm >= k.quando);
+    feitos.forEach(k => { if (!montagem.feitos.has(k)) { montagem.feitos.add(k); clique(); notas.children[k.cena].classList.add('pronta'); } });
+    const ult = feitos[feitos.length - 1]; tVisor = ult ? ult.ini + (ult.fim - ult.ini) * .6 : 0;
+    if (pm >= MONT_FIM) terminaMontagem();
+  } else if (tocando) {
+    if (AC && fontes.length) t = tInicio + (AC.currentTime - acInicio); else t += (agora - ultimo) / 1000;
+    if (t >= DUR) { t = DUR; pausa(); if (repetir) { t = 0; play(); } }
+    tVisor = t;
+  }
+  ultimo = agora;
+  const parado = !tocando && !montagem && !redesenhar && ultimoDesenho === tVisor && picoL < .001;
+  if (parado) { requestAnimationFrame(laco); return; }
+  redesenhar = false; ultimoDesenho = tVisor;
+  desenhaQuadro(vctx, tVisor);
+  const cn = P.cenas.indexOf(cenaEm(clamp(tVisor, 0, DUR - 1e-4)));
+  desenhaTL(montagem ? tVisor : t, cn);
+  $('#tc').textContent = tc(montagem ? tVisor : t);
+  if (cn !== cenaMostrada) {
+    cenaMostrada = cn;
+    midia.querySelectorAll('.item').forEach((el, i) => el.classList.toggle('on', i === cn));
+    [...notas.children].forEach((li, i) => li.classList.toggle('on', i === cn && !montagem));
+    const li = notas.children[cn];
+    if (li && !montagem) { const box = $('#conversa'); box.scrollTo({ top: Math.max(0, li.offsetTop - box.offsetTop - 110), behavior: 'smooth' }); }
+  }
+  const nv = tocando ? nivelEm(t) : 0;
+  picoL = Math.max(nv * (.92 + Math.random() * .08), picoL * .86); picoR = Math.max(nv * (.88 + Math.random() * .1), picoR * .86);
+  barras[0].style.height = (picoL * 100) + '%'; barras[1].style.height = (picoR * 100) + '%';
+  barras.forEach(b => b.style.setProperty('--alto', b.parentElement.clientHeight + 'px'));
+  requestAnimationFrame(laco);
+}
+function alternaPlay() { if (montagem) return; tocando ? pausa() : play(); }
+function alternaRepetir() { repetir = !repetir; $('#rotRep').classList.toggle('on', repetir); }
+function alternaSom() { somLigado = !somLigado; $('#rotSom').textContent = somLigado ? 'som ligado' : 'som desligado'; if (ganho) ganho.gain.value = somLigado ? 1 : 0; }
+document.querySelectorAll('.botoes [data-acao]').forEach(b => b.onclick = () => {
+  const a = b.dataset.acao;
+  if (a === 'play') return alternaPlay();
+  if (a === 'parar') { pausa(); irPara(0); }
+  if (a === 'inicio') irPara(0); if (a === 'fim') irPara(DUR);
+  if (a === 'volta') irPara(t - 1); if (a === 'avanca') irPara(t + 1);
+  if (a === 'repetir') alternaRepetir();
+});
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.repeat) return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); alternaPlay(); }
+  else if (k === 'm') iniciaMontagem();
+  else if (k === 'f') { try { const r = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); if (r && r.catch) r.catch(() => {}); } catch (er) {} }
+  else if (k === 'h') { document.body.classList.toggle('limpo'); setTimeout(ajustaTamanhos, 30); }
+  else if (k === 's') alternaSom();
+  else if (k === 'l') alternaRepetir();
+  else if (k === 'home' || k === '0' || k === 'enter') irPara(0);
+  else if (k === 'arrowleft') irPara(t - (e.shiftKey ? 1 : 1 / FPS));
+  else if (k === 'arrowright') irPara(t + (e.shiftKey ? 1 : 1 / FPS));
+});
+let arrastando = false;
+tl.addEventListener('pointerdown', e => { if (montagem) return; arrastando = true; tl.setPointerCapture(e.pointerId); irPara(sDe(e.offsetX)); });
+tl.addEventListener('pointermove', e => { if (arrastando) irPara(sDe(e.offsetX)); });
+tl.addEventListener('pointerup', () => arrastando = false);
+let ocioso;
+window.addEventListener('mousemove', () => { document.body.classList.remove('sem-cursor'); clearTimeout(ocioso); ocioso = setTimeout(() => document.body.classList.add('sem-cursor'), 1500); });
+
+// ---------- edvid: exportação quadro a quadro (usada por helpers/comercial.py, nunca pelo usuário) ----------
+// O motor já desenha qualquer instante t de forma determinística; aqui cada quadro vai por POST para o servidor
+// local do helper, que alimenta o ffmpeg. O som são os mesmos três buffers que o play toca, somados.
+function wavDe(bufs) {
+  const n = Math.ceil(DUR * SR), mix = new Float32Array(n);
+  for (const b of bufs) { const d = b.getChannelData(0); for (let i = 0; i < Math.min(n, d.length); i++) mix[i] += d[i]; }
+  let pico = 0; for (let i = 0; i < n; i++) pico = Math.max(pico, Math.abs(mix[i]));
+  const k = pico > .98 ? .98 / pico : 1, out = new DataView(new ArrayBuffer(44 + n * 2));
+  const str = (o, x) => [...x].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); out.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); out.setUint32(16, 16, true); out.setUint16(20, 1, true);
+  out.setUint16(22, 1, true); out.setUint32(24, SR, true); out.setUint32(28, SR * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+  str(36, 'data'); out.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) out.setInt16(44 + i * 2, Math.round(clamp(mix[i] * k, -1, 1) * 32767), true);
+  return out.buffer;
+}
+async function exportar(hash) {
+  const fps = parseFloat(hash.get('fps')) || FPS, esc = parseFloat(hash.get('escala')) || 1;
+  const tipo = hash.get('formato') === 'jpg' ? 'image/jpeg' : 'image/png';
+  const cv = canvas(Math.round(W * esc), Math.round(H * esc)), cx = cv.getContext('2d');
+  const tempos = hash.has('tempos') ? hash.get('tempos').split(',').map(parseFloat).filter(x => x >= 0) : null;
+  const n = tempos ? tempos.length : Math.round(DUR * fps);
+  const manda = (rota, corpo) => fetch(rota, { method: 'POST', body: corpo }).then(r => { if (!r.ok) throw new Error(rota + ' ' + r.status); });
+  try {
+    await manda('/inicio', JSON.stringify({ largura: cv.width, altura: cv.height, fps, quadros: n, duracao: DUR, still: !!tempos }));
+    for (let i = 0; i < n; i++) {
+      const tq = tempos ? tempos[i] : i / fps;
+      cx.setTransform(esc, 0, 0, esc, 0, 0); desenhaQuadro(cx, tq);
+      const b = await new Promise(r => cv.toBlob(r, tipo, .95));
+      await manda('/quadro?i=' + i + '&t=' + tq.toFixed(3), b);
+    }
+    if (!tempos && BUFFERS) await manda('/audio', wavDe(Object.values(BUFFERS).filter(Boolean)));
+    await manda('/fim', '{}');
+  } catch (e) { fetch('/erro', { method: 'POST', body: String(e && e.stack || e) }); }
+}
+
+// ---------- início: fontes, imagens e sons primeiro, depois aquece todas as cenas ----------
+(async () => {
+  const familias = [...new Set([P.fontes && P.fontes.titulo, P.fontes && P.fontes.texto].filter(f => f && !/^system-ui$/i.test(f)))];
+  // edvid: fontes da marca guardadas na pasta do comercial (fontes.arquivos = {família: arquivo}); funcionam sem internet
+  for (const [fam, arq] of Object.entries((P.fontes && P.fontes.arquivos) || {})) {
+    // faixa de peso inteira: um arquivo só atende todos os pesos, e o Google Fonts não entra na disputa
+    // (com os dois, o quadro exportado dependia de qual terminasse de baixar primeiro)
+    try { const ff = new FontFace(fam, `url("${arq}")`, { weight: '100 900' }); await ff.load(); document.fonts.add(ff); } catch (e) { console.warn('fonte local falhou:', arq); }
+  }
+  const locais = Object.keys((P.fontes && P.fontes.arquivos) || {});
+  familias.splice(0, familias.length, ...familias.filter(f => !locais.includes(f)));
+  if (familias.length) {
+    const l = document.createElement('link'); l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?' + familias.map(f => 'family=' + encodeURIComponent(f) + ':wght@400;500;600;700;800').join('&') + '&display=swap';
+    document.head.appendChild(l);
+    await Promise.race([Promise.all(familias.map(f => document.fonts.load(`${PESO} 100px "${f}"`))).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
+  }
+  await Promise.all(Object.entries(P.imagens || {}).map(([k, src]) => new Promise(res => { const im = new Image(); im.onload = () => { IMG[k] = im; res(); }; im.onerror = res; im.src = src; })));
+  try { await sintetiza(); preparaSom(); } catch (e) { console.warn('sem som gerado:', e); }
+  montaMidia(); ajustaTamanhos();
+  for (const c of P.cenas) {
+    for (const s of [c.ini, c.ini + .1, (c.ini + c.fim) / 2]) desenhaQuadro(vctx, Math.min(s, DUR - .01));
+    await new Promise(r => requestAnimationFrame(r));
+  }
+  desenhaTL(0, 0);
+  const hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.has('limpo')) document.body.classList.add('limpo');
+  if (hash.has('t') || hash.has('montagem')) $('#dica').style.display = 'none'; else setTimeout(() => $('#dica').style.opacity = 0, 6000);
+  if (hash.has('t')) t = parseFloat(hash.get('t'));
+  if (hash.has('montagem')) { iniciaMontagem(); montagem.ini = performance.now() - parseFloat(hash.get('montagem')) * 1000; }
+  ajustaTamanhos(); $('#carregando').remove();
+  if (hash.has('exportar') || hash.has('tempos')) return exportar(hash);
+  requestAnimationFrame(laco);
+})();
+</script>
+</body>
+</html>

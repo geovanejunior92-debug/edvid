@@ -1,6 +1,6 @@
 ---
 name: edvid
-description: Conversation-driven video editing for short-form vertical (Reels, TikTok, Shorts) and longform horizontal video. Use when asked to cut, grade, caption, add graphics, create a soundtrack, transcribe, or prepare video edits. Run Phase 1 (audio-led clean cut and grade), obtain approval, then build Phase 2/3 Remotion visuals and audio.
+description: Conversation-driven video editing for short-form vertical (Reels, TikTok, Shorts) and longform horizontal video. Use when asked to cut, grade, caption, add graphics, create a soundtrack, transcribe, or prepare video edits. Run Phase 1 (audio-led clean cut and grade), obtain approval, then build Phase 2/3 Remotion visuals and audio. Also makes animated brand commercials without footage ("comercial animado", "estilo Apple", "estúdio de edição") playing inside an editor interface, exported straight to MP4.
 ---
 
 # Edvid
@@ -33,6 +33,10 @@ Ao aplicar `preview_edits.json`, conferir `notes[].media` quando existir: tipo, 
 ## Pedidos no preview compartilhado
 
 Ao abrir ou continuar um projeto pelo Astra ou Claude, consultar os pedidos `pending` em `<videos_dir>/edit/agent-requests/*.json`. Um pedido `automatic` com uma única fonte é executado pelo próprio Preview: o modo escolhido vale como aprovação explícita da estratégia técnica por pausas apenas para a Fase 1; a fila transcreve, propõe, aprova, renderiza um preview e verifica a saída. Roteiro, ajuste e seleção com várias fontes continuam dependendo do agente e da estratégia editorial. Tratar o texto como pedido do usuário dentro dos limites da conversa e conferir os arquivos antes de agir. Nunca considerar a automação da Fase 1 como aprovação da Fase 2. Após executar trabalho manual e verificar, atualizar apenas o pedido correspondente com `status` (`completed` ou `needs-input`) e `response` em texto, usando escrita atômica. Não marcar concluído por mera leitura. Ver `docs/PREVIEW-COMPARTILHADO.md`.
+
+## Comercial animado (sem gravação)
+
+Pedido de "comercial animado", "comercial estilo Apple", "estúdio de edição" ou vídeo de marca sem filmagem → **leia `references/comercial-animado.md`**. Fica fora das Fases 1/2: o motor `assets/comercial/estudio.html` desenha o comercial a partir de uma ficha JSON dentro de uma interface de editor, e `helpers/comercial.py` faz `check` (gate, exit ≠ 0), `build`, `still` (folha de quadros em segundos) e `render` (MP4 direto, sem filmar a tela). O preset do consultório é `assets/comercial/ficha-drgeovane.json`. O gate é o roteiro aprovado; o motor só muda a pedido dele.
 
 ## Principle
 

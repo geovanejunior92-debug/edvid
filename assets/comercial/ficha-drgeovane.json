@@ -1,0 +1,46 @@
+{
+  "estudio": "Edvid",
+  "marca": "Dr. Geovane Júnior",
+  "titulo": "Comercial do consultório",
+  "pedido": "Faz um comercial curto do consultório, no estilo Apple, sem voz, com o cronômetro segurando até o fim.",
+  "duracao": 28,
+  "cores": { "fundo": "#04161c", "texto": "#f4efe4", "destaque": "#e3c27a", "acento": "#a9823c", "suave": "#9fb3b5", "claro": "#efe6d2" },
+  "fontes": { "titulo": "Poppins", "peso": 700, "texto": "Poppins", "arquivos": { "Poppins": "Poppins-ExtraBold.ttf" } },
+  "cronometro": { "segundos": 20, "aparece": 3.0, "comeca": 3.6, "zera": 23.6, "some": 25.2 },
+  "trilha": { "tom": "menor", "volume": 0.14, "pausa": [20.2, 21.2] },
+  "imagens": {},
+  "cenas": [
+    { "id": "S01", "nome": "Rolagem", "tipo": "rolagem", "ini": 0, "fim": 1.0, "nota": "Abro com o feed passando: quem assiste se reconhece rolando." },
+    { "id": "S02", "nome": "Calma", "tipo": "rolagem", "ini": 1.0, "fim": 2.2, "params": { "parado": true }, "nota": "Freio seco, fundo congelado e um baque grave." },
+    { "id": "S03", "nome": "20 segundos", "tipo": "numero", "ini": 2.2, "fim": 3.8, "params": { "texto": "20" }, "nota": "Nasce o gancho: o cronômetro entra e fica até o fim." },
+    { "id": "S04", "nome": "Ponte", "tipo": "anel", "ini": 3.8, "fim": 6.0, "params": { "marcas": 20, "progresso": "cronometro" }, "nota": "O relógio acende junto com o tempo do vídeo." },
+    { "id": "S05", "nome": "Revelação", "tipo": "particulas", "ini": 6.0, "fim": 8.6, "params": { "quantidade": 60 }, "nota": "Brilho lento e dourado: o tom é cuidado, não pressa." },
+    { "id": "S06", "nome": "Como é", "tipo": "lista", "ini": 8.6, "fim": 11.8, "params": { "itens": ["Avaliação individual", "Plano explicado", "Retorno acompanhado"] }, "nota": "Três itens curtos no lugar de um parágrafo." },
+    { "id": "S07", "nome": "Sem fórmula", "tipo": "linhas", "ini": 11.8, "fim": 14.4, "nota": "Linhas de luz para a frase que diferencia." },
+    { "id": "S08", "nome": "O resto espera", "tipo": "notificacoes", "ini": 14.4, "fim": 17.6, "params": { "itens": [["Agenda", "Reunião em 5 min"], ["Mensagens", "12 novas"], ["E-mail", "Re: urgente"]] }, "nota": "Quebro o ritmo com o barulho do dia." },
+    { "id": "S09", "nome": "Pergunta", "tipo": "fundo", "ini": 17.6, "fim": 20.2, "params": { "estilo": "brilho" }, "nota": "A pergunta prepara a inversão." },
+    { "id": "S10", "nome": "Vale.", "tipo": "fundo", "ini": 20.2, "fim": 21.2, "params": { "estilo": "claro" }, "nota": "Fundo claro, uma palavra e a trilha em silêncio." },
+    { "id": "S11", "nome": "Fecho", "tipo": "fundo", "ini": 21.2, "fim": 25.2, "params": { "estilo": "escuro" }, "nota": "O cronômetro zera e libera quem assiste." },
+    { "id": "S12", "nome": "Assinatura", "tipo": "assinatura", "ini": 25.2, "fim": 28, "params": { "monograma": "G" }, "nota": "Encerramento da marca: monograma, nome e registro em dourado." }
+  ],
+  "textos": [
+    { "ini": 1.05, "fim": 2.15, "linhas": ["Calma."], "tam": 210 },
+    { "ini": 2.25, "fim": 3.75, "linhas": ["Me dá 20 segundos."], "tam": 140, "destaque": [0, "20 segundos."] },
+    { "ini": 3.9, "fim": 5.9, "linhas": ["É o tempo de", "ouvir você."], "tam": 120, "destaque": [1, "você."] },
+    { "ini": 6.1, "fim": 8.5, "linhas": ["Estética médica."], "tam": 150, "sub": "Com critério e sem pressa." },
+    { "ini": 11.9, "fim": 14.3, "linhas": ["Sem fórmula", "pronta."], "tam": 140, "destaque": [1, "pronta."] },
+    { "ini": 15.4, "fim": 17.5, "linhas": ["O resto", "pode esperar."], "tam": 140 },
+    { "ini": 17.7, "fim": 20.1, "linhas": ["Vale 20 segundos?"], "tam": 140, "destaque": [0, "20 segundos?"] },
+    { "ini": 20.25, "fim": 21.15, "linhas": ["Vale."], "tam": 240, "cor": "escuro" },
+    { "ini": 21.3, "fim": 23.5, "linhas": ["Agende sua avaliação."], "tam": 130 },
+    { "ini": 23.7, "fim": 25.1, "linhas": ["Pronto.", "Pode rolar agora."], "tam": 120, "destaque": [1, "agora."] },
+    { "ini": 25.5, "fim": 27.6, "linhas": ["Dr. Geovane Júnior"], "tam": 120, "cor": "grad", "sub": "CRM-PE 28037 · RQE 13075", "y": 640 }
+  ],
+  "sons": [
+    { "t": 0, "tipo": "rolagem", "dur": 1.0 }, { "t": 1.0, "tipo": "baque" }, { "t": 2.0, "tipo": "whoosh" },
+    { "t": 2.9, "tipo": "entra" }, { "t": 5.5, "tipo": "revelacao" }, { "t": 8.4, "tipo": "whoosh" },
+    { "t": 11.6, "tipo": "whoosh" }, { "t": 14.6, "tipo": "notificacoes" }, { "t": 17.4, "tipo": "whoosh" },
+    { "t": 19.7, "tipo": "impacto" }, { "t": 21.0, "tipo": "whoosh" }, { "t": 23.6, "tipo": "destrava" },
+    { "t": 25.2, "tipo": "assinatura" }
+  ]
+}
