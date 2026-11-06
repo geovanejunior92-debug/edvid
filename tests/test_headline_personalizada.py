@@ -22,6 +22,15 @@ class HeadlinePersonalizadaTests(unittest.TestCase):
         self.main = MAIN.read_text()
         self.app = APP.read_text()
 
+    def test_a_cor_de_destaque_da_headline_vem_do_dado(self):
+        # shortform.md promete hook.accent; com a cor fixa, o preview mostra a
+        # escolha dele e o render sai laranja.
+        self.assertIn('accent?: string', self.main)
+        self.assertEqual(re.findall(r"'#ff5200'", self.main), ["'#ff5200'"])
+        self.assertIn("const accent = H.accent ?? '#ff5200';", self.main)
+        self.assertIn('background: accent,', self.main)
+        self.assertIn('color: accent}}', self.main)
+
     def test_template_declares_the_style_and_its_knobs(self):
         self.assertRegex(self.main, r"style\?:[^;]*'personalizada'")
         self.assertRegex(self.main, r"\n  personalizada: \{weights: \[")
