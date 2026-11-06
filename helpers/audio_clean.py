@@ -3,7 +3,8 @@
 O que um editor de diálogo faz antes de qualquer mixagem, na ordem:
 
   1. Ruído / isolamento de voz — RNNoise (ffmpeg `arnndn`, ~140x tempo real) por
-     padrão; Demucs (separação de fonte, vocals) quando o fundo é música, trânsito
+     padrão; DeepFilterNet (`--denoise deepfilter`, ~7x) quando a voz está a menos
+     de ~28 dB do fundo; Demucs (separação de fonte, vocals) quando o fundo é música, trânsito
      ou outra voz — coisa que um denoiser de ruído estacionário não tira.
   2. Respiração — cada inspiração entre palavras cai -14 dB (não some: respiração
      zerada soa como corte). Só é candidata o que fica ENTRE duas palavras do
@@ -206,6 +207,20 @@ def stage_denoise(x: np.ndarray, mode: str, rnn_model: str, rnn_mix: float,
             raise SystemExit(f"demucs falhou:\n{proc.stderr[-1500:]}")
         cur = stem_dir / "vocals.wav"
 
+    if mode == "deepfilter":
+        # DeepFilterNet (skill video-cleanup, binário em ~/.video-cleanup/bin). -D compensa o atraso do modelo: sem ele a
+        # voz sai 30 ms atrasada. -a 35 é o teto que soa natural; acima disso a voz começa a soar aquosa.
+        df = shutil.which("deep-filter") or str(Path.home() / ".video-cleanup/bin/deep-filter")
+        if not Path(df).is_file():
+            raise SystemExit("DeepFilterNet não instalado: python ~/.agents/skills/video-cleanup/scripts/setup_tools.py")
+        df_dir = tmp / "df"
+        # o binário só lê PCM16/float: WAV de 24 bits ele aborta com TooWide
+        df_in = tmp / "df_in.wav"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(cur), "-c:a", "pcm_f32le", "-ar", str(SR), str(df_in)], check=True)
+        subprocess.run([df, "-D", "-a", "35", "-o", str(df_dir), str(df_in)], check=True, capture_output=True)
+        cur = df_dir / df_in.name
+        notes.append("deepfilter -35 dB")
+
     if mode in ("rnnoise", "both"):
         model = RNNOISE_DIR / f"{rnn_model}.rnnn"
         if not model.exists():
@@ -387,7 +402,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("source", type=Path)
     ap.add_argument("--edit-dir", type=Path, required=True)
-    ap.add_argument("--denoise", choices=["rnnoise", "demucs", "both", "off"],
+    ap.add_argument("--denoise", choices=["rnnoise", "deepfilter", "demucs", "both", "off"],
                     default="rnnoise")
     ap.add_argument("--rnn-model", choices=sorted(RNN_MODELS), default="sh")
     ap.add_argument("--rnn-mix", type=float, default=0.85,
