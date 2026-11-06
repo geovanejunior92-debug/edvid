@@ -157,7 +157,8 @@ def main() -> None:
         aud_seams = [(j["audio_start_in_output"], jt[i]["audio_start_in_output"]
                       + jt[i]["audio_duration"]) for i, j in enumerate(jt[1:])]
     else:
-        durs = [float(r["end"]) - float(r["start"]) for r in ranges]
+        speed_post = float(edl.get("speed_post") or 1)
+        durs = [(float(r["end"]) - float(r["start"])) / speed_post for r in ranges]
         expected = sum(durs)
         junctions = []
         out_spans = []

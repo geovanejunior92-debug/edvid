@@ -859,7 +859,7 @@ function jcutGeom(i) {
   if (!j) return { lead: 0, tail: 0 };
   return {
     lead: Math.max(0, (j.video_start_in_output || 0) - (j.audio_start_in_output || 0)),
-    tail: (j.tail_trim_frames || 0) / (S.fps || 30),
+    tail: (j.tail_trim_frames || 0) / (S.fps || 30) / (S.speedPost || 1),
   };
 }
 
@@ -875,7 +875,7 @@ function draftLayout() {
   return S.draft.map((r, i) => {
     if (r.removed) return { ...r, out: t, dur: 0, aout: at, adur: 0 };
     const g = jcutGeom(i);
-    const span = r.end - r.start;
+    const span = (r.end - r.start) / (S.speedPost || 1);
     const adur = Math.max(0, span - g.tail);
     const dur = Math.max(0, adur - g.lead);
     const item = { ...r, out: t, dur, aout: Math.max(0, at - g.lead), adur, lead: g.lead };
@@ -897,7 +897,7 @@ function renderedLayout() {
   }
   let t = 0;
   return S.rendered.map((r) => {
-    const dur = r.end - r.start;
+    const dur = (r.end - r.start) / (S.speedPost || 1);
     const item = { ...r, out: t, dur };
     t += dur;
     return item;
@@ -1029,6 +1029,8 @@ async function applyState(data) {
   // SHORTER than end-start and the takes do not simply abut. Without this the
   // filmstrip and the needle drift a little further at each junction.
   S.jcut = (data.edl && data.edl.jcut_timeline) || null;
+  // Os ranges ficam em tempo da fonte; o vídeo roda a esta velocidade (speed_post.py).
+  S.speedPost = (data.edl && +data.edl.speed_post) || 1;
   S.rendered = ranges.map((r) => ({ source: r.source, start: +r.start, end: +r.end, beat: r.beat || '',
     quote: r.quote || '', reason: r.reason || '' }));
   S.draft = S.rendered.map((r) => ({ ...r, removed: false, orig: { start: r.start, end: r.end } }));

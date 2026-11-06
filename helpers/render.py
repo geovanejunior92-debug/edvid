@@ -1624,6 +1624,11 @@ def main() -> None:
             if args.jcut_tail_trim is not None:
                 jcut["tail_trim_frames"] = max(0, args.jcut_tail_trim)
 
+        # Corte novo nasce em 1×. `speed_post.py` lê o valor pedido e aplica de novo.
+        speed_zerada = "speed_post" in edl
+        if speed_zerada:
+            edl["speed_post_pedido"] = edl.pop("speed_post")
+
         if jcut:
             # 1+2. Picture and sound extracted from different ranges, then overlapped.
             plan = extract_and_assemble_jcut(
@@ -1661,7 +1666,7 @@ def main() -> None:
             # (verify_cut, the preview lanes, Phase-2 offsets) keeps trusting it.
             effective = round(sum((r["end"] - r["start"]) / float(r.get("speed", 1) or 1)
                                   + float(r.get("freeze_end", 0) or 0) for r in edl["ranges"]), 3)
-            changed = edl.pop("jcut_timeline", None) is not None
+            changed = edl.pop("jcut_timeline", None) is not None or speed_zerada
             if abs(effective - float(edl.get("total_duration_s") or 0)) > 0.002:
                 edl["total_duration_s"] = effective
                 changed = True

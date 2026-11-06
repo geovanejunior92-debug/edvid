@@ -180,6 +180,7 @@ Trilha de IMAGEM (post, carrossel, capa, thumbnail — 2026-09-10). Leia **`refe
 - **`broll_suggest.py <edit>/edl.json [--apply-ledger]`** — para cada frase do corte, até 5 clipes do acervo local (`~/Videos/stock-medico`, pastas por tema) por palavra em comum; frases sem cobertura viram a lista de compras, já cruzada com o `PEDIDOS.md`; itens em aberto que já têm material no acervo são apontados (e marcados `[x]` com `--apply-ledger` — quem marca é o agente). Sai `<edit>/broll_suggest.md`. Roda no passo 10b antes de pedir qualquer coisa.
 - **`diagnostics.py <edit>`** — junta audio_clean/check_audio, shot_check, match_takes e qc_final em `<edit>/diagnostics.json`, com os instantes já na linha do tempo do corte; o preview desenha o painel "Diagnóstico" a partir dele. Rode depois de cada gate, antes de abrir ou atualizar o preview.
 - **`detect_color.py <video> [--json]`** — resolves NORMAL vs LOG from the file instead of asking — metadata first, image statistics when the metadata is silent (common: a transcode drops the tags). Returns profile, **confidence**, evidence and the `grade` to apply. Only `confidence: low` should send you back to the user; the identification detail is in `references/log-grade.md`.
+- **`speed_post.py <edit> [--speed 1.07]`** — o passo 7b: acelera o corte montado uma vez só, com o tom preservado, e atualiza EDL, transcrição e cues junto. Guarda `cut_1x.mp4`.
 - **`render.py <edl.json> -o cut.mp4 --no-subtitles [--audio-clean] [--stabilize] [--voice-master] [--keep-resolution] [--shortform-fps] [--delivery-1080] [--jobs N] [--no-jcut] [--jcut-lead N] [--jcut-tail-trim N]`** — per-segment extract (grade + fades, **parallel**) → **J-cut overlap assembly (default)** or lossless concat → optional voice master → loudnorm. Writes `jcut_timeline` into the EDL: the real output positions, which is what everything downstream must index off. **Resolution is always the source's** (4K in → 4K out, CRF 18; `--delivery-1080` only on request). **fps is the source's too** (60 in → 60 out, locked to a constant standard rate; `--shortform-fps` = old 30/24 mode, only on request; `--native-fps` is now a no-op kept for old commands). The J-cut defaults (5f lead / 2f tail) are 30fps counts, scaled to the same ms above 30. Set `edit-data.json` `fps` to match the resulting `cut.mp4`. **`--audio-clean`** (ou `"audio_clean": true` / `{"denoise": "demucs"}` no EDL) troca o som de cada segmento pelo WAV limpo do `audio_clean.py`, extraído pelo mesmo range, com os mesmos fades e o mesmo `gain_db`: a Hard Rule 2 não muda, só a entrada de áudio. **`--stabilize`** (ou `"stabilize": true` / `{"mode": "smooth"}` no EDL) faz o mesmo com a IMAGEM: os segmentos saem da cópia estabilizada, o som continua vindo da fonte ou do WAV limpo. Só use quando `stabilize.py --report` mostrar tremida acima de ~0,35 px/quadro; em tripé é zoom de graça.
 - **`verify_cut.py <edl.json> <cut.mp4> [--min-silence 1.2]`** — numeric self-eval: duration, per-junction pop/clipped-word probes, dead air, black frames, clipping, **and range level balance** (each range's RMS vs the median range; `LOW-LEVEL` under −4 dB). ~350 tokens of text instead of N images. The range-balance line is the convergence test for a `gain_db` fix.
 - **`check_luts.py <video> --edit-dir <edit> [--port N] [--quick]`** — health gate for the LUT picker, run right after `lut_thumbs.py`. Verifies `.cube` files parse, `lut3d` applies each one to the real video, every `LUT_CATALOG` id has a decodable thumbnail, and the server serves them (`--port`). Exits non-zero with one line per problem. `lut_thumbs.py` reporting success proves none of this: generation and delivery fail independently.
@@ -535,6 +536,15 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
 7. **Self-eval (numeric first).** `verify_cut.py edl.json cut.mp4` (longform: `--min-silence 1.2`). Clean → done. Flags → `timeline_view` ONLY the flagged junctions, fix, re-render. Cap 3 loops, then surface remaining flags to the user.
 8. **Generate the LUT thumbnails** (only if not already present for this
    project): `lut_thumbs.py cut.mp4 --out-dir <edit>/.preview_cache/luts`. A
+7b. **Aceleração (2026-11-06).** Com o corte aprovado no passo 7:
+   `speed_post.py <edit>`. Fora o pedido dele para um vídeo específico (`--speed X`),
+   é **sempre 1,07×**, sem perguntar. Roda uma vez só, sobre o corte montado, depois
+   do J-cut e antes de transcrever o `cut.mp4`: `setpts` + `atempo` (tom preservado),
+   resolução, fps e cor da fonte. Guarda `cut_1x.mp4`, grava `speed_post` no EDL e
+   divide `jcut_timeline`, de modo que a Fase 2 indexe pelo vídeo acelerado. Rodar de
+   novo não acelera duas vezes. Refez o corte com `render.py`? Rode de novo: o corte
+   novo nasce em 1× e a velocidade pedida antes é mantida. Nunca use o `speed` por
+   range do EDL para isso, porque ele desliga o J-cut.
    project that skips this shows the LUT picker with blank/flat swatches
    instead of real thumbnails — easy to forget since nothing errors, do it
    every time as part of opening the gate, not only when someone notices it's
@@ -754,7 +764,7 @@ tweak can arrive in the same `preview_edits.json`, applied together).
 
 **Com a Fase 2 já montada, o passo é "refazer a base".** O `cut.mp4` alimenta outros
 arquivos, e a lista deles é a instrução, nesta ordem: re-render da Fase 1 → retag
-bt709 → `verify_cut.py` → regenerar `segments.json` → `cp cut.mp4 remotion/public/`
+bt709 → `verify_cut.py` → `speed_post.py` → regenerar `segments.json` → `cp cut.mp4 remotion/public/`
 → **regerar todo matte** (`person_matte.py`) → `lut_thumbs.py` + `check_luts.py`.
 Matte e miniatura carregam pixel e ficam errados em silêncio: a cabeça com a cor
 antiga na frente da faixa com a cor nova, e nenhum gate acusa.
@@ -1015,6 +1025,9 @@ trim up to 2f); `false` butt-joins instead. After a render, `render.py` adds a
 block, not `Σ(end−start)`, is the timeline Phase 2 and the preview must use.
 
 `grade_pre` (por range) e `skin_protect` (no EDL, 2026-09-01): a cor por
+`speed_post` (passo 7b): a velocidade aplicada sobre o corte montado. Com ele,
+`jcut_timeline` e `total_duration_s` já estão no tempo do vídeo acelerado, e os
+`ranges` continuam em tempo da fonte.
 take e a proteção de pele. `grade_pre` é o filtro de casamento escrito pelo
 `match_takes.py`, aplicado ANTES do `grade`. `"skin_protect": {"hue": 18,
 "strength": 0.6}` é um qualificador HSV centrado no tom de pele MEDIDO

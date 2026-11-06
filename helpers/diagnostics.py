@@ -30,17 +30,18 @@ from pathlib import Path
 def out_time(edl: dict, source: str, t: float) -> float | None:
     """Tempo da fonte → tempo no cut.mp4 (usa jcut_timeline quando há)."""
     jt = edl.get("jcut_timeline")
+    speed_post = float(edl.get("speed_post") or 1)
     if jt:
         for entry, r in zip(jt, edl["ranges"]):
             if r["source"] == source and float(r["start"]) - 0.3 <= t <= float(r["end"]) + 0.3:
-                return round(entry["video_start_in_output"] + (t - float(r["start"])), 3)
+                return round(entry["video_start_in_output"] + (t - float(r["start"])) / speed_post, 3)
         return None
     off = 0.0
     for r in edl["ranges"]:
         s, e = float(r["start"]), float(r["end"])
         if r["source"] == source and s - 0.3 <= t <= e + 0.3:
-            return round(off + (t - s), 3)
-        off += (e - s) / float(r.get("speed", 1) or 1) + float(r.get("freeze_end", 0) or 0)
+            return round(off + (t - s) / speed_post, 3)
+        off += ((e - s) / float(r.get("speed", 1) or 1) + float(r.get("freeze_end", 0) or 0)) / speed_post
     return None
 
 

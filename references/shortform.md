@@ -146,7 +146,11 @@ question is settled.
      # higher-numbered segments behind, and that gave segments.json 9.23s for a
      # 7.57s video. It renders clean and every overlay lands wrong.
      segs = sorted(glob.glob("clips_graded/seg_*_v.mp4")) or sorted(glob.glob("clips_graded/seg_*.mp4"))
-     nranges = len(json.loads(pathlib.Path("edl.json").read_text())["ranges"])
+     edl = json.loads(pathlib.Path("edl.json").read_text())
+     nranges = len(edl["ranges"])
+     # Os segmentos estão em 1×; o cut.mp4 está acelerado (`speed_post.py`).
+     speed = float(edl.get("speed_post") or 1)
+     base = "cut_1x.mp4" if speed != 1 else "cut.mp4"
      if len(segs) != nranges:
          sys.exit(f"{len(segs)} segments for {nranges} ranges — clips_graded is dirty")
      cum, t = [0], 0
@@ -161,8 +165,8 @@ question is settled.
      if t != real:
          sys.exit(f"segments sum {t}f != cut.mp4 {real}f — do not ship this file")
      fps = 30  # match cut.mp4
-     json.dump({"segments": [{"start": round(cum[i]/fps,4),
-                              "dur": round((cum[i+1]-cum[i])/fps,4)}
+     json.dump({"segments": [{"start": round(cum[i]/fps/speed,4),
+                              "dur": round((cum[i+1]-cum[i])/fps/speed,4)}
                              for i in range(len(cum)-1)]},
                open("remotion/public/segments.json","w"), indent=2)
      EOF

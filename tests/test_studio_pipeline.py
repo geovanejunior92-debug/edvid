@@ -207,6 +207,14 @@ class StudioPipelineTests(unittest.TestCase):
         backups = list((self.pipe.data / "renders").glob("cut-*.mp4"))
         self.assertEqual([x.read_bytes() for x in backups], [b"previous-good"])
 
+    def test_render_accelerates_once_after_the_verified_cut(self):
+        revision, digest = self._proposal()
+        self.pipe.approve_plan(revision, digest, True)
+        self.pipe.render_cut(revision, digest)
+        helpers = [Path(call[1]).name for call in self.runner.calls if len(call) > 1]
+        self.assertEqual(helpers.count("speed_post.py"), 1)
+        self.assertLess(helpers.index("verify_cut.py"), helpers.index("speed_post.py"))
+
     def test_render_rejects_source_replaced_after_approval(self):
         revision, digest = self._proposal()
         self.pipe.approve_plan(revision, digest, True)

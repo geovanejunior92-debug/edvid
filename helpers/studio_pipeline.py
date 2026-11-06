@@ -526,6 +526,15 @@ class StudioPipeline:
         if verified.returncode:
             cut_stage.unlink(missing_ok=True)
             raise PipelineError((verified.stdout or verified.stderr or "a verificação reprovou o corte").strip()[-2000:])
+        # Depois do J-cut e da verificação: o corte publicado já sai acelerado.
+        cut_1x_stage = staging / f"cut1x-r{revision}-{plan_hash[:12]}.mp4"
+        cut_1x_stage.unlink(missing_ok=True)
+        sped = self.runner([sys.executable, str(HELPERS_DIR / "speed_post.py"), "--edl", str(edl_stage),
+                            "--cut", str(cut_stage), "--cut-1x", str(cut_1x_stage)],
+                           capture_output=True, text=True)
+        if sped.returncode:
+            cut_stage.unlink(missing_ok=True)
+            raise PipelineError((sped.stderr or sped.stdout or "a aceleração falhou").strip()[-2000:])
         fps_probe = self.runner(
             ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
              "stream=avg_frame_rate", "-of", "default=noprint_wrappers=1:nokey=1", str(cut_stage)],
@@ -555,6 +564,8 @@ class StudioPipeline:
             os.replace(live_cut, history / f"cut-{int(time.time())}-{old_hash}.mp4")
         _atomic_json(live_edl, verified_edl)
         os.replace(cut_stage, live_cut)
+        if cut_1x_stage.is_file():
+            os.replace(cut_1x_stage, self.edit / "cut_1x.mp4")
         _atomic_json(preview_state_path, preview_state)
         event = self._record("render-cut", True, revision=revision, planHash=plan_hash,
                              output=str(live_cut.relative_to(self.root)), verified=True,
@@ -684,7 +695,7 @@ class StudioPipeline:
         slots = []
         offset = 0.0
         for index, r in enumerate(before["ranges"]):
-            speed = float(r.get("speed", 1) or 1)
+            speed = float(r.get("speed", 1) or 1) * float(before.get("speed_post") or 1)
             if speed <= 0:
                 raise PipelineError("velocidade inválida no EDL")
             if jt:

@@ -33,7 +33,7 @@ cobre só a entrada na edição.
 
 ## Regras
 
-- **Aceleração:** o 1,07× vale para o corte montado. A locução mixada depois não
+- **Aceleração:** o 1,07× vale para o corte montado (`speed_post.py`, passo 7b do `SKILL.md`). A locução mixada depois não
   acelera de novo; `--speed` em `gen` só se ele pedir outro ritmo.
 - **Voz dele:** clonar só com o sim dele para aquele uso, sempre local. As vozes
   padrão são sintéticas; não apresentar locução sintética como fala dele.

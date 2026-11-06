@@ -54,7 +54,7 @@ o clipe, não a faixa.
 
 ## O fluxo, do corte à entrega
 
-1. **Fase 1 normal** — corte, `voice_levels`, grade, `verify_cut`, LUTs. Sem
+1. **Fase 1 normal** — corte, `voice_levels`, grade, `verify_cut`, `speed_post.py` (1,07×), LUTs. Sem
    novidade aqui.
 2. **B-roll: reconciliar o acervo ANTES de escolher.** Ler
    `~/Videos/stock-medico/` e `PEDIDOS.md`, marcar `[x]` o que já chegou (é

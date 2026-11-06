@@ -153,6 +153,7 @@ def orphans(regions: list[tuple[float, float]], words: list[dict], r_start: floa
 def text_cuts_to_source(edl: dict, text_cuts: list[dict]) -> list[dict]:
     """textCuts do preview (tempo RENDERIZADO do cut.mp4) → cortes em tempo da fonte."""
     jt = edl.get("jcut_timeline")
+    speed_post = float(edl.get("speed_post") or 1)
     slots = []
     off = 0.0
     for i, r in enumerate(edl["ranges"]):
@@ -161,8 +162,8 @@ def text_cuts_to_source(edl: dict, text_cuts: list[dict]) -> list[dict]:
             o = float(jt[i]["video_start_in_output"])
             d = float(jt[i]["video_duration"])
         else:
-            o, d = off, (e - s) / float(r.get("speed", 1) or 1)
-            off += d + float(r.get("freeze_end", 0) or 0)
+            o, d = off, (e - s) / float(r.get("speed", 1) or 1) / speed_post
+            off += d + float(r.get("freeze_end", 0) or 0) / speed_post
         slots.append((o, o + d, s, r["source"]))
     out = []
     for tc in text_cuts:
@@ -170,8 +171,8 @@ def text_cuts_to_source(edl: dict, text_cuts: list[dict]) -> list[dict]:
         b = float(tc.get("renderedEnd", tc.get("end", 0)))
         for o0, o1, s, src in slots:
             if a >= o0 - 0.05 and a <= o1 + 0.05:
-                out.append({"source": src, "start": round(s + (a - o0), 3),
-                            "end": round(s + min(b, o1) - o0, 3), "text": str(tc.get("text", ""))[:60],
+                out.append({"source": src, "start": round(s + (a - o0) * speed_post, 3),
+                            "end": round(s + (min(b, o1) - o0) * speed_post, 3), "text": str(tc.get("text", ""))[:60],
                             "kind": "texto"})
                 break
     return out
