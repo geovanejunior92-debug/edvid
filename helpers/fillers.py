@@ -6,9 +6,10 @@ frase começada duas vezes. Cada um é meio segundo que o espectador sente e o
 editor humano tira sem pensar. Este helper os lista, com tempo e contexto,
 como CORTES dentro dos ranges do EDL:
 
-  vício      "é", "eh", "hum", "ah", "né" isolados por pausa (fortes); "tipo",
-             "assim", "então", "aí", "sabe" só quando cercados de pausa dos
-             dois lados (fracos — muitas vezes são a frase de verdade)
+  vício      "é", "eh", "hum", "ah", "né" isolados por pausa dos dois lados
+             (fortes; a borda do range conta como pausa); "tipo", "assim",
+             "então", "aí", "sabe" com pausa maior dos dois lados (fracos —
+             muitas vezes são a frase de verdade)
   repetição  a mesma palavra duas vezes seguida ("que que", "a a"): sai a 1ª
   falsa      frase curta (≤ 3 palavras) cuja primeira palavra é a mesma da
   partida    frase seguinte, começada em < 2 s: sai a curta
@@ -100,7 +101,12 @@ def find_in_range(words: list[dict], r_start: float, r_end: float, use_weak: boo
         gap_a = (ws[i + 1]["start"] if i + 1 < len(ws) else r_end) - w["end"]
         dur = w["end"] - w["start"]
         ctx = " ".join(x["word"] for x in ws[max(0, i - 3): i + 4])
-        if n in STRONG and dur < 0.6 and (gap_b >= PAUSE_STRONG or gap_a >= PAUSE_STRONG):
+        # Pausa dos DOIS lados: "é" e "um" também são palavras da oração ("uma
+        # coisa é fome", "só um medicamento"), e com pausa de um lado só quase
+        # todo achado era falso positivo. A borda do range é silêncio, não vizinho.
+        pausa_antes = i == 0 or gap_b >= PAUSE_STRONG
+        pausa_depois = i + 1 == len(ws) or gap_a >= PAUSE_STRONG
+        if n in STRONG and dur < 0.6 and pausa_antes and pausa_depois:
             items.append({"kind": "vício", "start": w["start"], "end": w["end"], "text": w["word"],
                           "gap_before": round(gap_b, 2), "gap_after": round(gap_a, 2), "context": ctx})
         elif use_weak and n in WEAK and gap_b >= PAUSE_WEAK and gap_a >= PAUSE_WEAK:
