@@ -136,6 +136,17 @@ def median_of(reports: list[dict]) -> dict:
     return walk(reports)
 
 
+def resumir(reps: list[dict], face: bool) -> dict:
+    """Junta as amostras e diz quando a leitura de pele não veio, e por quê."""
+    rep = median_of(reps) if len(reps) > 1 else (reps[0] if reps else {})
+    rep["samples"] = len(reps)
+    com_pele = sum("skin" in r for r in reps)
+    if face and reps and "skin" not in rep:
+        rep["skin_warning"] = (f"sem leitura de pele: rosto detectado em {com_pele} de "
+                               f"{len(reps)} amostra(s), sem hue para o skin_protect")
+    return rep
+
+
 def analyze_video(path: Path, at: float | None, face: bool, samples: int = 12) -> dict:
     info = probe(path)
     if at is not None:
@@ -147,17 +158,13 @@ def analyze_video(path: Path, at: float | None, face: bool, samples: int = 12) -
         img = frame_at(path, float(t))
         if img is not None:
             reps.append(measure(img, face))
-    rep = median_of(reps) if len(reps) > 1 else (reps[0] if reps else {})
-    rep["samples"] = len(reps)
-    return rep
+    return resumir(reps, face)
 
 
 def analyze_take(path: Path, start: float, end: float, face: bool, samples: int = 6) -> dict:
     ts = np.linspace(start + 0.2, max(start + 0.2, end - 0.2), samples)
     reps = [measure(img, face) for t in ts if (img := frame_at(path, float(t))) is not None]
-    rep = median_of(reps) if len(reps) > 1 else (reps[0] if reps else {})
-    rep["samples"] = len(reps)
-    return rep
+    return resumir(reps, face)
 
 
 def fmt(rep: dict) -> str:
@@ -172,6 +179,8 @@ def fmt(rep: dict) -> str:
         s = rep["skin"]
         line += (f"  pele: luma {s['luma_p50']:.0f}, {s['off_skin_line_deg']:+.0f}° da linha,"
                  f" croma {s['chroma']:.0f}")
+    elif "skin_warning" in rep:
+        line += f"  AVISO {rep['skin_warning']}"
     return line
 
 
