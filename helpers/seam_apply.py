@@ -45,12 +45,13 @@ def carregar(edit: Path) -> tuple[dict, list[dict], Path]:
     return json.loads(alvo.read_text()), seam, alvo
 
 
-def avaliar(item: dict, janela: dict, cut: Path) -> tuple[str, str]:
+def avaliar(item: dict, janela: dict, cut: Path,
+            layout_w: float = seam_check.LAYOUT_W) -> tuple[str, str]:
     """Veredito da costura com o focusY novo, medido do jeito do gate."""
     novo = float(item["focusY"])
     at = float(item.get("start", janela.get("start", 0))) + 0.5
     try:
-        topo, base = seam_check.head_box(cut, at)
+        topo, base = seam_check.head_box(cut, at, layout_w)
     except Exception as exc:  # noqa: BLE001 — sem detector não se bloqueia o ajuste
         return "SEM MEDIDA", f"não consegui medir o rosto em {at:.2f}s ({exc})"
     resultado = seam_check.seam_position(
@@ -85,7 +86,8 @@ def main() -> None:
             continue
         antigo = float(janela.get("focusY") or 400)
         novo = float(item["focusY"])
-        veredito, porque = (avaliar(item, janela, cut) if cut.is_file()
+        layout_w = float(data.get("width") or seam_check.LAYOUT_W)
+        veredito, porque = (avaliar(item, janela, cut, layout_w) if cut.is_file()
                             else ("SEM CORTE", "cut.mp4 ausente — não dá para medir"))
         marca = "ok    " if veredito in ("OK", "SEM MEDIDA", "SEM CORTE") else "REPROVA"
         if veredito not in ("OK", "SEM MEDIDA", "SEM CORTE"):

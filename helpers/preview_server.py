@@ -447,7 +447,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent))
             import seam_check
-            top, bottom = seam_check.head_box(video, max(0.0, at))
+            top, bottom = seam_check.head_box(video, max(0.0, at),
+                                              seam_check.layout_width(self.root))
         except Exception as exc:  # noqa: BLE001 — detector ausente não pode derrubar o preview
             self._json({'error': str(exc)[:200]}, 503)
             return

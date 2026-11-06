@@ -6,9 +6,11 @@ ter o gate. Por isso só passa com --force.
 """
 from pathlib import Path
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'helpers'))
 import seam_check
@@ -38,6 +40,52 @@ class GeometriaTests(unittest.TestCase):
         interface = (focus - top) / (bottom - top)
         gate = seam_check.seam_position(top, bottom, focus, 1.0, 860)['fraction']
         self.assertAlmostEqual(interface, gate, places=3)
+
+
+class ResolucaoTests(unittest.TestCase):
+    """focusY vive na grade do layout; o detector mede pixel do quadro."""
+
+    def quadro(self, largura, altura):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        video = Path(tmp.name) / 'q.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                        f'color=c=gray:s={largura}x{altura}:r=30:d=0.2', '-pix_fmt', 'yuv420p',
+                        str(video)], check=True)
+        return video
+
+    def test_quadro_4k_mede_na_grade_de_1080(self):
+        # A mesma cabeça em 2160x3840: y 600–1800 no quadro, 300–900 na grade.
+        with mock.patch('faces.detect_face', return_value=(800, 600, 560, 1200)):
+            topo, base = seam_check.head_box(self.quadro(2160, 3840), 0.0, 1080)
+        self.assertEqual((topo, base), (300.0, 900.0))
+
+    def test_quadro_1080_nao_muda(self):
+        with mock.patch('faces.detect_face', return_value=(400, 300, 280, 600)):
+            topo, base = seam_check.head_box(self.quadro(1080, 1920), 0.0)
+        self.assertEqual((topo, base), (300.0, 900.0))
+
+    def test_o_veredito_do_4k_e_o_mesmo_do_1080(self):
+        with mock.patch('faces.detect_face', return_value=(800, 600, 560, 1200)):
+            caixa_4k = seam_check.head_box(self.quadro(2160, 3840), 0.0, 1080)
+        r_4k = seam_check.seam_position(*caixa_4k, 500, 1.0, 860)
+        r_1080 = seam_check.seam_position(300.0, 900.0, 500, 1.0, 860)
+        self.assertEqual(r_4k['fraction'], r_1080['fraction'])
+        self.assertEqual(r_4k['verdict'], 'OK')
+
+    def test_apply_passa_a_largura_do_edit_data(self):
+        with mock.patch.object(seam_check, 'head_box', return_value=(300.0, 900.0)) as medir:
+            seam_apply.avaliar({'focusY': 500, 'start': 1}, {'bandH': 860}, Path('cut.mp4'), 720)
+        self.assertEqual(medir.call_args.args[2], 720)
+
+    def test_largura_do_layout_vem_do_edit_data(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        edit = Path(tmp.name)
+        self.assertEqual(seam_check.layout_width(edit), seam_check.LAYOUT_W)
+        (edit / 'remotion' / 'public').mkdir(parents=True)
+        (edit / 'remotion' / 'public' / 'edit-data.json').write_text(json.dumps({'width': 720}))
+        self.assertEqual(seam_check.layout_width(edit), 720)
 
 
 class AplicacaoTests(unittest.TestCase):

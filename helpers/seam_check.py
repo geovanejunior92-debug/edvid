@@ -28,6 +28,7 @@ dele. Para `bottom` a geometria do recorte é outra e eu não a medi.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -35,6 +36,7 @@ import tempfile
 
 SEAM_BLEND = 100          # espelha CustomGraphics.tsx
 FRAME_H = 1920
+LAYOUT_W = 1080           # largura padrão da grade do edit-data (focusY, bandH)
 # Ancorados na calibragem real do canal (focusY 560 / 640 / 720 num mesmo
 # still): 560 deu fração 0.16 e foi descrito como "encosta"; 640 deu 0.28,
 # "entra"; 720 deu 0.40 e foi o que "lê como a referência". Daí a janela.
@@ -96,8 +98,22 @@ def seam_position(head_top: float, head_bottom: float, focus_y: float,
             'headTopRendered': round(top_r, 1), 'seamY': round(seam, 1)}
 
 
-def head_box(video: Path, at: float) -> tuple[float, float]:
-    """(topo, base) da cabeça na FONTE, do quadro em `at`."""
+def layout_width(edit_dir: Path) -> float:
+    """`width` do edit-data do projeto; sem ele, a grade padrão."""
+    try:
+        data = json.loads((Path(edit_dir) / 'remotion/public/edit-data.json').read_text())
+        return float(data.get('width') or LAYOUT_W)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return float(LAYOUT_W)
+
+
+def head_box(video: Path, at: float, layout_w: float = LAYOUT_W) -> tuple[float, float]:
+    """(topo, base) da cabeça na FONTE, do quadro em `at`, na grade do layout.
+
+    focusY e bandH vivem na grade do edit-data; o detector mede pixel do quadro.
+    Num corte 4K a medida viria com o dobro do valor e o veredito sairia errado
+    sem aviso nenhum, por isso a conversão pela largura.
+    """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cv2  # noqa: E402  (só quando o CLI roda)
     import faces  # noqa: E402
@@ -112,7 +128,8 @@ def head_box(video: Path, at: float) -> tuple[float, float]:
     if not box:
         raise ValueError('Nenhum rosto encontrado nesse instante — escolha outro')
     _, y, _, h = box
-    return float(y), float(y + h)
+    escala = layout_w / img.shape[1]
+    return float(y) * escala, float(y + h) * escala
 
 
 def main() -> None:
@@ -125,10 +142,12 @@ def main() -> None:
     ap.add_argument('--layout', choices=['top', 'bottom'], default='top')
     ap.add_argument('--seam-blend', type=float, default=SEAM_BLEND,
                     help='192 no Formato 2; 100 (padrão) no Formato 1')
+    ap.add_argument('--layout-width', type=float, default=LAYOUT_W,
+                    help='`width` do edit-data: a medida do quadro é convertida para essa grade')
     args = ap.parse_args()
 
     try:
-        top, bottom = head_box(args.video, args.at)
+        top, bottom = head_box(args.video, args.at, args.layout_width)
         r = seam_position(top, bottom, args.focus_y, args.zoom, args.band_h,
                           args.layout, args.seam_blend)
     except (OSError, ValueError, ImportError, subprocess.CalledProcessError) as e:
