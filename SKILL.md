@@ -65,7 +65,7 @@ Pedido de "comercial animado", "comercial estilo Apple", "estúdio de edição" 
 12. **Verify numerically first.** Run `verify_cut.py` on every rendered cut; open images only for flagged junctions. Batch any multi-frame look into one `contact_sheet.py` / `grade.py --candidates` montage.
 13. **Never Read machine data into context**: `transcripts/*.json` (raw), `captions.json`, `track.json`, `segments.json`, matte/track binaries. Read `takes_packed.md` and helper stdout instead.
 
-## Execution medium — ffmpeg pipeline (default), Adobe Premiere (MCP), OpenCut (timeline)
+## Execution medium — ffmpeg pipeline (default), Adobe Premiere (MCP), OpenCut e Concat (timeline)
 
 The default engine is the ffmpeg/Remotion pipeline below. **If the user asks for the
 edit inside Adobe Premiere Pro via the `premiere-pro` MCP** ("edite a sequência no
@@ -84,6 +84,13 @@ tem trim e remoção de take** e valida a borda nova contra `speech_regions.py`;
 o OpenCut ganha dele em reordenar takes e em ver o material descartado ao
 esticar um take, e perde na validação. Toda devolução volta pro fluxo normal:
 `verify_cut.py` → `render.py` → gate.
+
+**Se ele pedir o Concat** ("abre no Concat", "ajustar no editor do Mac") — read
+`references/concat.md`. Mesmo contrato do OpenCut, sem navegador nem cópia da
+fonte: `helpers/concat_bridge.py open` monta o projeto em
+`<edit>/concat/corte` na resolução da fonte e abre o app; `pull` lê o que ele
+salvou e reescreve o `edl.json`, com backup. Depois: `verify_cut.py` →
+`render.py` → gate.
 
 ## Directory layout
 
@@ -249,6 +256,7 @@ the track reference you load after the gate. One of them is not optional:
   que assiste o vídeo inteiro.
 
 Interface:
+- **`concat_bridge.py open|pull|status --edit-dir <edit>`** — abre o corte no Concat (app nativo) e traz os ajustes salvos de volta pro `edl.json`, com backup e resumo. `open --rebuild` parte do `edl.json` atual e guarda o projeto antigo.
 - **`opencut_bridge.py serve --edit-dir <edit> [--port 4840]`** — abre o corte numa timeline do OpenCut e recebe os ajustes de volta no `edl.json` (com backup e resumo do que mudou). `status --edit-dir <edit>` mostra a última devolução. Detalhes e limites: `references/opencut.md`.
 - **`preview_server.py --root <edit> [--port 4820]`** — serves the standard preview interface (see the Preview interface section). App code lives at `assets/preview/` and is IMMUTABLE.
 

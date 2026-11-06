@@ -150,8 +150,9 @@ def build_bundle(edit_dir: Path, port: int, name: str | None,
 
 # ---------------------------------------------------------------- volta
 
-def merge_back(edit_dir: Path, incoming: list[dict]) -> str:
-    """Reescreve edl.json com os ranges vindos do OpenCut. Devolve o resumo."""
+def merge_back(edit_dir: Path, incoming: list[dict], editor: str = "OpenCut",
+               state_dir: str = "opencut") -> str:
+    """Reescreve edl.json com os ranges vindos do editor. Devolve o resumo."""
     edl_path = edit_dir / "edl.json"
     edl = json.loads(edl_path.read_text())
     original = edl.get("ranges") or []
@@ -174,6 +175,10 @@ def merge_back(edit_dir: Path, incoming: list[dict]) -> str:
                  "start": round(float(new["start"]), 3),
                  "end": round(float(new["end"]), 3)}
         if old is not None:
+            # Borda intocada guarda o valor exato: o round acima não é um ajuste.
+            for edge in ("start", "end"):
+                if abs(entry[edge] - old[edge]) < 0.001:
+                    entry[edge] = old[edge]
             for field in CARRY_FIELDS:
                 if field in old:
                     entry[field] = old[field]
@@ -187,7 +192,7 @@ def merge_back(edit_dir: Path, incoming: list[dict]) -> str:
                     f"→ [{entry['start']:.2f}, {entry['end']:.2f}]"
                 )
         else:
-            entry["reason"] = "range novo, criado no OpenCut"
+            entry["reason"] = f"range novo, criado no {editor}"
             lines.append(
                 f"  {index + 1:>2}. NOVO {new['source']} "
                 f"[{entry['start']:.2f}, {entry['end']:.2f}]"
@@ -215,8 +220,8 @@ def merge_back(edit_dir: Path, incoming: list[dict]) -> str:
     )
     summary = header + ("\n" + "\n".join(lines) if lines else "\n  (nenhuma borda mudou)")
 
-    (edit_dir / "opencut").mkdir(exist_ok=True)
-    (edit_dir / "opencut" / "last_return.json").write_text(
+    (edit_dir / state_dir).mkdir(exist_ok=True)
+    (edit_dir / state_dir / "last_return.json").write_text(
         json.dumps({"at": stamp, "summary": summary, "takes": len(merged)},
                    indent=2, ensure_ascii=False) + "\n"
     )
