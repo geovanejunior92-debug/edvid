@@ -257,6 +257,7 @@ the track reference you load after the gate. One of them is not optional:
 
 Interface:
 - **`concat_bridge.py open|pull|status --edit-dir <edit>`** — abre o corte no Concat (app nativo) e traz os ajustes salvos de volta pro `edl.json`, com backup e resumo. `open --rebuild` parte do `edl.json` atual e guarda o projeto antigo.
+- **`voiceover.py gen|mix`** — locução gerada no VoiceStudio local, só quando ele pedir locução ou narração. Sem esse pedido não roda e o áudio do vídeo não muda. Read `references/voicestudio.md`.
 - **`opencut_bridge.py serve --edit-dir <edit> [--port 4840]`** — abre o corte numa timeline do OpenCut e recebe os ajustes de volta no `edl.json` (com backup e resumo do que mudou). `status --edit-dir <edit>` mostra a última devolução. Detalhes e limites: `references/opencut.md`.
 - **`preview_server.py --root <edit> [--port 4820]`** — serves the standard preview interface (see the Preview interface section). App code lives at `assets/preview/` and is IMMUTABLE.
 
