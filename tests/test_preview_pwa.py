@@ -23,6 +23,18 @@ import preview_server
 PREVIEW = ROOT / 'assets' / 'preview'
 
 
+class ArquivoLocalTests(unittest.TestCase):
+    """Aberto por file://, o Preview não tem /assets nem /api e pareceria quebrado."""
+
+    def test_as_duas_paginas_explicam_em_vez_de_quebrar(self):
+        pasta = Path(__file__).resolve().parents[1] / 'assets' / 'preview'
+        for nome in ('index.html', 'projects.html'):
+            html = (pasta / nome).read_text()
+            cabeca = html.split('</head>')[0]
+            self.assertIn("location.protocol === 'file:'", cabeca, nome)
+            self.assertIn('http://127.0.0.1', cabeca, nome)
+
+
 class PwaServerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

@@ -16,6 +16,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/projects.css">
+<script>
+// Aberto como arquivo o Preview não funciona: /assets e /api só existem no servidor local.
+if (location.protocol === 'file:') {
+  document.addEventListener('DOMContentLoaded', function () {
+    document.body.innerHTML = '<main style="max-width:34rem;margin:20vh auto;padding:0 1.5rem;font:16px/1.5 system-ui;color:#fff">'
+      + '<h1 style="font-size:1.4rem">Este arquivo não é o Edvid</h1>'
+      + '<p>O Edvid abre pelo servidor local. Inicie <code>helpers/preview_server.py</code> e use o endereço <code>http://127.0.0.1:&lt;porta&gt;/</code>.</p></main>';
+    document.body.style.background = '#000';
+  });
+}
+</script>
 </head>
 <body>
   <!-- esfera 3D de fundo (só na biblioteca; a tela de edição não tem fundo animado) -->
