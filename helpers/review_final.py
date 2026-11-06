@@ -108,6 +108,36 @@ def sheets(video: Path, out_dir: Path, every: float, cols: int, rows: int, total
     return made
 
 
+def fontes_de_audio(d: dict, cues: list[dict] | None = None) -> list[str]:
+    """Tudo o que vai soar no render, além da voz do corte, antes de alguém ouvir.
+
+    Efeito que ninguém consegue listar não é revisável: o clique da legenda não
+    aparece em `sfxCues`, e já caiu numa palavra sem sentido sem ninguém ver.
+    """
+    linhas: list[str] = []
+    trilha = d.get("soundtrack") or {}
+    if trilha.get("enabled"):
+        linhas.append(f"trilha: {trilha.get('file')} (volume {trilha.get('volume')})")
+    for t in d.get("transitions") or []:
+        padrao = "whoosh.mp3" if t.get("variant") == "saida" else "cut-click.mp3"
+        linhas.append(f"transição {float(t.get('at', 0)):7.2f}s: {t.get('sfx') or padrao}")
+    for c in d.get("sfxCues") or []:
+        linhas.append(f"sfxCues   {float(c.get('at', 0)):7.2f}s: {c.get('src')}")
+    if (d.get("hook") or {}).get("enabled"):
+        linhas.append("capa: whoosh.mp3")
+    entradas = (len(d.get("inserts") or []) + len(d.get("behind") or [])
+                + sum(1 for g in d.get("graphics") or [] if g.get("sfx") is not False))
+    if entradas:
+        linhas.append(f"entrada de insert, imagem ou gráfico: até {entradas} whoosh.mp3")
+    cap = d.get("captions") or {}
+    if cap.get("enabled") and cap.get("style") == "stacked" and (cap.get("sfx") or {}).get("enabled") is not False:
+        solos = [c for c in cues or [] if c.get("preset") in ("SOLO_BIG", "SOLO_OUTLINE")]
+        circulados = [c for c in solos if c.get("preset") == "SOLO_OUTLINE"]
+        linhas.append(f"legenda stacked: {len(solos)} caption-click.mp3 e "
+                      f"{len(circulados)} caption-scratch.mp3 automáticos")
+    return linhas
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Revisão final: cobertura visual + checagem numérica")
     ap.add_argument("edit_dir", type=Path)
@@ -246,6 +276,16 @@ def main() -> None:
         print(f"encerramento em {t:.1f}s: Y={y:.0f} U={u:.0f} V={v:.0f} {'ok' if azul else 'FORA DO PADRÃO'}")
 
     # --- áudio ---
+    cues_p = E / "remotion/public/caption-cues.json"
+    try:
+        cues = json.loads(cues_p.read_text())
+    except (OSError, ValueError):
+        cues = []
+    fontes = fontes_de_audio(d, cues if isinstance(cues, list) else [])
+    print(f"\nfontes de áudio além da voz ({len(fontes)}):")
+    for linha in fontes:
+        print(f"  {linha}")
+
     r = run(["ffmpeg", "-v", "error", "-i", str(final), "-af",
              "astats=metadata=1:reset=0,ebur128=framelog=quiet", "-f", "null", "-"])
     pico = None

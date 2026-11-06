@@ -5,7 +5,7 @@
     "durationSec = fim da fala + duração do encerramento",
     "hookStacked.lines = a frase de capa, quebrada em 4 linhas (ver referência)",
     "splitInserts = as janelas de B-roll (tempos + clipes + matte por janela)",
-    "transitions = derivado das janelas (entrada 'corte' + saída 'saida')",
+    "transitions = união das janelas (entrada 'corte' + saída 'saida') com os cortes de segments.json a mais de ~1s de uma borda de janela ('corte')",
     "outro.startSec = logo após o fim da fala"
   ],
   "width": 1080,
@@ -77,6 +77,9 @@
     "fontScale": 0.92,
     "accent": "#3b82f6",
     "pencilColor": "#3b82f6",
+    "sfx": {
+      "enabled": false
+    },
     "windows": []
   },
   "_splitInserts_modelo": {
@@ -103,7 +106,7 @@
     "_focusY_2026-09-23": "focusY = topo do cabelo (alfa da máscara) + 0,13 × (queixo − topo): a costura cruza o terço superior da cabeça, pegando só parte do cabelo. NÃO usar a fração do detector de rosto."
   },
   "splitInserts": "PREENCHER",
-  "transitions": "PREENCHER — {at: start, variant: 'corte'} em cada janela + {at: end, variant: 'saida', intensity: 0.85} onde a faixa realmente sai (janelas coladas não levam saída entre elas)",
+  "transitions": "PREENCHER — {at: start, variant: 'corte'} em cada janela + {at: end, variant: 'saida', intensity: 0.85} onde a faixa realmente sai (janelas coladas não levam saída entre elas) + {at: corte, variant: 'corte'} em cada corte de segments.json a mais de ~1s de uma borda de janela",
   "inserts": [],
   "behind": [],
   "behindVideos": [],
