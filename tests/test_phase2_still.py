@@ -78,6 +78,25 @@ class MomentosTests(unittest.TestCase):
         self.assertEqual(len(tempos), len(set(tempos)))
 
 
+class CausaDoErroTests(unittest.TestCase):
+    def test_mostra_a_causa_e_nao_o_fim_do_stack(self):
+        saida = ("Bundling 12%\n"
+                 "Module not found: Error: Can't resolve '../public/captions_split.json' in 'src'\n"
+                 "    at bundle (/x/bundler.js:10:2)\n"
+                 "    at async cli\n")
+        self.assertIn("captions_split.json", still.causa_do_erro(saida))
+
+    def test_arquivo_que_nao_existe_tem_prioridade(self):
+        saida = "Error: falhou\nO arquivo public/track.json doesn't exist\n    at async cli\n"
+        self.assertIn("track.json", still.causa_do_erro(saida))
+
+    def test_sem_marca_conhecida_pula_as_linhas_de_stack(self):
+        self.assertEqual(still.causa_do_erro("algo deu errado\n    at async cli\n"), "algo deu errado")
+
+    def test_saida_vazia_nao_inventa_causa(self):
+        self.assertEqual(still.causa_do_erro(""), "")
+
+
 class OrcamentoTests(unittest.TestCase):
     def test_corta_pelos_menos_importantes_e_mantem_a_ordem_do_tempo(self):
         lista = [(1.0, "capa"), (5.0, "split 1"), (9.0, "split 2"), (13.0, "split 3")]

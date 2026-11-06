@@ -4,8 +4,10 @@ Um verificador que aprova tudo é tão inútil quanto um que reprova tudo — a
 suíte prova as duas direções: um arquivo são passa limpo, e cada classe de
 defeito é apontada nominalmente.
 """
+import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'helpers'))
@@ -92,6 +94,105 @@ class TempoTests(unittest.TestCase):
         self.assertEqual(lint.checar_tempos(data), [])
         ruim = base(graphics=[{"type": "lowerThird", "start": 58.0, "duration": 30.0}])
         self.assertTrue(niveis(lint.checar_tempos(ruim), "AVISO"))
+
+
+class LegendaTests(unittest.TestCase):
+    def projeto(self, cues=None, captions=None):
+        self.addCleanup((tmp := tempfile.TemporaryDirectory()).cleanup)
+        edit = Path(tmp.name) / "edit"
+        (edit / "remotion" / "public").mkdir(parents=True)
+        if cues is not None:
+            (edit / "remotion/public/caption-cues.json").write_text(json.dumps(cues))
+        if captions is not None:
+            (edit / "remotion/public/captions.json").write_text(json.dumps(captions))
+        return edit
+
+    STACKED = {"enabled": True, "style": "stacked"}
+    CUE = {"startMs": 10000, "endMs": 11000}
+
+    def test_cues_vazios_reprovam_no_formato_1(self):
+        data = base(captions=self.STACKED, _preset="TELA DIVIDIDA FORMATO 1 — x")
+        self.assertTrue(niveis(lint.checar_legenda(self.projeto(cues=[]), data), "ERRO"))
+
+    def test_cues_ausentes_reprovam_no_formato_1(self):
+        data = base(captions=self.STACKED, _preset="TELA DIVIDIDA FORMATO 1 — x")
+        self.assertTrue(niveis(lint.checar_legenda(self.projeto(), data), "ERRO"))
+
+    def test_cues_vazios_so_avisam_fora_do_formato_1(self):
+        achados = lint.checar_legenda(self.projeto(cues=[]), base(captions=self.STACKED))
+        self.assertEqual(niveis(achados, "ERRO"), [])
+        self.assertIn("caption-cues.json", niveis(achados, "AVISO")[0])
+
+    def test_legenda_desligada_nao_exige_cues(self):
+        self.assertEqual(lint.checar_legenda(self.projeto(cues=[]), base(captions={"enabled": False})), [])
+
+    def test_legenda_sobre_o_encerramento_avisa(self):
+        edit = self.projeto(cues=[self.CUE, {"startMs": 54000, "endMs": 55500}])
+        achados = lint.checar_legenda(edit, base(captions=self.STACKED))
+        self.assertEqual(niveis(achados, "ERRO"), [])
+        self.assertIn("encerramento", niveis(achados, "AVISO")[0])
+
+    def test_legenda_comum_sobre_o_encerramento_tambem_avisa(self):
+        edit = self.projeto(captions=[{"text": "fim", "startMs": 54000, "endMs": 55500}])
+        achados = lint.checar_legenda(edit, base(captions={"enabled": True, "style": "simple"}))
+        self.assertIn("encerramento", niveis(achados, "AVISO")[0])
+
+    def test_legenda_que_termina_antes_do_encerramento_nao_avisa(self):
+        edit = self.projeto(cues=[{"startMs": 54000, "endMs": 55000}])
+        self.assertEqual(lint.checar_legenda(edit, base(captions=self.STACKED)), [])
+
+
+class VaoDeTextoTests(unittest.TestCase):
+    def test_blocos_colados_nao_avisam(self):
+        data = base(graphics=[{"kind": "anotacao", "start": 4.5, "end": 30},
+                              {"kind": "anotacao", "start": 31, "end": 54}])
+        self.assertEqual(lint.checar_vaos_de_texto(data), [])
+
+    def test_vao_entre_blocos_depois_da_capa_e_antes_do_encerramento(self):
+        data = base(graphics=[{"kind": "anotacao", "start": 9.6, "end": 18},
+                              {"kind": "anotacao", "start": 25, "end": 40}])
+        avisos = niveis(lint.checar_vaos_de_texto(data), "AVISO")
+        self.assertEqual(len(avisos), 3)
+        self.assertIn("de 4.00s a 9.60s", avisos[0])
+        self.assertIn("de 18.00s a 25.00s", avisos[1])
+        self.assertIn("de 40.00s a 55.00s", avisos[2])
+
+    def test_legenda_ligada_nao_tem_vao_de_blocos(self):
+        data = base(captions={"enabled": True}, graphics=[{"kind": "anotacao", "start": 30, "end": 31}])
+        self.assertEqual(lint.checar_vaos_de_texto(data), [])
+
+    def test_sem_blocos_de_texto_nao_ha_o_que_medir(self):
+        self.assertEqual(lint.checar_vaos_de_texto(base(captions={"enabled": False})), [])
+
+
+class ImportsEstaticosTests(unittest.TestCase):
+    def projeto(self, *existentes):
+        self.addCleanup((tmp := tempfile.TemporaryDirectory()).cleanup)
+        edit = Path(tmp.name) / "edit"
+        (edit / "remotion/src").mkdir(parents=True)
+        (edit / "remotion/public").mkdir(parents=True)
+        (edit / "remotion/src/Main.tsx").write_text(
+            "import track from '../public/track.json';\n"
+            "import split from '../public/captions_split.json';\n")
+        for nome in existentes:
+            (edit / "remotion/public" / nome).write_text("[]")
+        return edit
+
+    def test_arquivo_importado_ausente_reprova(self):
+        erros = niveis(lint.checar_imports_estaticos(self.projeto("track.json")), "ERRO")
+        self.assertEqual(len(erros), 1)
+        self.assertIn("captions_split.json", erros[0])
+
+    def test_com_todos_os_arquivos_passa(self):
+        self.assertEqual(lint.checar_imports_estaticos(self.projeto("track.json", "captions_split.json")), [])
+
+    def test_sem_projeto_scaffoldado_nao_ha_o_que_conferir(self):
+        self.assertEqual(lint.checar_imports_estaticos(Path("/tmp/nao-existe")), [])
+
+    def test_o_template_real_ainda_importa_os_dois(self):
+        src = Path(__file__).resolve().parents[1] / "assets/shortform/src"
+        nomes = {n for f in src.rglob("*.ts*") for n in lint.IMPORT_PUBLIC.findall(f.read_text())}
+        self.assertLessEqual({"track.json", "captions_split.json"}, nomes)
 
 
 class ResolucaoDeCaminhoTests(unittest.TestCase):

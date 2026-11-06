@@ -20,6 +20,11 @@ Duas camadas:
    par visual — a regra dele de 2026-08-17, *todo efeito precisa cair num
    flash/corte*, que até agora vivia só na memória.
 
+3. **Legenda e arquivos do bundle.** `caption-cues.json` vazio (o render sai sem
+   legenda e sem erro), legenda sobre a tela de encerramento, vão longo entre
+   blocos de texto quando a legenda está desligada, e JSON que o template importa
+   de forma estática e não está em `public/` (o bundle quebra).
+
 ERRO bloqueia (exit ≠ 0). AVISO é escolha editorial: aparece e deixa passar.
 
 Uso:
@@ -31,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -42,6 +48,11 @@ MOMENT_FIELDS = ("transitions", "sfxCues")
 SFX_PAR_VISUAL_S = 0.20
 # Folga ao comparar com o fim do vídeo: um quadro a 24fps é 0.042s.
 FIM_TOL_S = 0.05
+# Sem legenda contínua, tempo sem texto na tela a partir do qual vale avisar.
+VAO_TEXTO_S = 2.0
+# Blocos de texto que substituem a legenda quando ela está desligada.
+TEXTO_FIELDS = ("graphics", "titleCards")
+IMPORT_PUBLIC = re.compile(r"""from\s+['"]\.\./public/([\w./-]+\.json)['"]""")
 
 
 class Achado:
@@ -177,6 +188,93 @@ def checar_tempos(data: dict) -> list[Achado]:
     return achados
 
 
+def _ler_cues(arquivo: Path) -> list[dict] | None:
+    """Os cues de um JSON de legenda; None se o arquivo não existe ou não abre."""
+    try:
+        bruto = json.loads(arquivo.read_text())
+    except (OSError, ValueError):
+        return None
+    cues = bruto if isinstance(bruto, list) else (bruto.get("cues") or bruto.get("captions") or [])
+    return [c for c in cues if isinstance(c, dict)]
+
+
+def _fim_do_cue_s(cue: dict) -> float | None:
+    if "endMs" in cue:
+        fim = _num(cue["endMs"])
+        return None if fim is None else fim / 1000
+    return _num(cue.get("end"))
+
+
+def checar_legenda(edit_dir: Path, data: dict) -> list[Achado]:
+    """Arquivo de legenda vazio e legenda por cima da tela de encerramento."""
+    cap = data.get("captions")
+    if not isinstance(cap, dict) or not cap.get("enabled"):
+        return []
+    achados: list[Achado] = []
+    stacked = cap.get("style") == "stacked"
+    arquivo = edit_dir / "remotion" / "public" / ("caption-cues.json" if stacked else "captions.json")
+    cues = _ler_cues(arquivo)
+    if stacked and not cues:
+        # O scaffold traz o arquivo vazio: o render conclui sem uma legenda sequer.
+        formato_1 = "FORMATO 1" in str(data.get("_preset", "")).upper()
+        achados.append(Achado(
+            "ERRO" if formato_1 else "AVISO",
+            "legenda stacked ligada, mas caption-cues.json está vazio ou ausente — "
+            "o render sai sem legenda; gere com caption_style.py"))
+    outro = data.get("outro")
+    inicio = _num(outro.get("startSec")) if isinstance(outro, dict) and outro.get("enabled") else None
+    if inicio is not None:
+        fins = [f for f in map(_fim_do_cue_s, cues or []) if f is not None and f > inicio + FIM_TOL_S]
+        if fins:
+            achados.append(Achado(
+                "AVISO",
+                f"{len(fins)} cue(s) de legenda invadem a tela de encerramento "
+                f"(entra em {inicio:.2f}s; a última legenda vai até {max(fins):.2f}s)"))
+    return achados
+
+
+def checar_vaos_de_texto(data: dict) -> list[Achado]:
+    """Legenda desligada e texto em blocos: os vãos que a legenda nunca teve."""
+    cap = data.get("captions")
+    if isinstance(cap, dict) and cap.get("enabled"):
+        return []
+    blocos = sorted(
+        (start, end)
+        for campo in TEXTO_FIELDS
+        for item in (data.get(campo) if isinstance(data.get(campo), list) else [])
+        if isinstance(item, dict)
+        for start, end in [_janela(item)]
+        if start is not None and end is not None and end > start)
+    if not blocos:
+        return []
+    capa = data.get("hookStacked") if isinstance(data.get("hookStacked"), dict) else data.get("hook")
+    fim_capa = _num(capa.get("endSec")) if isinstance(capa, dict) and capa.get("enabled") else None
+    outro = data.get("outro")
+    inicio_outro = _num(outro.get("startSec")) if isinstance(outro, dict) and outro.get("enabled") else None
+    fim = inicio_outro if inicio_outro is not None else _num(data.get("durationSec"))
+
+    achados: list[Achado] = []
+    cursor = fim_capa or 0.0
+    for start, end in blocos:
+        if start - cursor > VAO_TEXTO_S:
+            achados.append(Achado("AVISO", f"{start - cursor:.1f}s sem texto na tela, de {cursor:.2f}s a {start:.2f}s"))
+        cursor = max(cursor, end)
+    if fim is not None and fim - cursor > VAO_TEXTO_S:
+        achados.append(Achado("AVISO", f"{fim - cursor:.1f}s sem texto na tela, de {cursor:.2f}s a {fim:.2f}s"))
+    return achados
+
+
+def checar_imports_estaticos(edit_dir: Path) -> list[Achado]:
+    """JSON que o template importa direto: sem o arquivo, o webpack nem compila."""
+    remotion = edit_dir / "remotion"
+    src = remotion / "src"
+    if not src.is_dir():
+        return []
+    nomes = {nome for fonte in src.rglob("*.ts*") for nome in IMPORT_PUBLIC.findall(fonte.read_text())}
+    return [Achado("ERRO", f"public/{nome} não existe e o template o importa — o bundle da Fase 2 quebra")
+            for nome in sorted(nomes) if not (remotion / "public" / nome).is_file()]
+
+
 def checar_com_studio(edit_dir: Path, data: dict) -> list[Achado]:
     """As invariantes que o Studio já validava, agora também fora dele."""
     cut = edit_dir / "cut.mp4"
@@ -229,7 +327,9 @@ def main() -> None:
     if not isinstance(data, dict):
         sys.exit("edit-data.json precisa conter um objeto")
 
-    achados = checar_com_studio(edit_dir, data) + checar_tempos(data)
+    achados = (checar_com_studio(edit_dir, data) + checar_tempos(data)
+               + checar_imports_estaticos(edit_dir) + checar_legenda(edit_dir, data)
+               + checar_vaos_de_texto(data))
     erros = [a for a in achados if a.nivel == "ERRO"]
     avisos = [a for a in achados if a.nivel == "AVISO"]
 

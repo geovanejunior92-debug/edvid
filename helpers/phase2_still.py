@@ -106,6 +106,17 @@ def orcamento(lista: list[tuple[float, str]], prioridades: list[int], maximo: in
     return [lista[i] for i in mantidos]
 
 
+def causa_do_erro(saida: str) -> str:
+    """A linha que explica a falha, não o fim do stack ("at async cli")."""
+    linhas = [l.strip() for l in saida.splitlines() if l.strip()]
+    for marca in ("doesn't exist", "Can't resolve", "Module not found", "Cannot find", "Error:"):
+        for linha in linhas:
+            if marca in linha:
+                return linha
+    fora_do_stack = [l for l in linhas if not l.startswith("at ")]
+    return (fora_do_stack or linhas or [""])[-1]
+
+
 def still(remotion: Path, frame: int, saida: Path) -> tuple[bool, str]:
     run = subprocess.run(
         ["npx", "--no-install", "remotion", "still", COMPOSITION, str(saida),
@@ -113,8 +124,7 @@ def still(remotion: Path, frame: int, saida: Path) -> tuple[bool, str]:
         cwd=remotion, capture_output=True, text=True,
     )
     if run.returncode != 0 or not saida.is_file():
-        erro = (run.stderr or run.stdout or "").strip().splitlines()
-        return False, (erro[-1] if erro else f"código {run.returncode}")
+        return False, causa_do_erro(run.stderr or run.stdout or "") or f"código {run.returncode}"
     return True, ""
 
 
