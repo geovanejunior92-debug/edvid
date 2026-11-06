@@ -29,6 +29,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import motion_metric  # noqa: E402
+
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True)
@@ -43,16 +46,8 @@ def dur_of(p: Path) -> float:
 
 
 def motion(video: Path, t0: float, dur: float, crop: str | None = None) -> float:
-    vf = (f"{crop}," if crop else "") + (
-        "scale=160:-2,tblend=all_mode=difference,signalstats,"
-        "metadata=print:key=lavfi.signalstats.YAVG:file=-"
-    )
-    # `file=-` é obrigatório; sem ele o metadata não escreve nada e a métrica
-    # devolve 0.00 para tudo (já aconteceu — verificador que reprova tudo).
-    r = run(["ffmpeg", "-v", "error", "-ss", str(t0), "-t", str(dur), "-i", str(video),
-             "-vf", vf, "-f", "null", "-"])
-    vals = [float(l.split("=")[-1]) for l in r.stdout.splitlines() if "YAVG" in l][1:]
-    return sum(vals) / len(vals) if vals else 0.0
+    """Movimento na região que se move, independente de fps (ver `motion_metric.py`)."""
+    return motion_metric.medir(video, t0, dur, crop)["nota"]
 
 
 def frame_stat(video: Path, t: float) -> tuple[float, float, float]:

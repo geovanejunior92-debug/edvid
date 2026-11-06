@@ -10,8 +10,9 @@ falhou. Complementa o `review_final.py` (que assiste) — este não assiste, med
                preto; se produziu, é insert que não carregou ou fade sobrando.
   congelado    quadros repetidos ≥ 0,5 s (freezedetect) — insert de imagem
                parada é legítimo, então só AVISA; falha se for ≥ 2 s.
-  níveis       Y abaixo de 16 ou acima de 235 (tv range) em % dos quadros:
-               "ilegal" para broadcast, e no Instagram vira esmagado/estourado.
+  níveis       % dos quadros em que mais de 0,1% dos pixels sai da faixa (P0,1 abaixo
+               de 8 ou P99,9 acima de 245): no Instagram vira esmagado/estourado.
+               Pixel isolado de borda de legenda não conta; área clipada conta.
   legenda      cada cue do captions.json contra a fala do áudio final
                (silencedetect): cue sem fala embaixo, cue adiantada > 300 ms,
                cue que fica > 700 ms depois de a fala acabar.
@@ -54,6 +55,8 @@ UNSAFE = {
 }
 DRAW_THRESHOLD = 28      # diferença média por pixel que conta como "desenhou"
 UNSAFE_MAX_PCT = 15.0    # % dos pixels desenhados que podem cair em zona coberta
+LEVEL_MIN, LEVEL_MAX = 8, 245
+LEVEL_PERCENTIL = 0.001  # P0,1 e P99,9: abaixo de 0,1% da área é borda, não defeito
 
 
 def sh(cmd: list[str]) -> str:
@@ -88,17 +91,43 @@ def detect_ranges(path: Path, filt: str, start_key: str, end_key: str | None, du
 
 
 def illegal_levels(path: Path, every: float = 0.5) -> dict:
-    err = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-nostats", "-i", str(path),
-         "-vf", f"fps=1/{every},signalstats,metadata=print:key=lavfi.signalstats.YMIN:file=-,"
-                f"metadata=print:key=lavfi.signalstats.YMAX:file=-",
-         "-an", "-f", "null", "-"], capture_output=True, text=True).stdout
-    ymin = [int(v) for v in re.findall(r"YMIN=(\d+)", err)]
-    ymax = [int(v) for v in re.findall(r"YMAX=(\d+)", err)]
-    n = max(1, len(ymin))
-    return {"frames": len(ymin),
-            "crushed_pct": round(100 * sum(v < 8 for v in ymin) / n, 1),
-            "clipped_pct": round(100 * sum(v > 245 for v in ymax) / n, 1)}
+    """Quadros cujos percentis de luma saem da faixa, em vez de YMIN/YMAX absolutos.
+
+    Um único pixel fora reprovava o quadro: ~24 pixels em 8,3 milhões, todos no
+    antialias da legenda, disparavam o gate em toda entrega. Aqui o quadro só conta
+    quando a fração fora da faixa é visível (`LEVEL_PERCENTIL`).
+    """
+    info = json.loads(subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+         "-of", "json", str(path)], capture_output=True, text=True).stdout)["streams"][0]
+    w, h = int(info["width"]), int(info["height"])
+    # extractplanes entrega o Y como está: sem conversão de faixa no caminho.
+    baixos, altos = [], []
+    corte = LEVEL_PERCENTIL * w * h
+    with subprocess.Popen(
+            ["ffmpeg", "-v", "error", "-i", str(path),
+             "-vf", f"fps=1/{every},extractplanes=y,format=gray", "-an", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as proc:
+        while True:
+            raw = proc.stdout.read(w * h)
+            if len(raw) < w * h:
+                break
+            acumulado = np.cumsum(np.bincount(np.frombuffer(raw, np.uint8), minlength=256))
+            baixos.append(int(np.searchsorted(acumulado, corte)))
+            altos.append(int(np.searchsorted(acumulado, w * h - corte)))
+    n = max(1, len(baixos))
+    return {"frames": len(baixos),
+            "crushed_pct": round(100 * sum(v < LEVEL_MIN for v in baixos) / n, 1),
+            "clipped_pct": round(100 * sum(v > LEVEL_MAX for v in altos) / n, 1)}
+
+
+def level_fails(lv: dict) -> list[str]:
+    fails = []
+    if lv["crushed_pct"] > 20:
+        fails.append(f"níveis: P0,1 de Y<{LEVEL_MIN} em {lv['crushed_pct']:.0f}% dos quadros (preto esmagado)")
+    if lv["clipped_pct"] > 5:
+        fails.append(f"níveis: P99,9 de Y>{LEVEL_MAX} em {lv['clipped_pct']:.0f}% dos quadros (branco estourado)")
+    return fails
 
 
 def speech_regions(path: Path, noise: str = "-33dB", min_sil: float = 0.25) -> list[tuple[float, float]]:
@@ -250,10 +279,7 @@ def main() -> int:
 
     lv = illegal_levels(final)
     report["levels"] = lv
-    if lv["crushed_pct"] > 20:
-        fails.append(f"níveis: Y<8 em {lv['crushed_pct']:.0f}% dos quadros (preto esmagado)")
-    if lv["clipped_pct"] > 5:
-        fails.append(f"níveis: Y>245 em {lv['clipped_pct']:.0f}% dos quadros (branco estourado)")
+    fails.extend(level_fails(lv))
 
     if captions.exists():
         regions = speech_regions(final)

@@ -76,6 +76,11 @@ ASSET_LIST_FIELDS = {
 LIST_FIELDS = tuple(ASSET_LIST_FIELDS) + ("graphics", "titleCards")
 
 
+def render_concurrency(width: int, height: int, fps: float) -> int | None:
+    """4K acima de 30 fps com a concorrência padrão derrubou o compositor (ECONNRESET)."""
+    return 4 if min(width, height) >= 2160 and fps > 30 else None
+
+
 def render_scale(layout_w: int, layout_h: int, cut_w: int, cut_h: int) -> int | None:
     """Fator inteiro entre o layout do edit-data e o cut.mp4 (1 = mesmo tamanho).
 
@@ -424,7 +429,8 @@ class StudioPhase2:
         return {"ok": True, "action": "approve", **approval}
 
     # ---- render ----
-    def build_render_command(self, output: Path, scale: int = 1) -> list[str]:
+    def build_render_command(self, output: Path, scale: int = 1,
+                             concurrency: int | None = None) -> list[str]:
         # Qualidade primeiro (regra de 2026-09-22): quadros JPEG a 95 em vez do
         # padrão 80 do Remotion e CRF 16. Com o corte em 4K, --scale 2 desenha o
         # layout de 1080×1920 em 2160×3840 e o vídeo entra na resolução inteira.
@@ -432,7 +438,16 @@ class StudioPhase2:
                "--log", "error", "--jpeg-quality", "95", "--crf", "16"]
         if scale > 1:
             cmd += ["--scale", str(scale)]
+        if concurrency:
+            cmd += ["--concurrency", str(concurrency)]
         return cmd
+
+    def _render_concurrency(self) -> int | None:
+        try:
+            info = self._cut_info()
+            return render_concurrency(info["width"], info["height"], info["fps"])
+        except Exception:  # noqa: BLE001 — sem medida vale o padrão do Remotion
+            return None
 
     def _render_scale(self) -> int:
         try:
@@ -467,7 +482,7 @@ class StudioPhase2:
         staged = self.edit / f".final-phase2-r{revision}-{data_hash[:12]}.mp4"
         staged.unlink(missing_ok=True)
         try:
-            run = self.runner(self.build_render_command(staged, self._render_scale()),
+            run = self.runner(self.build_render_command(staged, self._render_scale(), self._render_concurrency()),
                               cwd=str(self.remotion),
                               capture_output=True, text=True)
             if getattr(run, "returncode", 1) != 0:

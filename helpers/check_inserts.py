@@ -7,7 +7,9 @@ Dois defeitos reais, os dois silenciosos, os dois pegos só pelo usuário
    se estiver dentro de uma `<Sequence>`. Sem ela, uma janela que começa aos 55s
    pede o segundo 55 de um clipe de 5s, passa do fim e o quadro CONGELA no último
    frame. Nada falha, nada avisa, e só a primeira janela (perto do zero) parece
-   certa. Aqui isso vira número: diferença média entre frames do arquivo.
+   certa. Aqui isso vira número: diferença entre frames na região que se move
+   (`motion_metric.py`), para animação de fundo chapado não reprovar e 60 fps valer
+   o mesmo que 30.
 
 2. **Insert ampliado.** Um clipe 16:9 jogado com `objectFit: cover` numa faixa de
    1080x850 é cortado e ampliado ~2x — "proporções maiores do que o normal,
@@ -28,6 +30,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import motion_metric  # noqa: E402
+
 
 def probe(path: Path) -> dict:
     out = subprocess.run(
@@ -43,23 +48,8 @@ def probe(path: Path) -> dict:
 
 
 def motion_score(path: Path, dur: float) -> float:
-    """Diferença média entre frames consecutivos (0 = imagem parada)."""
-    n = max(1, min(int(dur * 30), 240))
-    # `file=-` é obrigatório: sem ele o metadata=print não escreve em lugar
-    # nenhum nesta build, o parse acha zero linha e a métrica devolve 0.00 para
-    # TODO clipe — um verificador que reprova tudo é tão inútil quanto um que
-    # aprova tudo (pego na primeira execução real, 2026-08-16).
-    out = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(path), "-frames:v", str(n),
-         "-vf", "scale=160:-2,tblend=all_mode=difference,signalstats,"
-                "metadata=print:key=lavfi.signalstats.YAVG:file=-",
-         "-f", "null", "-"],
-        capture_output=True, text=True,
-    )
-    vals = [float(l.split("=")[-1]) for l in out.stdout.splitlines() if "YAVG" in l]
-    # o primeiro frame do tblend não tem par: descartar
-    vals = vals[1:] or vals
-    return sum(vals) / len(vals) if vals else 0.0
+    """Movimento na região que se move, independente de fps (0 = imagem parada)."""
+    return motion_metric.medir(path, dur=dur)["nota"]
 
 
 def main() -> None:
@@ -67,7 +57,7 @@ def main() -> None:
     ap.add_argument("edit_data", type=Path)
     ap.add_argument("--band-h", type=float, default=750.0, help="altura da faixa da tela dividida")
     ap.add_argument("--min-motion", type=float, default=0.6,
-                    help="diferença média mínima entre frames (abaixo disso é imagem parada)")
+                    help="movimento mínimo na região ativa (abaixo disso é imagem parada)")
     ap.add_argument("--min-keep", type=float, default=0.55,
                     help="fração mínima da área do clipe que sobrevive ao enquadramento")
     args = ap.parse_args()

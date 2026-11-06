@@ -229,7 +229,9 @@ the track reference you load after the gate. One of them is not optional:
 - **`check_inserts.py <edit-data.json> [--min-motion 0.3]`** — **gate obrigatório
   antes de todo render da Fase 2.** Prova, por número, que cada insert de vídeo
   TOCA (não congelou por estar fora de uma `<Sequence>` ou por ser mais curto que
-  a janela) e que ele cabe na faixa sem ser ampliado. Os dois defeitos são
+  a janela) e que ele cabe na faixa sem ser ampliado. O movimento é medido na região
+  que se move e vale igual em qualquer fps (`motion_metric.py`, também usado pelo
+  `review_final.py`): animação com fundo estático passa, quadro parado reprova. Os dois defeitos são
   silenciosos e atravessaram um render inteiro até o usuário apontar
   (2026-08-16); ele pediu a verificação como tarefa fixa. Exit ≠ 0 = não renderize.
 - **`check_edit_data.py <edit-dir>`** — **o `verify_cut.py` da Fase 2: mede o

@@ -191,7 +191,7 @@ question is settled.
 4. **Verify with stills, batched:** `npx remotion still Reels --frame=<n> f.png`
    for the hook still (user approval), then ONE contact sheet for spot checks:
    `contact_sheet.py <render> --times t1 t2 t3 -o sheet.png` — one image, not N.
-5. **Render:** `npx remotion render Reels out/render.mp4 --scale <k> --jpeg-quality 95 --crf 16`, onde `k` = largura do `cut.mp4` ÷ `width` do edit-data (4K = 2; 1080 = omita `--scale`), then loudnorm →
+5. **Render:** `npx remotion render Reels out/render.mp4 --scale <k> --jpeg-quality 95 --crf 16` (corte 4K acima de 30 fps: some `--concurrency 4`, a padrão derruba o compositor), onde `k` = largura do `cut.mp4` ÷ `width` do edit-data (4K = 2; 1080 = omita `--scale`), then loudnorm →
    `edit/final.mp4` (see Phase 3). O render tem de sair `yuv420p | bt709 | tv`
    (o `remotion.config.ts` do template cuida disso; ver Phase 3 se não sair).
 
