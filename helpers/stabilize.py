@@ -29,7 +29,8 @@ Usage:
 
 Saídas em <edit>/stab/:
     <stem>.mp4    fonte estabilizada
-    <stem>.json   trajetória, zoom aplicado, tremida antes/depois (px RMS)
+    <stem>.json   zoom aplicado, tremida antes e depois (px RMS): `shake_px_after`
+                  é medido no arquivo de saída; `shake_px_after_predicted` é a conta
 """
 from __future__ import annotations
 
@@ -131,6 +132,17 @@ def analyze(path: Path, info: dict) -> np.ndarray:
         motions.append((dx, dy, da))
         prev_gray = gray
     return np.array(motions, dtype=np.float64)
+
+
+def shake_rms(motions: np.ndarray, scale: float) -> float:
+    """Tremida em px/quadro RMS: só translação, na escala de entrega."""
+    return float(np.sqrt(np.mean(np.sum(motions[:, :2] ** 2, axis=1))) * scale)
+
+
+def measure_output(path: Path) -> float:
+    """A tremida MEDIDA no arquivo pronto, pela mesma análise da fonte."""
+    info = probe(path)
+    return shake_rms(analyze(path, info), info["w"] / PROXY_W)
 
 
 def smooth_path(traj: np.ndarray, sigma_frames: float) -> np.ndarray:
@@ -244,16 +256,17 @@ def main() -> int:
     else:
         clamp_note = ""
 
-    shake_before = float(np.sqrt(np.mean(np.sum(motions[:, :2] ** 2, axis=1))) * proxy_scale)
+    shake_before = shake_rms(motions, proxy_scale)
     residual = motions + np.diff(np.vstack([corr[:1], corr]), axis=0)
-    shake_after = float(np.sqrt(np.mean(np.sum(residual[:, :2] ** 2, axis=1))) * proxy_scale)
-    print(f"  tremida: {shake_before:.2f} px/quadro RMS → {shake_after:.2f} "
+    shake_predicted = shake_rms(residual, proxy_scale)
+    print(f"  tremida: {shake_before:.2f} px/quadro RMS → {shake_predicted:.2f} previsto "
           f"(modo {args.mode}, zoom {zoom:.3f}{clamp_note})")
     if shake_before < 0.35:
         print("  fonte já estável (< 0,35 px/quadro): estabilizar não muda nada")
 
     report = {"source": str(source), "cache_key": key, "params": params,
-              "shake_px_before": round(shake_before, 3), "shake_px_after": round(shake_after, 3),
+              "shake_px_before": round(shake_before, 3),
+              "shake_px_after_predicted": round(shake_predicted, 3),
               "zoom": round(zoom, 4), "zoom_needed": round(zoom_needed, 4),
               "delivery": [ow, oh], "frames": int(len(motions))}
     if args.report:
@@ -261,6 +274,11 @@ def main() -> int:
         return 0
 
     apply(source, out_mp4, info, corr, zoom, proxy_scale)
+    # O previsto é a conta da própria correção: erro de sinal ou de origem não
+    # aparece nele. O número que vale é o medido no arquivo de saída.
+    shake_after = measure_output(out_mp4)
+    report["shake_px_after"] = round(shake_after, 3)
+    print(f"  tremida medida na saída: {shake_after:.2f} px/quadro RMS")
     out_json.write_text(json.dumps(report, indent=2) + "\n")
     print(f"  → {out_mp4} ({out_mp4.stat().st_size / 1e6:.0f} MB)")
     return 0
