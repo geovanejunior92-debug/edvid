@@ -174,7 +174,7 @@ Trilha de IMAGEM (post, carrossel, capa, thumbnail — 2026-09-10). Leia **`refe
 - **`post_render.py <edit>/post-data.json [--formatos 4x5 1x1 9x16 16x9]`** — o `render.py` da imagem: o post inteiro descrito em JSON vira JPG em 1080x1350 / 1080x1080 / 1080x1920 / 1280x720. PIL, nao Remotion — para quadro estatico o Remotion so acrescenta Node e segundos por imagem. Escreve tambem `<imagem>.boxes.json` com onde cada texto caiu, que e o que o gate le.
 - **`qc_image.py <edit>/post [--plataforma instagram|tiktok]`** — **GATE da imagem, exit != 0 = nao publique**: contraste WCAG do texto contra o fundo REAL sob a caixa, zona coberta pela interface do app (faixa de baixo, topo, coluna de icones), **texto em cima do rosto** (a frase para no cabelo — regra dele) e fonte pequena demais. Escreve `qc_image.json`.
 - **`canva_brief.py <edit>/post-data.json --briefing | --receber <url>`** — ponte do caminho B. Monta o pedido para o `generate-design` e traz o arquivo exportado de volta para a pasta. Nao chama o Canva: ferramenta MCP quem chama e o agente. **Verificar a conexao com uma chamada de leitura antes** — o conector pode estar declarado e nao conectado.
-- **`cover.py <final.mp4|cut.mp4> --text "…" [--accent-word X] [--window 0 15] [--at t]`** — capa do Reel: escolhe o melhor quadro por olho aberto (FAN), nitidez, tamanho e centro do rosto, e compõe a frase do gancho em Poppins ExtraBold com contorno (palavra de destaque em Playfair itálico dourada). Sai `cover.jpg` (9:16) e `cover_4x5.jpg` (feed). Imprime os 5 melhores instantes para você discordar.
+- **`cover.py <final.mp4|cut.mp4> --text "…" [--accent-word X] [--window 0 15] [--at t]`** — capa do Reel: escolhe o melhor quadro por pausa da fala (lê `transcripts/`; sem transcrição, avisa e segue sem esse critério), boca fechada e olho aberto (FAN), nitidez, tamanho e centro do rosto, e compõe a frase do gancho em Poppins ExtraBold com contorno (palavra de destaque em Playfair itálico dourada). Sai `cover.jpg` (9:16) e `cover_4x5.jpg` (feed). Imprime os 5 melhores instantes para você discordar.
 - **`clipper.py transcripts/<fonte>.json --source <fonte> [--min 40 --max 75 --top 3]`** — de uma gravação longa, os N trechos que dão Reel: janelas de frase a frase pontuadas por gancho, densidade, número/pergunta/contraste, CTA e fecho em pontuação. Esboços de EDL em `<edit>/clips/clip_N/` + `clips.md`. Lista e pontua; a escolha é editorial.
 - **`beats.py trilha.mp3 [--snap edit-data.json [--apply]]`** — batidas da trilha (fluxo espectral → tempo → grade) e ajuste do que é MOVÍVEL (flashes `transitions[].at`, `sfxCues[].at`, `graphics[].start`) para a batida mais próxima em ±120 ms. O corte não se move (é da fala). Diz também quantos cortes cairiam em batida se a trilha fosse deslocada.
 - **`broll_suggest.py <edit>/edl.json [--apply-ledger]`** — para cada frase do corte, até 5 clipes do acervo local (`~/Videos/stock-medico`, pastas por tema) por palavra em comum; frases sem cobertura viram a lista de compras, já cruzada com o `PEDIDOS.md`; itens em aberto que já têm material no acervo são apontados (e marcados `[x]` com `--apply-ledger` — quem marca é o agente). Sai `<edit>/broll_suggest.md`. Roda no passo 10b antes de pedir qualquer coisa.
@@ -536,8 +536,6 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    bloqueio.
 6. **Execute.** Produce `edl.json` (schema below; editor sub-agent brief for multi-take). Set cut edges from `speech_regions.py`, not raw Whisper times. Render: `render.py edl.json -o cut.mp4 --no-subtitles --audio-clean` (+`--voice-master` if wanted; longform: `--keep-resolution`). **The J-cut runs by default** — see below; you do not ask for it and you do not configure it per project.
 7. **Self-eval (numeric first).** `verify_cut.py edl.json cut.mp4` (longform: `--min-silence 1.2`). Clean → done. Flags → `timeline_view` ONLY the flagged junctions, fix, re-render. Cap 3 loops, then surface remaining flags to the user.
-8. **Generate the LUT thumbnails** (only if not already present for this
-   project): `lut_thumbs.py cut.mp4 --out-dir <edit>/.preview_cache/luts`. A
 7b. **Aceleração (2026-11-06).** Com o corte aprovado no passo 7:
    `speed_post.py <edit>`. Fora o pedido dele para um vídeo específico (`--speed X`),
    é **sempre 1,07×**, sem perguntar. Roda uma vez só, sobre o corte montado, depois
@@ -547,6 +545,8 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    novo não acelera duas vezes. Refez o corte com `render.py`? Rode de novo: o corte
    novo nasce em 1× e a velocidade pedida antes é mantida. Nunca use o `speed` por
    range do EDL para isso, porque ele desliga o J-cut.
+8. **Generate the LUT thumbnails** (only if not already present for this
+   project): `lut_thumbs.py cut.mp4 --out-dir <edit>/.preview_cache/luts`. A
    project that skips this shows the LUT picker with blank/flat swatches
    instead of real thumbnails — easy to forget since nothing errors, do it
    every time as part of opening the gate, not only when someone notices it's
@@ -1025,11 +1025,11 @@ returned. `chapter` fields feed `chapters.py` (longform).
 trim up to 2f); `false` butt-joins instead. After a render, `render.py` adds a
 `jcut_timeline` array — the real per-take video/audio offsets in the output. That
 block, not `Σ(end−start)`, is the timeline Phase 2 and the preview must use.
-
-`grade_pre` (por range) e `skin_protect` (no EDL, 2026-09-01): a cor por
 `speed_post` (passo 7b): a velocidade aplicada sobre o corte montado. Com ele,
 `jcut_timeline` e `total_duration_s` já estão no tempo do vídeo acelerado, e os
 `ranges` continuam em tempo da fonte.
+
+`grade_pre` (por range) e `skin_protect` (no EDL, 2026-09-01): a cor por
 take e a proteção de pele. `grade_pre` é o filtro de casamento escrito pelo
 `match_takes.py`, aplicado ANTES do `grade`. `"skin_protect": {"hue": 18,
 "strength": 0.6}` é um qualificador HSV centrado no tom de pele MEDIDO

@@ -1,9 +1,12 @@
 """Capa do Reel: o melhor quadro do vídeo com a frase do gancho por cima.
 
-O quadro é escolhido, não chutado: amostras a cada 0,25 s dentro da janela,
-e cada uma recebe nota por olho aberto (EAR pelo FAN), nitidez (variância do
-Laplaciano no rosto), tamanho e centralidade do rosto. O melhor vira a capa
-em 1080×1920 e uma versão 4:5 (1080×1350, mantendo o topo) para o feed.
+O quadro é escolhido, não chutado: amostras a cada 0,25 s dentro da janela, mais
+o meio de cada pausa da fala, e cada uma recebe nota por olho aberto (EAR pelo
+FAN), nitidez (variância do Laplaciano no rosto), tamanho e centralidade do rosto.
+Quadro em pausa da fala ganha pontos, porque quem está no meio de uma palavra quase
+sempre sai de boca aberta; quando os pontos do rosto são medidos, boca aberta perde
+pontos. Sem transcrição, a escolha segue sem o critério da fala e avisa. O melhor
+vira a capa em 1080×1920 e uma versão 4:5 (1080×1350, mantendo o topo) para o feed.
 
 O texto segue a capa do vídeo: Poppins ExtraBold, branco com contorno preto,
 quebrado em duas linhas equilibradas, e uma palavra de destaque opcional em
@@ -13,6 +16,7 @@ Usage:
     uv run python helpers/cover.py <edit>/final.mp4 --text "Sua tireoide está sendo atacada" --accent-word tireoide
     uv run python helpers/cover.py cut.mp4 --text "…" --window 0 15 --out <edit>/cover.jpg
     uv run python helpers/cover.py cut.mp4 --text "…" --at 7.4      # quadro escolhido por você
+    uv run python helpers/cover.py cut.mp4 --text "…" --transcript transcripts/cut.json
 
 Saídas: <edit>/cover.jpg e <edit>/cover_4x5.jpg (ou --out). Imprime o
 instante escolhido e as notas dos 5 melhores, para você discordar se quiser.
@@ -34,6 +38,10 @@ from faces import detect_face  # noqa: E402
 
 FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 GOLD = (212, 178, 95)
+PAUSA_MIN_S = 0.18      # lacuna entre palavras que já deixa a boca fechar
+BONUS_PAUSA = 1.5
+PENA_BOCA = 1.5
+BOCA_FECHADA, BOCA_ABERTA = 0.08, 0.35   # abertura labial: pena cresce entre os dois
 
 
 def probe(path: Path) -> dict:
@@ -56,6 +64,44 @@ def frame_at(path: Path, t: float, width: int | None) -> np.ndarray | None:
     return arr
 
 
+def pausas_da_fala(transcript: Path) -> list[tuple[float, float]]:
+    """Lacunas entre palavras, mais o antes da primeira e o depois da última."""
+    doc = json.loads(Path(transcript).read_text())
+    palavras = sorted((float(w["start"]), float(w.get("end", w["start"])))
+                      for w in doc.get("words") or []
+                      if w.get("type") in (None, "word") and "start" in w)
+    if not palavras:
+        return []
+    pausas = [(0.0, palavras[0][0])] if palavras[0][0] >= PAUSA_MIN_S else []
+    for (_, fim), (inicio, _) in zip(palavras, palavras[1:]):
+        if inicio - fim >= PAUSA_MIN_S:
+            pausas.append((fim, inicio))
+    pausas.append((palavras[-1][1], float("inf")))
+    return pausas
+
+
+def achar_transcricao(video: Path) -> Path | None:
+    pasta = video.parent / "transcripts"
+    for nome in (f"{video.stem}.json", "cut.json"):
+        if (pasta / nome).is_file():
+            return pasta / nome
+    return None
+
+
+def em_pausa(t: float, pausas: list[tuple[float, float]]) -> bool:
+    return any(a <= t <= b for a, b in pausas)
+
+
+def instantes(t0: float, t1: float, step: float, pausas: list[tuple[float, float]] | None) -> list[float]:
+    """A grade fixa perde pausa curta: o meio de cada pausa entra como candidato."""
+    ts = [round(float(t), 3) for t in np.arange(t0, t1, step)]
+    for a, b in pausas or []:
+        meio = (a + min(b, t1)) / 2
+        if t0 <= meio < t1:
+            ts.append(round(meio, 3))
+    return sorted(set(ts))
+
+
 class Eyes:
     def __init__(self):
         self.fan = None
@@ -66,17 +112,31 @@ class Eyes:
         except Exception:
             pass
 
-    def ear(self, img: np.ndarray) -> float | None:
+    def medir(self, img: np.ndarray) -> tuple[float | None, float | None]:
+        """(EAR dos olhos, abertura da boca), cada um None quando não dá para medir."""
         if self.fan is None:
-            return None
+            return None, None
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         try:
             lms = self.fan.get_landmarks_from_image(rgb.copy())
         except Exception:
-            return None
+            return None, None
         if not lms:
-            return None
+            return None, None
         l = lms[0]
+        return self._ear(l), self._boca(l)
+
+    @staticmethod
+    def _boca(l: np.ndarray) -> float | None:
+        # lábio interno do modelo de 68 pontos: cantos 60/64, pares 61-67, 62-66, 63-65
+        largura = np.linalg.norm(l[60] - l[64])
+        if not largura:
+            return None
+        return float((np.linalg.norm(l[61] - l[67]) + np.linalg.norm(l[62] - l[66])
+                      + np.linalg.norm(l[63] - l[65])) / (3 * largura))
+
+    @staticmethod
+    def _ear(l: np.ndarray) -> float | None:
         def e(p):
             a = np.linalg.norm(p[1] - p[5]); b = np.linalg.norm(p[2] - p[4]); c = np.linalg.norm(p[0] - p[3])
             return (a + b) / (2 * c) if c else 0
@@ -84,10 +144,11 @@ class Eyes:
         return v if 0.03 <= v <= 0.6 else None
 
 
-def score_frames(video: Path, t0: float, t1: float, step: float = 0.25) -> list[dict]:
+def score_frames(video: Path, t0: float, t1: float, step: float = 0.25,
+                 pausas: list[tuple[float, float]] | None = None) -> list[dict]:
     eyes = Eyes()
     rows = []
-    for t in np.arange(t0, t1, step):
+    for t in instantes(t0, t1, step, pausas):
         img = frame_at(video, float(t), 640)
         if img is None:
             continue
@@ -101,8 +162,9 @@ def score_frames(video: Path, t0: float, t1: float, step: float = 0.25) -> list[
         center = 1 - min(1, abs((x + w / 2) / W - 0.5) * 2)
         size = w / W
         size_ok = 1.0 if 0.15 <= size <= 0.6 else 0.4
-        rows.append({"t": round(float(t), 2), "ear": eyes.ear(img), "sharp": sharp, "center": center,
-                     "size": size, "size_ok": size_ok})
+        ear, boca = eyes.medir(img)
+        rows.append({"t": round(float(t), 2), "ear": ear, "boca": boca, "sharp": sharp, "center": center,
+                     "size": size, "size_ok": size_ok, "pausa": bool(pausas) and em_pausa(float(t), pausas)})
     if not rows:
         return []
     ears = [r["ear"] for r in rows if r["ear"] is not None]
@@ -112,7 +174,12 @@ def score_frames(video: Path, t0: float, t1: float, step: float = 0.25) -> list[
         eye = 1.0 if r["ear"] is None else min(1.0, r["ear"] / (ear_ref or 1) / 1.05)
         if r["ear"] is not None and ear_ref and r["ear"] < 0.75 * ear_ref:
             eye = 0.0  # olho fechando: descarta
-        r["score"] = round(2.2 * eye + 1.0 * (r["sharp"] / sharp_max) + 0.5 * r["center"] + 0.6 * r["size_ok"], 3)
+        nota = 2.2 * eye + 1.0 * (r["sharp"] / sharp_max) + 0.5 * r["center"] + 0.6 * r["size_ok"]
+        if r["pausa"]:
+            nota += BONUS_PAUSA
+        if r["boca"] is not None:
+            nota -= PENA_BOCA * min(1.0, max(0.0, r["boca"] - BOCA_FECHADA) / (BOCA_ABERTA - BOCA_FECHADA))
+        r["score"] = round(nota, 3)
     return sorted(rows, key=lambda r: -r["score"])
 
 
@@ -197,6 +264,8 @@ def main() -> int:
     ap.add_argument("--window", nargs=2, type=float, default=None, metavar=("T0", "T1"))
     ap.add_argument("--at", type=float, default=None, help="usa este instante em vez de escolher")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--transcript", type=Path, default=None,
+                    help="transcrição do vídeo (padrão: transcripts/ ao lado dele)")
     args = ap.parse_args()
 
     video = args.video.resolve()
@@ -208,9 +277,17 @@ def main() -> int:
         best_t, ranking = args.at, []
     else:
         t0, t1 = args.window or (0.0, min(15.0, info["duration"]))
-        ranking = score_frames(video, t0, t1)
+        fonte = args.transcript or achar_transcricao(video)
+        pausas = None
+        if fonte and Path(fonte).is_file():
+            pausas = pausas_da_fala(fonte) or None
+        if pausas is None:
+            print("AVISO: sem transcrição com palavras: a capa foi escolhida sem o critério das pausas da fala")
+        ranking = score_frames(video, t0, t1, pausas=pausas)
         if not ranking:
             raise SystemExit("nenhum quadro com rosto na janela")
+        if all(r["ear"] is None for r in ranking):
+            print("AVISO: pontos do rosto não medidos: olho e boca ficaram fora da nota")
         best_t = ranking[0]["t"]
     frame = frame_at(video, best_t, None)
     if frame is None:
@@ -219,7 +296,9 @@ def main() -> int:
     print(f"capa: quadro em {best_t:.2f}s → {out.name} e {out45.name}")
     for r in ranking[:5]:
         ear = "olho ?" if r["ear"] is None else f"EAR {r['ear']:.3f}"
-        print(f"  {r['t']:6.2f}s  nota {r['score']:.2f}  {ear}  nitidez {r['sharp']:.0f}  centro {r['center']:.2f}")
+        boca = "boca ?" if r["boca"] is None else f"boca {r['boca']:.2f}"
+        pausa = "pausa" if r["pausa"] else "fala "
+        print(f"  {r['t']:6.2f}s  nota {r['score']:.2f}  {pausa}  {ear}  {boca}  nitidez {r['sharp']:.0f}  centro {r['center']:.2f}")
     return 0
 
 

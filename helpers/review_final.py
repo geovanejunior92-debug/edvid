@@ -109,13 +109,13 @@ def fontes_de_audio(d: dict, cues: list[dict] | None = None) -> list[str]:
     Efeito que ninguém consegue listar não é revisável: o clique da legenda não
     aparece em `sfxCues`, e já caiu numa palavra sem sentido sem ninguém ver.
     """
-        if t.get("volume") == 0:
-            continue  # transição reservada ao encerramento: quem soa é o swell
     linhas: list[str] = []
     trilha = d.get("soundtrack") or {}
     if trilha.get("enabled"):
         linhas.append(f"trilha: {trilha.get('file')} (volume {trilha.get('volume')})")
     for t in d.get("transitions") or []:
+        if t.get("volume") == 0:
+            continue  # transição reservada ao encerramento: quem soa é o swell
         padrao = "whoosh.mp3" if t.get("variant") == "saida" else "cut-click.mp3"
         linhas.append(f"transição {float(t.get('at', 0)):7.2f}s: {t.get('sfx') or padrao}")
     for c in d.get("sfxCues") or []:

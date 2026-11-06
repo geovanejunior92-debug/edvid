@@ -3497,19 +3497,18 @@ const SEAM = {
     // Em cada janela vale a regra do topo do cabelo, medido pela máscara dela. A
     // fração do detector de rosto não leva posição nenhuma de uma janela à outra.
     $('seamAll').disabled = true;
-    const alvo = frac;
     const janelas = this.windows();
     (async () => {
+      let feitas = 0;
       for (const outra of janelas) {
-        const meio = (+outra.it.start || 0) + 0.5;
         try {
           const r = await fetch(`api/seam-rule?ref=${outra.ref}`);
           const d = await r.json();
-          if (r.ok && d.top != null) {
-            this.heads[outra.ref] = { top: +d.top, bottom: +d.bottom };
-            this.draft[outra.ref] = Math.round(+d.top + alvo * (+d.bottom - +d.top));
+          if (r.ok && d.focusY != null) {
+            this.draft[outra.ref] = +d.focusY;
+            feitas += 1;
           }
-        } catch (_) { /* uma janela sem rosto detectado fica como estava */ }
+        } catch (_) { /* janela sem máscara ou sem rosto fica como estava */ }
       }
       $('seamAll').disabled = false;
       this.paint();

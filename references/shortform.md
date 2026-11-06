@@ -161,9 +161,9 @@ question is settled.
          t += n; cum.append(t)
      real = int(subprocess.run(["ffprobe","-v","error","-select_streams","v:0",
          "-count_frames","-show_entries","stream=nb_read_frames",
-         "-of","default=nw=1:nk=1","cut.mp4"], capture_output=True, text=True).stdout)
+         "-of","default=nw=1:nk=1",base], capture_output=True, text=True).stdout)
      if t != real:
-         sys.exit(f"segments sum {t}f != cut.mp4 {real}f — do not ship this file")
+         sys.exit(f"segments sum {t}f != {base} {real}f — do not ship this file")
      fps = 30  # match cut.mp4
      json.dump({"segments": [{"start": round(cum[i]/fps/speed,4),
                               "dur": round((cum[i+1]-cum[i])/fps/speed,4)}
