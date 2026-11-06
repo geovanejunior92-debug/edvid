@@ -27,9 +27,9 @@ Os valores fixos estão lá; o que segue é o porquê e o que varia.
 | Base | layout 1080×1920 renderizado na resolução do `cut.mp4` (4K = `--scale 2`), fps da fonte (60), câmera `zooms [1.14,1.2,1.12,1.22]`, `pushIn 0.04` | `durationSec` |
 | Capa | `hookStacked`: entra em `offsetY 0.30`, desliza para `0.155` (1,0s→1,9s), some em **4,0s**; branco com a palavra-chave em **`#3b82f6`**; tamanhos 112/66/112/92 | as 4 linhas |
 | Logo | `brand/logo-transparente.png`, centralizada na **borda inferior**, `width 520`, `bottom 120`, até **4,0s** | — |
-| Legenda | `stacked`, `stackedOffsetY 0.30`, `fontScale 0.92`, `accent` e `pencilColor` **`#3b82f6`** | — |
+| Legenda | `stacked`, `stackedOffsetY 0.30`, `fontScale 0.92`, `accent` e `pencilColor` **`#3b82f6`**, `sfx.enabled: false` (sem clique automático; acento só em `sfxCues`). `stackedOffsetY` é fração da altura a partir do centro: valor maior desce a legenda | — |
 | Tela dividida | `bandH 508` + blend 100 = 608 (altura natural de um 16:9), `fit cover`, `layout top`, `focusY 560`, `matte` por janela, `zoomPulse` alternando | as janelas e os clipes |
-| Transições | `variant "corte"` na entrada, `variant "saida"` (intensity 0.85) na saída | derivado das janelas |
+| Transições | `variant "corte"` na entrada, `variant "saida"` (intensity 0.85) na saída; `variant "corte"` nos cortes fora das janelas | união das janelas com os cortes de `segments.json` |
 | Som de encerramento | `outro-swell.mp3` **na transição** que leva à tela azul (`at ≈ outro.startSec − 0,2s`), volume ~0.6, e a última transição SEM `sfx` próprio | — |
 | Encerramento | fundo **`#071d33`** (azul escuro), letras douradas `#d4b25f`, 2,6s, **sem fade de saída** | `startSec` |
 | Áudio | trilha 0.07, áudio do Remotion (preserva os SFX), loudnorm −14 LUFS | — |
@@ -45,21 +45,22 @@ Três amarrações que quebram se mexidas isoladamente:
 - **A primeira tela dividida nunca antes de 4s**, porque a capa ocupa até lá.
   Pode ser depois (alguns segundos, conforme o conteúdo), nunca antes.
 
+**Todo clipe de faixa precisa de ~15% de folga no topo.** A câmera amplia a
+composição inteira em torno de `targetY 0.4`: com zoom 1,17, um ponto em y=0 vai
+para `0.4 + (0 − 0.4) × 1,17 = −0,068`, ou seja, ~130 px do topo saem do quadro.
+Figura que encosta no topo do clipe aparece sem cabeça, e nem o `check_inserts.py`
+nem o `review_final.py` veem isso, porque medem o arquivo e o movimento. Reenquadre
+o clipe, não a faixa.
+
 ## O fluxo, do corte à entrega
 
 1. **Fase 1 normal** — corte, `voice_levels`, grade, `verify_cut`, LUTs. Sem
    novidade aqui.
-1b. **Som (2026-08-17).** `sfx_plan.py <edit-dir>` — o formato 1 sai com efeito
-   sonoro como complementação: onde a transição já soa, o som é TROCADO
-   (shutter na entrada da janela, whoosh na saída); onde há silêncio, entram
-   acentos novos (capa saindo, riser antes de um ponto forte, hit na virada,
-   whoosh na tela final). Revisar a proposta contra o conteúdo — riser em cima
-   de frase morna soa manipulador. Catálogo e níveis:
-   `references/sfx-catalogo.md`.
-
 2. **B-roll: reconciliar o acervo ANTES de escolher.** Ler
    `~/Videos/stock-medico/` e `PEDIDOS.md`, marcar `[x]` o que já chegou (é
-   trabalho do agente), e só então montar a lista do que falta.
+   trabalho do agente), e só então montar a lista do que falta. Clipe que falta
+   vem da Shutterstock, só "Ilimitado" e por link assinado + `curl` (passo 10b-pre
+   do `SKILL.md`), nunca pelo gerenciador de downloads do Chrome.
 3. **ASSISTIR cada candidato.** 3 frames por clipe (15/50/85% da duração) numa
    folha ordenada, lida contra a frase daquela janela. Depois de recortar,
    amostrar de novo — o recorte pode cair fora do assunto. Se nada servir,
@@ -70,16 +71,34 @@ Três amarrações que quebram se mexidas isoladamente:
    keyframe só e o seek de entrada devolve arquivo vazio, sem erro claro).
 4. **Um matte por janela** (`person_matte.py`, frame 0 = início da janela).
    ~7,5s de processamento por 60 frames; barato.
-5. **Preencher o preset** e derivar as transições.
-6. **Gate dos inserts** — `check_inserts.py`, exit ≠ 0 = não renderiza.
+5. **Preencher o preset** e derivar as transições da UNIÃO de dois conjuntos: as
+   janelas (entrada `corte`, saída `saida`) e os cortes de `segments.json` a mais
+   de ~1 s de uma borda de janela (`corte`). Corte sem flash deixa o som solto:
+   um vídeo com 6 cortes e 2 janelas teve 4 cortes sem marca visual.
+5a. **Legenda.** O template desenha a partir de `caption-cues.json`, e o scaffold o
+   traz VAZIO: sem este passo o render sai sem legenda e sem erro. A partir do
+   corte, gere os dois:
+   `captions_for_remotion.py --transcript transcripts/cut.json -o remotion/public/captions.json`
+   e `caption_style.py --transcript transcripts/cut.json -o remotion/public/caption-cues.json`.
+5b. **Som.** `sfx_plan.py <edit-dir>` lê o `edit-data.json` e as transições, por isso
+   vem depois do preset. Onde a transição já soa, o som é TROCADO (shutter na
+   entrada da janela, whoosh na saída); onde há silêncio, entram acentos novos (hit
+   na virada, whoosh na tela final). Revisar a proposta contra o conteúdo. **Ele
+   sobrescreve `sfxCues` inteiro:** efeito manual vem depois dele, e rodar de novo
+   apaga o que foi posto à mão. Catálogo e níveis: `references/sfx-catalogo.md`.
+6. **Gates** — `check_inserts.py` e `check_edit_data.py <edit>`; exit ≠ 0 em
+   qualquer um = não renderiza. `caption-cues.json` vazio reprova aqui.
 7. **Render** → loudnorm → `final.mp4`. **Antes de renderizar, copie o
    `cut.mp4` atual para `remotion/public/`** — refazer a Fase 1 sem recopiar
    monta a Fase 2 inteira sobre o corte VELHO, com legenda e janelas no lugar
    errado e nenhum erro na tela. Aconteceu em 2026-08-17; hoje o
-   `review_final.py` compara as durações e reprova.
+   `review_final.py` compara as durações e reprova. Refez a Fase 1 com a Fase 2 já
+   montada? É o passo "refazer a base" do `SKILL.md`, com todo matte regerado, não
+   só a cópia do corte.
 8. **Revisão de 100% antes de entregar** — `review_final.py <edit>`: cobertura
    visual do vídeo inteiro em folhas de contato + checagem numérica (movimento
-   por janela, capa/logo/encerramento, áudio, sincronia, duração). **Abrir todas
+   por janela, capa/logo/encerramento, áudio, sincronia, duração, lista de toda fonte
+   de áudio do render). **Abrir todas
    as folhas.** O número não vê legenda errada nem arte fora de contexto.
    Só depois disso entregar.
 

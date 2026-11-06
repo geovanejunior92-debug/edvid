@@ -193,6 +193,32 @@ mexe nele.
 
 ---
 
+## Atualizar este fork a partir do upstream
+
+Este repositório é um fork personalizado de `fillrochaa/edvid`, **sem histórico em
+comum** com ele. Não rode o instalador sobre a cópia personalizada: ele não toca em
+symlink e copiaria por cima das personalizações. O merge é commit a commit:
+
+```bash
+git remote add upstream https://github.com/fillrochaa/edvid.git   # uma vez
+git fetch upstream
+git log --oneline --reverse <base>..upstream/main
+git format-patch -1 --stdout <sha> | git apply --check            # entra limpo?
+git format-patch -1 --stdout <sha> | git apply --check -R         # já está aqui?
+```
+
+- `<base>` é a última base portada, registrada abaixo. A base original, achada
+  comparando árvores, é `642d0c0`.
+- Classifique cada commit como **já presente**, **novo funcional** ou **mudança de
+  gosto**. Vários já foram portados à mão, e o `apply -R` denuncia esses.
+- Traga só o novo funcional, um commit por vez, e rode os testes. Mudança de gosto
+  só entra com pedido.
+- Ao terminar, atualize a linha abaixo.
+
+Última base portada: `d8e6389`.
+
+---
+
 ## Licença
 
 Veja [LICENSE](LICENSE).

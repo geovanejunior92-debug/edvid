@@ -347,12 +347,15 @@ Then set `captions.style:"stacked"` in edit-data.json (keep the other caption
 fields — they stay valid). Defaults match the user-approved look: the stack sits
 ~15.6% of the height below center and SFX play from `public/sfx/caption-click.mp3`
 + `caption-scratch.mp3` (both already in the template). Optional overrides inside
-`captions`: `stackedOffsetY` (0–1 of height), `fontScale`, and
+`captions`: `stackedOffsetY` (fração da altura, medida do CENTRO do quadro para
+baixo: valor maior DESCE a legenda), `fontScale`, and
 `sfx:{enabled,clickVolume(0.45),scratchVolume(0.16)}`. The director groups words
 into short cues, gives the orange serif accent to the content word (never a
 connective), keeps 1-letter/short connectors from standing alone, and flags
 solo/circled words. It is language-tuned for pt-BR (`--lang`); for other
-languages it falls back to length heuristics.
+languages it falls back to length heuristics. Com o selo fixo no rodapé (`width
+400`, `bottom 22`), o par que deixou a legenda longe dele foi `stackedOffsetY 0.27`
++ `fontScale 0.86`.
 
 A solo word also needs DURATION, not just weight — a word spoken in under
 `MIN_SOLO_MS` (340ms) renders as a one-frame flash and reads as a glitch, so the

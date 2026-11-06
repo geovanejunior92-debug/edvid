@@ -61,9 +61,9 @@ Pedido de "comercial animado", "comercial estilo Apple", "estúdio de edição" 
 8. **Strategy confirmation before execution.**
 9. **All session outputs in `<videos_dir>/edit/`** — never inside the edvid repo.
 10. **PHASE 2 is Remotion-only** — no ffmpeg/PIL burned text or overlays.
-11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `public/edit-data.json`. **Never read or edit the template TSX** (`src/Main.tsx` etc.) — the only editable code file is `src/CustomGraphics.tsx`, only for bespoke graphics. *(O template ganhou em 2026-09-11 o estilo de headline `personalizada`, autorizado pelo usuário, justamente para NÃO precisar editá-lo por vídeo: cor, peso, teto de tamanho e distância do topo chegam pelo `edit-data.json`. A regra segue valendo — aparência livre é dado, não código de projeto.)*
+11. **PHASE 2 is data-driven.** Scaffold by copying the track template; describe the video in `public/edit-data.json`. **Never read or edit the template TSX** (`src/Main.tsx` etc.) — the only editable code file is `src/CustomGraphics.tsx`, only for bespoke graphics. *(O template ganhou em 2026-09-11 o estilo de headline `personalizada`, autorizado pelo usuário, justamente para NÃO precisar editá-lo por vídeo: cor, peso, teto de tamanho e distância do topo chegam pelo `edit-data.json`. A regra segue valendo — aparência livre é dado, não código de projeto.)* **Quem alterar o template compartilhado roda `tsc --noEmit --incremental false` em `assets/shortform` (ou num projeto scaffoldado) e só segue com zero erros:** o Remotion renderiza com erro de tipo, então um render que sai não prova que o código está certo.
 12. **Verify numerically first.** Run `verify_cut.py` on every rendered cut; open images only for flagged junctions. Batch any multi-frame look into one `contact_sheet.py` / `grade.py --candidates` montage.
-13. **Never Read machine data into context**: `transcripts/*.json` (raw), `captions.json`, `track.json`, `segments.json`, matte/track binaries. Read `takes_packed.md` and helper stdout instead.
+13. **Never Read machine data into context**: `transcripts/*.json` (raw), `captions.json`, `track.json`, `segments.json`, matte/track binaries. Read `takes_packed.md` and helper stdout instead. Para inspecionar tempos por palavra, processe por script e leia o stdout: `transcripts/<stem>.json` é `{language, text, words: [{text, start, end, type, speaker_id}]}`, com `words` na raiz e o campo `text`. `type` alterna entre `word` e `spacing`, então filtre `type == "word"`, senão os espaços entram como palavras com duração.
 
 ## Execution medium — ffmpeg pipeline (default), Adobe Premiere (MCP), OpenCut e Concat (timeline)
 
@@ -168,7 +168,7 @@ Phase 1:
   não decide borda** — os tempos são os das palavras, e quem manda em borda
   continua sendo o `speech_regions.py` (regras 4 e 5). Exit ≠ 0 quando há linha
   não encontrada. Roda no passo 2, junto do pré-scan, quando existe roteiro.
-- **`fillers.py <edit>/edl.json [--apply [--only 1,3]] [--no-weak]`** — vícios de fala ("é", "né", "hum"; "tipo/assim/então" só isolados por pausa), repetições ("que que"), falsas partidas (frase curta reiniciada) e regiões de fala ÓRFÃS (som sem palavra no transcript, a falsa partida que o Whisper esconde). Lista com id e contexto; `--apply` divide os ranges nas bordas das palavras com 30 ms de folga (regra 4). Órfãs nunca são cortadas sozinhas: transcreva isolado e decida. Roda no passo 2 (pré-scan), antes de fechar o EDL.
+- **`fillers.py <edit>/edl.json [--apply [--only 1,3]] [--no-weak]`** — vícios de fala, sempre com pausa dos dois lados ("é", "né", "hum"; "tipo/assim/então" com pausa maior), repetições ("que que"), falsas partidas (frase curta reiniciada) e regiões de fala ÓRFÃS (som sem palavra no transcript, a falsa partida que o Whisper esconde). Lista com id e contexto; `--apply` divide os ranges nas bordas das palavras com 30 ms de folga (regra 4). Órfãs nunca são cortadas sozinhas: transcreva isolado e decida. Roda no passo 2 (pré-scan), antes de fechar o EDL.
 Trilha de IMAGEM (post, carrossel, capa, thumbnail — 2026-09-10). Leia **`references/imagem.md`** quando o pedido for imagem estatica e nao video. Dois caminhos: **proprio** (padrao, gratis, offline) e **Canva via MCP** (quando depende do acervo de template dele, ou quando ele vai editar na mao depois). **O gate e do edvid nos dois** — o que sai do Canva volta e passa pelo mesmo `qc_image.py`.
 - **`carousel.py <edit>/transcripts/cut.json --video cut.mp4 [--slides 6]`** — do corte aprovado para um esboco de `post-data.json`: pontua cada frase por densidade, numero, pergunta, contraste e "voce", e propoe capa + miolo + CTA com o instante do proprio video como fundo. **Propoe e lista; a escolha e editorial.** Quebra por PONTUACAO, nao por silencio: depois da Fase 1 o silencio ja foi removido (medido: 1 pausa >= 0,5 s num corte de 53 s, e quebrar por silencio dava 2 frases para o video inteiro).
 - **`post_render.py <edit>/post-data.json [--formatos 4x5 1x1 9x16 16x9]`** — o `render.py` da imagem: o post inteiro descrito em JSON vira JPG em 1080x1350 / 1080x1080 / 1080x1920 / 1280x720. PIL, nao Remotion — para quadro estatico o Remotion so acrescenta Node e segundos por imagem. Escreve tambem `<imagem>.boxes.json` com onde cada texto caiu, que e o que o gate le.
@@ -185,7 +185,8 @@ Trilha de IMAGEM (post, carrossel, capa, thumbnail — 2026-09-10). Leia **`refe
 - **`check_luts.py <video> --edit-dir <edit> [--port N] [--quick]`** — health gate for the LUT picker, run right after `lut_thumbs.py`. Verifies `.cube` files parse, `lut3d` applies each one to the real video, every `LUT_CATALOG` id has a decodable thumbnail, and the server serves them (`--port`). Exits non-zero with one line per problem. `lut_thumbs.py` reporting success proves none of this: generation and delivery fail independently.
 - **`grade.py <in> -o <out>`** — grade presets/raw filters. **`--candidates "a=<filter>;b=<preset>;original=" --frame <t> -o cmp.png`** renders N looks on the SAME frame into one labeled montage.
 - **`timeline_view.py <video> <start> <end>`** — filmstrip+waveform PNG for ONE flagged spot, not a scan tool.
-- **`contact_sheet.py <video> --times t1 t2 … -o sheet.png`** — N frames in one labeled grid; the way to eyeball several moments **you already know**.
+- **`contact_sheet.py <video> --times t1 t2 … -o sheet.png`** — N frames in one labeled grid; the way to eyeball several moments **you already know**. Use este helper em vez de montar `tile` e `drawtext` na mão: ele existe porque o ffmpeg pode vir sem `drawtext` (build sem libfreetype), e aí cada quadro falha e a folha sai vazia.
+- **Comando ad hoc no macOS roda em zsh, não em bash.** Um glob sem correspondência aborta o comando inteiro (`*/*.mp4` sem arquivo derruba também o `*/*.mov`), e `set -- $var` não divide palavras. Prefira `find … -print0 | while IFS= read -r -d '' f` a globs compostos, e arrays explícitos a `set --`. Passo que se repete vira helper Python.
 - **`watch_video.py <video> [--mode scene|keyframe|uniform] [--times t1 t2 …] [--start/--end] [--max-frames 24]`** — "what is IN this footage?" when you *don't* know where to look: scene detection + perceptual dedup → labeled contact sheets in `edit/verify/watch_<stem>/`, one Read per sheet. For visual inventory of unknown material, and for surveying `cut.mp4` beyond verify_cut's numbers. `--times` pins transcript-cue frames: deictic moments from `takes_packed.md` ("olha isso", "como você pode ver") are LOW visual change and invisible to scene detection — pin them to decide B-roll/callout/zoom placement in Phase 2.
 
 Phase 2/3 helpers (captions, face tracking, image search, music) are listed in
@@ -240,7 +241,11 @@ the track reference you load after the gate. One of them is not optional:
   do Studio (`studio_phase2.validate`: fps e dimensões contra o `cut.mp4`,
   `durationSec` contra corte + encerramento, legenda via `caption_edit`, asset
   ausente em `public/`) — quem escreve o `edit-data.json` na mão e chama
-  `npx remotion render` direto nunca passava por elas. ERRO bloqueia (exit ≠ 0),
+  `npx remotion render` direto nunca passava por elas. Confere ainda os JSON que
+  o template importa de forma estática (`track.json`, `captions_split.json`…, sem
+  eles o bundle quebra), `caption-cues.json` vazio (reprova no Formato 1, avisa
+  nos outros), legenda sobre a tela de encerramento e, com a legenda desligada,
+  vão acima de ~2 s entre blocos de texto (avisos). ERRO bloqueia (exit ≠ 0),
   AVISO é escolha editorial e deixa passar.
 - **`phase2_still.py <edit-dir> [--at t1 t2 …] [--max 8]`** — **ver a Fase 2 num
   QUADRO, sem renderizar o vídeo inteiro.** Todo defeito que já atravessou um
@@ -321,6 +326,20 @@ unwritable root and prints the fix — read that output instead of re-rendering.
 **If the user says the permissions are already enabled, the answer is to restart
 the Mac**: the permission cache goes stale and shows the toggle on while still
 denying. Confirmed in production; nothing in Settings fixed it.
+
+**Confira a pasta antes de abrir.** Se `<edit>` estiver em `~/Downloads`,
+`~/Documents`, `~/Desktop` ou iCloud Drive, leve o projeto para uma pasta sem essa
+proteção (`~/Videos/<projeto>/edit`, com uma cópia da fonte) antes de iniciar o
+servidor. A falha nem sempre é o erro acima: lançado pelo app, o servidor pode
+ficar parado no helper `disclaimer`, com `preview_list` em `starting` para sempre,
+`preview_logs` vazio e a porta fechada, enquanto o mesmo comando funciona no Bash.
+"Starting sem log" se diagnostica pelo local, não pela mensagem.
+
+**O Preview entregue é o servidor vivo mais a URL certa.** Antes de dizer que está
+aberto, confirme: porta respondendo, aba visível em `http://127.0.0.1:<porta>/` (ou
+no endereço da Tailscale, no celular), biblioteca carregada e aba mantida aberta.
+Nunca abra nem apresente `assets/preview/*.html` como produto: por `file://` não
+existe `/assets` nem `/api`, e a página só mostra um aviso.
 
 **Keep state.json fresh** — bump `phase` and `message` at each milestone (cut rendered, cut approved, Phase 2 rendered…). The UI polls and hot-reloads by itself; waveform + filmstrip regenerate automatically when cut.mp4 changes.
 
@@ -487,9 +506,10 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
 0. **Repositório em dia — antes de qualquer coisa (2026-09-10).** Esta skill vive em `~/.agents/skills/edvid`, que É um repo git privado (`origin` = `geovanejunior92-debug/edvid`). Claude e Codex trabalham na MESMA instalação e os dois empurram, então a cópia local pode estar velha. Antes da transcrição: `git -C <skill> fetch origin main` e `git -C <skill> status -sb`. Atrás do remoto → `git pull --ff-only origin main` e só então comece. **Divergiu** (commit local E remoto) → **pare e avise**; nunca mescle no escuro no meio de uma edição. Editar com uma versão velha custa calibragem já aprovada — altura da capa, costura da tela dividida, som de encerramento, tudo mora neste arquivo. E **ao terminar qualquer alteração NA SKILL, commite e empurre na mesma sessão**: pedido permanente do usuário, não pergunte de novo.
 
 1. **Inventory.** Reference video ("faz um parecido com este")? `reference_brief.py` on it first. URL source? `ingest_url.py` first (`--section` when only a range of a longform video matters). `ffprobe` every source. `transcribe_batch.py` (or `transcribe.py`) → `pack_transcripts.py` → read `takes_packed.md`. Note dimensions/orientation and whether it looks flat/LOG. Material you can't picture from the transcript → `watch_video.py` for a one-Read visual survey.
+   **Fonte já publicada** (legenda queimada, selo fixo, cartão de encerramento) ganha um passo de bordas antes do EDL: `contact_sheet.py` nos ~0,5 s iniciais e nos ~3 s finais, para achar onde o material real começa e termina. `speech_regions.py` conta o som do cartão final como fala, `verify_cut.py` aprova cartão branco com música, e um único quadro de capa congelada passa pelos dois.
 2. **Pre-scan** `takes_packed.md` for verbal slips, mis-speaks, and dead-air-stretched words (Whisper stretches a word's end across silence — verify long "phrases" against `speech_regions.py`/waveform before trusting them). **Then run `voice_levels.py` on every source** — the transcript is level-blind, so an inaudible passage reads exactly like a normal one. Anything it flags is a decision to make BEFORE the EDL: boost it with `gain_db`, or cut the take entirely. **Depois do `voice_levels.py`, rode `audio_clean.py` em cada fonte e `check_audio.py` em seguida (2026-09-01)** — é o padrão, não opção: toda Fase 1 renderiza com `--audio-clean` a menos que o gate falhe (aí renderize sem, e diga por quê). Material com música, trânsito ou outra voz por baixo: `--denoise demucs`. O A/B (`<stem>.ab.wav`) vai junto com o corte no gate, em uma linha: "áudio limpo, ouça o A/B se quiser conferir".
 3. **Converse.** Describe what you see; ask questions shaped by the material (content type, target length/aspect, pacing, must-keep/must-cut). No fixed checklist.
-4. **Detect the colour profile — do NOT ask.** Run `detect_color.py <source>`. **Depois, `scopes.py --edl` e `match_takes.py --apply` (2026-09-01):** os takes chegam ao look já casados em exposição, branco e croma; um take estourado ou esmagado aparece aqui, em número, antes de qualquer montagem de candidatos. Com `grade` definido, ponha `skin_protect` no EDL com o `hue` que o `scopes.py` mediu — é o padrão para look de saturação/temperatura forte (o Premium e os LUTs frios), opcional no look neutro.
+4. **Detect the colour profile — do NOT ask.** Run `detect_color.py <source>`. **Depois, `scopes.py --edl` e `match_takes.py --apply` (2026-09-01):** os takes chegam ao look já casados em exposição, branco e croma; um take estourado ou esmagado aparece aqui, em número, antes de qualquer montagem de candidatos. Com `grade` definido, ponha `skin_protect` no EDL com o `hue` que o `scopes.py` mediu — é o padrão para look de saturação/temperatura forte (o Premium e os LUTs frios), opcional no look neutro. Se o `scopes.py` avisar que não leu a pele, tente `--at` num quadro de rosto grande; sem leitura, não invente o `hue`: siga sem `skin_protect` e diga isso ao mostrar o corte.
    The answer is in the file; asking put a measurable question on the user.
    - **`rec709` (normal)** → no grade. `"grade": ""`. A standard profile already
      carries its look; "improving" it loses the match with the user's other material.
@@ -560,6 +580,9 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    prévia, mas não licencia nem baixa por API. O download licenciado é feito
    pelo agente no site autenticado, sem nova confirmação por clipe. O fluxo:
    1. Buscar cada item da lista (frases descritivas em inglês funcionam melhor).
+      Só serve candidato marcado "Ilimitado" na página do clipe: a busca do
+      conector não mostra isso, e clipe com preço é cobrança extra, então troque
+      por outro.
    2. **Baixar as prévias com marca d'água** (`previewMp4` do resultado) das 2
       candidatas de cada item — ele autorizou explicitamente.
    3. **Assistir**: 3 frames por clipe numa folha por item, lida contra a frase
@@ -575,6 +598,13 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
       baixar o licenciado pelo site, guardar no acervo com o ID e usar a cópia
       do projeto. Só interromper se aparecer cobrança extra, mudança de plano
       ou licença ambígua. Nunca usar a prévia no render.
+      **Download pelo caminho rápido:** no Chrome logado, capture a resposta do
+      clique em "Baixar" (traz um link assinado de
+      `downloads-fastly.shutterstock.com`), entregue a URL a um receptor em
+      `127.0.0.1` e baixe com `curl`, em paralelo. Leva segundos por clipe 4K; pelo
+      gerenciador de downloads do Chrome, houve downloads parados em 30–140 MB. O
+      link assinado é credencial temporária: não vai para arquivo versionado, log
+      nem `project.md`.
 
 10b. **Hand over the B-roll shopping list** (standing step, 2026-08-16 — user
    request: "quero que voce sempre faça isso depois da fase 1 Corte, quando
@@ -719,6 +749,13 @@ from its last-saved value** — same dirty-tracking pattern as EDL ranges
 set it as `edl.json`'s `grade`, and **re-render Fase 1** — same file, same
 step, as any other correction in that save (an EDL edge move and an image
 tweak can arrive in the same `preview_edits.json`, applied together).
+
+**Com a Fase 2 já montada, o passo é "refazer a base".** O `cut.mp4` alimenta outros
+arquivos, e a lista deles é a instrução, nesta ordem: re-render da Fase 1 → retag
+bt709 → `verify_cut.py` → regenerar `segments.json` → `cp cut.mp4 remotion/public/`
+→ **regerar todo matte** (`person_matte.py`) → `lut_thumbs.py` + `check_luts.py`.
+Matte e miniatura carregam pixel e ficam errados em silêncio: a cabeça com a cor
+antiga na frente da faixa com a cor nova, e nenhum gate acusa.
 
 **Slider → filter mapping** (space-free, 8-bit-safe filters only, per the
 Color-grade rules above):
@@ -1069,6 +1106,8 @@ Append one section per session at `<edit>/project.md`:
 ```
 
 On startup, read it if it exists and summarize the last session in one sentence before asking whether to continue.
+
+**Preferência que vem de uma fala dele:** grave a frase literal junto da interpretação, e o caminho da referência visual quando houver. Se a fala cita dois elementos, o padrão é composição, não troca, até prova em contrário ("a imagem de cima […] atrás da cabeça" era faixa E recorte). Antes de refazer um efeito, releia a citação e reabra a referência, não só o resumo.
 
 ## Anti-patterns
 - Every mistake under **Cut craft** — Whisper times as edges, cutting at a word's

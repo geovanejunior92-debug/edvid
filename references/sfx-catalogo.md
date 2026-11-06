@@ -119,7 +119,8 @@ da medição (não extraí o áudio dela — é biblioteca licenciada por ela):
 | `whoosh-bright.mp3` | 0,58s, 54% da energia acima de 8 kHz, centróide caindo 8200→3500 | transição mais brilhante que o whoosh antigo |
 | `riser-deep.mp3` | 1,55s, 29% de graves, cresce até o fim e resolve | virada longa |
 
-O `outro-swell` é padrão do formato 1: entra ~1s antes da tela azul.
+O `outro-swell` é padrão do formato 1: entra na transição que leva à tela azul e
+resolve dentro dela, nunca antes (`at ≈ outro.startSec − 0,2s`).
 
 
 ## Riser — banido (2026-08-20)

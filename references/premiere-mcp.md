@@ -18,6 +18,19 @@ the Premiere sequence itself is the deliverable and the user watches in the
 Program Monitor. `verify_cut.py` is replaced by `get_full_sequence_info` +
 `export_frame` (see Verify below).
 
+## Primeiro: o que a skill já faz sem o Premiere
+
+Antes de escolher este meio, compare. Ajustar a borda ou tirar um take já se faz
+nas alças do preview, e é o único caminho que valida a borda nova contra
+`speech_regions.py`. Corte, cor, J-cut e fades já saem do `render.py`, com o
+`verify_cut.py` no fim, e legenda e gráficos saem da Fase 2 em Remotion.
+
+Onde o Premiere perde: borda movida na timeline não passa por validação nenhuma, o
+razor encaixa no quadro mais próximo, o gate numérico vira conferência manual, e a
+cobertura de script é incompleta (ver "What does NOT work"). Ele ganha quando a
+entrega é a própria sequência, para o usuário terminar no Premiere. Sem esse pedido,
+fique no caminho padrão.
+
 ## Before touching the timeline
 
 1. **Read the server's own operating rules first:** MCP resource
