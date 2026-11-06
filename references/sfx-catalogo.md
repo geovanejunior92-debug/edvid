@@ -59,34 +59,37 @@ Todos sintetizados, sem licença de terceiros. O gerador é determinístico
 
 ## Como entra na edição
 
-Os efeitos são **dado**, não código: `sfxCues` no `edit-data.json`, tocados pelo
-componente `SfxCues`. Assim eles aparecem já na entrega pós-corte e seguem até o
-render final sem serem remontados.
+Os efeitos são **dado**, não código. Moram em `sfx_cues.json`, na pasta da edição,
+e são fundidos em `sfxCues` no `edit-data.json`, tocados pelo componente `SfxCues`.
+Cada cue traz `origin`: `auto` (refeita a cada execução do helper) ou `manual`
+(preservada sempre). Cue novo posto à mão vai em `sfx_cues.json` com
+`"origin": "manual"`, ou em `sfxCues` sem `origin`, e a próxima execução o adota.
 
 ```json
 "sfxCues": [
-  {"at": 27.93, "src": "sfx/riser.mp3", "volume": 0.42, "dur": 1.6,
-   "label": "tensão antes do ponto"}
+  {"at": 27.93, "src": "hit-soft.mp3", "volume": 0.45, "dur": 1.1,
+   "label": "acento na revelação", "origin": "auto"}
 ]
 ```
 
 **Helper:** `uv run python helpers/sfx_plan.py <edit-dir> [--dry-run]
 [--intensidade 1.0]`. Ele PROPÕE a partir do EDL, das janelas e do transcript —
 a escolha final é de quem edita. Revise a lista contra o conteúdo antes de
-renderizar; um riser em cima de uma frase morna soa manipulador.
+renderizar; um acento em cima de uma frase morna soa manipulador.
 
 **Ele não empilha som onde já existe.** As transições já tocavam um clique; o
 helper TROCA esse som (shutter na entrada da janela, whoosh na saída) em vez de
-somar um segundo efeito em cima. Cues novos só entram em pontos silenciosos —
-capa saindo, tensão, revelação, tela final. Isso é exatamente o que ele pediu:
+somar um segundo efeito em cima. Cues novos só entram em pontos silenciosos:
+revelação, acento de fala e a transição para a tela final, reservada ao
+`outro-swell`, sem whoosh ali. Isso é exatamente o que ele pediu:
 *"adicionar em pontos que não tem efeito sonoro ainda"*.
 
 ## Onde isso entra no fluxo
 
 **Depois do corte, antes da aba Estilo.** A entrega pós-corte já leva corte,
 zoom, transições e flash; agora leva o som também (pedido dele, 2026-08-17).
-Ordem: Fase 1 → `sfx_plan.py` → render da prévia → ele assiste → aba Estilo →
-Fase 2.
+Ordem: Fase 1 → transcrição do corte → `sfx_plan.py` (só o arquivo próprio) → ele
+assiste → aba Estilo → `edit-data.json` pronto → `sfx_plan.py` de novo (funde) → Fase 2.
 
 No **formato 1** isso é automático e não se pergunta: o preset já entra com as
 transições sonorizadas e os acentos nos pontos silenciosos, ajustando ao

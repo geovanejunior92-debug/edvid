@@ -564,15 +564,16 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    editor de cada vez:** depois de uma volta, o outro está desatualizado; ver
    "Testando os dois" em `references/concat.md`.
 10. **Show `cut.mp4` and wait for approval.** The phase gate. **Antes de mostrar (2026-09-01):** `transcribe.py cut.mp4 --edit-dir <edit>` (a faixa de transcrição clicável do preview lê `transcripts/cut.json`; a Fase 2 reaproveita) e `diagnostics.py <edit>` (o painel Diagnóstico). Sem os dois, o preview mostra o corte mas não o que foi medido nem deixa cortar pelo texto.
-10a. **Passo de SOM, entre o corte e a aba Estilo (2026-08-17).** A entrega
-   pós-corte já leva corte, zoom, transições e flash — e agora leva os efeitos
-   sonoros junto. Rode `sfx_plan.py <edit-dir>`, revise a lista proposta contra
-   o conteúdo (é proposta, não veredito) e só então mostre. O catálogo é a SOMA
-   do pacote antigo com o novo (typing, shutter, UI, riser, hit) — nada foi
-   substituído. Regras, níveis e o porquê: **`references/sfx-catalogo.md`**.
-   Duas coisas que o helper já respeita e você não deve desfazer: ele TROCA o
-   som de uma transição que já soa, em vez de empilhar um segundo efeito, e só
-   acrescenta cue novo onde há silêncio.
+10a. **Passo de SOM (2026-08-17).** Depende da transcrição do passo 10, então vem
+   logo depois dela e antes de mostrar o corte: `sfx_plan.py <edit-dir>`. Ainda não
+   há `edit-data.json`, e tudo bem: os acentos da fala vão para `sfx_cues.json`.
+   **Com o `edit-data.json` e as transições prontos, rode de novo:** é essa execução
+   que funde em `sfxCues`, dá som às transições e agenda o `outro-swell` na transição
+   para a tela azul. Revise a lista (é proposta, não veredito). Regras, níveis e o
+   porquê: **`references/sfx-catalogo.md`**. O que o helper garante: cue manual nunca
+   é apagado (cada cue traz `origin`, e só as automáticas se refazem), o som de uma
+   transição é TROCADO em vez de empilhado, e a transição do encerramento fica muda
+   para só o swell soar. Riser e whoosh-rev são banidos: nenhum helper os propõe.
 
 10b-pre. **Buscar na Shutterstock, baixar as prévias, ASSISTIR, e escolher o
    clipe necessário (tarefa fixa, 2026-08-17; autorização reafirmada em

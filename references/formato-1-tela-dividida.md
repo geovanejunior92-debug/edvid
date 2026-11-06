@@ -81,11 +81,12 @@ o clipe, não a faixa.
    `captions_for_remotion.py --transcript transcripts/cut.json -o remotion/public/captions.json`
    e `caption_style.py --transcript transcripts/cut.json -o remotion/public/caption-cues.json`.
 5b. **Som.** `sfx_plan.py <edit-dir>` lê o `edit-data.json` e as transições, por isso
-   vem depois do preset. Onde a transição já soa, o som é TROCADO (shutter na
-   entrada da janela, whoosh na saída); onde há silêncio, entram acentos novos (hit
-   na virada, whoosh na tela final). Revisar a proposta contra o conteúdo. **Ele
-   sobrescreve `sfxCues` inteiro:** efeito manual vem depois dele, e rodar de novo
-   apaga o que foi posto à mão. Catálogo e níveis: `references/sfx-catalogo.md`.
+   a fusão vem depois do preset. Onde a transição já soa, o som é TROCADO (shutter
+   na entrada da janela, whoosh na saída); onde há silêncio, entram acentos novos
+   (hit na virada). A transição para a tela azul fica muda, com o `outro-swell` nela.
+   Revisar a proposta contra o conteúdo. **Rodar de novo não apaga efeito manual:**
+   os cues moram em `sfx_cues.json`, cada um com `origin`, e só os `auto` se refazem.
+   Catálogo e níveis: `references/sfx-catalogo.md`.
 6. **Gates** — `check_inserts.py` e `check_edit_data.py <edit>`; exit ≠ 0 em
    qualquer um = não renderiza. `caption-cues.json` vazio reprova aqui.
 7. **Render** → loudnorm → `final.mp4`. **Antes de renderizar, copie o

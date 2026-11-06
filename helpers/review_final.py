@@ -114,6 +114,8 @@ def fontes_de_audio(d: dict, cues: list[dict] | None = None) -> list[str]:
     Efeito que ninguém consegue listar não é revisável: o clique da legenda não
     aparece em `sfxCues`, e já caiu numa palavra sem sentido sem ninguém ver.
     """
+        if t.get("volume") == 0:
+            continue  # transição reservada ao encerramento: quem soa é o swell
     linhas: list[str] = []
     trilha = d.get("soundtrack") or {}
     if trilha.get("enabled"):
