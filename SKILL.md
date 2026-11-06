@@ -85,8 +85,8 @@ o OpenCut ganha dele em reordenar takes e em ver o material descartado ao
 esticar um take, e perde na validação. Toda devolução volta pro fluxo normal:
 `verify_cut.py` → `render.py` → gate.
 
-**Se ele pedir o Concat** ("abre no Concat", "ajustar no editor do Mac") — read
-`references/concat.md`. Mesmo contrato do OpenCut, sem navegador nem cópia da
+**Se ele escolher o Concat** ("abre no Concat", "ajustar no editor do Mac") — read
+`references/concat.md`. O gate oferece os dois (passo 9c). Mesmo contrato do OpenCut, sem navegador nem cópia da
 fonte: `helpers/concat_bridge.py open` monta o projeto em
 `<edit>/concat/corte` na resolução da fonte e abre o app; `pull` lê o que ele
 salvou e reescreve o `edl.json`, com backup. Depois: `verify_cut.py` →
@@ -530,18 +530,18 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    `lut_thumbs.py` exiting 0 as proof the user will see thumbnails — the
    chronic blank-picker bug (2026-08-16) had generation succeeding every
    single time while the browser showed 33 empty cards.
-9c. **Corte com 3+ takes: suba a ponte do OpenCut junto (2026-09-01).** Rode
-   `opencut_bridge.py serve --edit-dir <edit>` em background e inclua a URL que
-   ela imprime na mesma mensagem do gate, como segunda opção depois do preview:
-   uma linha, sem vender. Ele pediu explicitamente que isso não dependa de ele
-   lembrar que existe. **Com 1 ou 2 takes, não suba e não mencione** — reordenar
-   não é possível e o segundo link só suja o momento da aprovação. **No Formato 1
-   também não** — o preset é entrega pronta, e um link a mais é uma escolha a
-   mais que ele pediu para não existir ali. A ponte cai
-   sozinha na porta seguinte se outra já estiver no ar, então dois cortes abertos
-   ao mesmo tempo não colidem. Se a devolução vier, ela reescreve `edl.json`
-   sozinha: volte pro passo 7 (`verify_cut.py`) e re-renderize. Detalhes e
-   limites em `references/opencut.md`.
+9c. **Ofereça os dois editores de timeline no gate (2026-11-06).** Ele quer testar
+   OpenCut e Concat antes de decidir, então todo gate da Fase 1 oferece os dois, em
+   qualquer número de takes. Rode `opencut_bridge.py serve --edit-dir <edit>` em
+   background e `concat_bridge.py open --no-window --edit-dir <edit>`, e ponha na
+   mesma mensagem do gate, depois do preview, uma linha sem vender: a URL do OpenCut
+   e "ou peça 'abre no Concat'". A janela do Concat só abre quando ele escolher
+   (`concat_bridge.py open --edit-dir <edit>`). **No Formato 1 não ofereça nenhum** —
+   o preset é entrega pronta e ele pediu que ali não exista escolha a mais. A ponte
+   do OpenCut cai sozinha na porta seguinte se outra já estiver no ar. Toda volta
+   reescreve o `edl.json`: siga pro passo 7 (`verify_cut.py`) e re-renderize. **Um
+   editor de cada vez:** depois de uma volta, o outro está desatualizado; ver
+   "Testando os dois" em `references/concat.md`.
 10. **Show `cut.mp4` and wait for approval.** The phase gate. **Antes de mostrar (2026-09-01):** `transcribe.py cut.mp4 --edit-dir <edit>` (a faixa de transcrição clicável do preview lê `transcripts/cut.json`; a Fase 2 reaproveita) e `diagnostics.py <edit>` (o painel Diagnóstico). Sem os dois, o preview mostra o corte mas não o que foi medido nem deixa cortar pelo texto.
 10a. **Passo de SOM, entre o corte e a aba Estilo (2026-08-17).** A entrega
    pós-corte já leva corte, zoom, transições e flash — e agora leva os efeitos

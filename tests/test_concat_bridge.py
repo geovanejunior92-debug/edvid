@@ -4,6 +4,7 @@ A leitura da volta roda sobre um concat.json escrito à mão. O ciclo de ida e
 volta usa o binário de verdade e fica de fora onde o Concat não está instalado.
 """
 from pathlib import Path
+import argparse
 import json
 import shutil
 import subprocess
@@ -139,6 +140,23 @@ class RoundTrip(unittest.TestCase):
         self.assertEqual((after['grade'], after['jcut']), ('neutral', {'lead': 0.2}))
         self.assertTrue(list(self.tmp.glob('edl.json.bak-*')))
         self.assertTrue((self.tmp / 'concat' / 'last_return.json').exists())
+
+    def test_pull_recusa_quando_outro_editor_mudou_o_corte(self):
+        cb.build_project(self.tmp, self.edl)
+        changed = json.loads((self.tmp / 'edl.json').read_text())
+        changed['ranges'][0]['end'] = 4.0  # como uma devolução do OpenCut
+        (self.tmp / 'edl.json').write_text(json.dumps(changed))
+        args = argparse.Namespace(edit_dir=str(self.tmp), force=False)
+        with self.assertRaisesRegex(SystemExit, 'apagaria'):
+            cb.cmd_pull(args)
+        self.assertEqual(json.loads((self.tmp / 'edl.json').read_text()), changed)
+
+        args.force = True
+        self.assertEqual(cb.cmd_pull(args), 0)
+        after = json.loads((self.tmp / 'edl.json').read_text())
+        self.assertEqual(after['ranges'][0]['end'], 5.0)
+        # Depois da devolução os dois lados falam do mesmo corte de novo.
+        self.assertFalse(cb.is_stale(self.tmp, after))
 
     def test_nome_do_take_vai_pro_clipe(self):
         project = cb.build_project(self.tmp, self.edl)

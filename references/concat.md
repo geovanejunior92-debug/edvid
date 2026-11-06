@@ -14,8 +14,19 @@ Cor, J-cut, fades de 30ms, `gain_db`, concat lossless e Fase 2 seguem no
 - **Concat em vez de OpenCut:** fonte grande. A mídia fica no disco, sem cópia
   para o navegador, e não há servidor local para manter no ar.
 
-O passo 9c do SKILL.md continua subindo só a ponte do OpenCut. O Concat abre a
-pedido.
+## Testando os dois
+
+Desde 2026-11-06 o gate oferece OpenCut e Concat juntos (passo 9c do SKILL.md),
+até ele decidir qual fica. Exceção: Formato 1, que não oferece nenhum.
+
+Os dois editam o mesmo `edl.json`, então **depois de uma volta o outro fica
+desatualizado**:
+
+- Voltou do OpenCut ou do preview: o `pull` do Concat recusa, em vez de apagar o
+  ajuste. Rode `open --rebuild` para partir do corte atual. `pull --force` existe
+  só para quando ele quiser mesmo descartar a outra edição.
+- Voltou do Concat: o botão Devolver do OpenCut não tem essa trava. Reimporte pela
+  URL antes de editar lá de novo.
 
 ## O ciclo
 

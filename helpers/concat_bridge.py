@@ -7,12 +7,14 @@ o projeto é montado sem janela pelo MCP do próprio Concat, a mídia fica no di
 (nada de copiar a fonte pro navegador) e a volta lê o projeto salvo.
 
     python helpers/concat_bridge.py open --edit-dir <edit> [--rebuild] [--no-window]
-    python helpers/concat_bridge.py pull --edit-dir <edit>
+    python helpers/concat_bridge.py pull --edit-dir <edit> [--force]
     python helpers/concat_bridge.py status --edit-dir <edit>
 
 `open` reusa o projeto que já existe, para não perder o que foi arrastado nele;
 `--rebuild` guarda o antigo ao lado e monta outro a partir do edl.json atual.
 `pull` lê o que foi SALVO no Concat (Cmd+S) e reescreve o edl.json, com backup.
+Se o edl.json mudou por outro caminho desde a montagem, ele recusa; `--force`
+descarta essa outra mudança.
 Falar com o binário pelo protocolo dele, em vez de ligar código, mantém a AGPL
 do Concat fora do edvid.
 
@@ -102,6 +104,14 @@ def edl_fingerprint(edl: dict) -> str:
                "ranges": [[r["source"], r["start"], r["end"]]
                           for r in edl.get("ranges") or []]}
     return hashlib.sha256(json.dumps(essence, sort_keys=True).encode()).hexdigest()
+
+
+def is_stale(edit_dir: Path, edl: dict) -> bool:
+    """O edl.json mudou por outro caminho desde a última montagem ou devolução?"""
+    built = edit_dir / STATE_DIR / "built_from.json"
+    if not built.exists():
+        return False
+    return json.loads(built.read_text()).get("fingerprint") != edl_fingerprint(edl)
 
 
 def load_edl(edit_dir: Path) -> dict:
@@ -280,14 +290,11 @@ def cmd_open(args: argparse.Namespace) -> int:
         print(f"projeto antigo guardado em {old.name}")
 
     if project.exists():
-        built = edit_dir / STATE_DIR / "built_from.json"
-        same = built.exists() and (
-            json.loads(built.read_text()).get("fingerprint") == edl_fingerprint(edl))
         print(f"reusando {project}")
-        if not same:
+        if is_stale(edit_dir, edl):
             print("ATENÇÃO: o edl.json mudou desde que este projeto foi montado. "
-                  "Use --rebuild para partir do corte atual; `pull` sobrescreveria "
-                  "essa mudança.")
+                  "Use --rebuild para partir do corte atual; o `pull` vai recusar "
+                  "enquanto isso.")
     else:
         project = build_project(edit_dir, edl)
         total = sum(float(r["end"]) - float(r["start"]) for r in edl["ranges"])
@@ -303,6 +310,12 @@ def cmd_open(args: argparse.Namespace) -> int:
 def cmd_pull(args: argparse.Namespace) -> int:
     edit_dir = Path(args.edit_dir).expanduser().resolve()
     edl = load_edl(edit_dir)
+    if not args.force and is_stale(edit_dir, edl):
+        raise ConcatError(
+            "o edl.json mudou depois que este projeto foi montado (preview ou OpenCut). "
+            "Devolver agora apagaria essa mudança. Use `open --rebuild` para partir do "
+            "corte atual, ou `pull --force` para descartá-la."
+        )
     ranges, notes = ranges_from_project(edit_dir / STATE_DIR / PROJECT_NAME, edl)
     summary = merge_back(edit_dir, ranges, editor="Concat", state_dir=STATE_DIR)
     print(summary)
@@ -341,6 +354,8 @@ def main() -> int:
 
     pull = sub.add_parser("pull", help="traz o projeto salvo de volta pro edl.json")
     pull.add_argument("--edit-dir", required=True)
+    pull.add_argument("--force", action="store_true",
+                      help="devolve mesmo que o edl.json tenha mudado por fora")
     pull.set_defaults(func=cmd_pull)
 
     status = sub.add_parser("status", help="mostra a última devolução")

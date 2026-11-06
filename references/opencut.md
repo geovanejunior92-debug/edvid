@@ -54,12 +54,11 @@ suspende porque o corte veio de um arraste.
 
 ## Quando ela sobe sozinha
 
-Desde 2026-09-01 a ponte **não depende de o usuário pedir**. No gate da Fase 1,
-quando o corte tem **3 ou mais takes**, o passo 9c manda subir a ponte junto e
-mandar a URL na mesma mensagem do gate, como segunda opção depois do preview —
-uma linha, sem vender. Com 1 ou 2 takes, e em qualquer job de Formato 1, não
-sobe e não se menciona: reordenar não existe ali e o link extra só disputa
-atenção com a aprovação do corte.
+Desde 2026-11-06, todo gate da Fase 1 sobe a ponte e oferece OpenCut e Concat
+juntos, em qualquer número de takes, depois do preview e em uma linha: ele quer
+testar os dois antes de decidir (passo 9c do SKILL.md). No Formato 1 não sobe e
+não se menciona. Se uma volta veio do Concat, reimporte antes de editar aqui: o
+Devolver gravaria por cima dela (ver "Testando os dois" em `references/concat.md`).
 
 Fora disso, ele pode pedir a qualquer momento ("abre na timeline") e o ciclo
 abaixo é o mesmo.
