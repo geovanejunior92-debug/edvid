@@ -389,6 +389,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/seam-head':
             self._seam_head()
             return
+        if path == '/api/seam-rule':
+            self._seam_rule()
+            return
         if path == '/projects':
             self._send_file(APP_DIR / 'projects.html')
             return
@@ -425,6 +428,30 @@ class Handler(BaseHTTPRequestHandler):
             self._state()
         else:
             self._json({"error": "unknown route"}, 404)
+
+    def _seam_rule(self) -> None:
+        """O `focusY` da regra do topo do cabelo para uma janela, pela máscara dela."""
+        query = parse_qs(urlsplit(self.path).query)
+        try:
+            ref = int((query.get('ref') or [''])[0])
+            data = json.loads((self.root / 'remotion/public/edit-data.json').read_text())
+            janela = (data.get('splitInserts') or [])[ref]
+        except (OSError, ValueError, TypeError, IndexError):
+            self._json({'error': 'janela inválida'}, 400)
+            return
+        if not janela.get('matte'):
+            self._json({'error': 'janela sem máscara'}, 404)
+            return
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import seam_check
+            regra = seam_check.rule_focus(self.root / 'cut.mp4', float(janela.get('start') or 0),
+                                          self.root / 'remotion/public' / janela['matte'],
+                                          seam_check.layout_width(self.root))
+        except Exception as exc:  # noqa: BLE001 — sem medida o ajuste à mão continua valendo
+            self._json({'error': str(exc)[:200]}, 503)
+            return
+        self._json({'ref': ref, **regra})
 
     def _seam_head(self) -> None:
         """A caixa da cabeça no cut.mp4, para a interface medir a costura.

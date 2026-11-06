@@ -1,9 +1,4 @@
-"""A costura ajustada no preview vira focusY no edit-data — com gate no meio.
-
-O teste que importa aqui não é o de gravar: é o de RECUSAR. O preview mostra o
-veredito ao vivo, e gravar um valor que o gate reprova desfaria o sentido de
-ter o gate. Por isso só passa com --force.
-"""
+"""A costura ajustada no preview vira focusY no edit-data, com um aviso no meio."""
 from pathlib import Path
 import json
 import subprocess

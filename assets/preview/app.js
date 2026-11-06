@@ -3341,14 +3341,12 @@ const SEAM = {
   },
   verdict(frac) {
     if (frac == null) return { text: 'sem medida do rosto', cls: '' };
-    const { upperMin, upperMax, reference } = this.limits;
-    if (frac < 0) return { text: `faixa reta (${frac.toFixed(2)})`, cls: 'bad' };
-    if (frac < upperMin) return { text: `raspando (${frac.toFixed(2)})`, cls: 'warn' };
-    if (frac <= upperMax) {
-      const perto = Math.abs(frac - reference) <= 0.05 ? ' — na referência' : '';
-      return { text: `ok (${frac.toFixed(2)})${perto}`, cls: 'ok' };
-    }
-    return { text: `baixa demais (${frac.toFixed(2)}) — cruza o rosto`, cls: 'bad' };
+    const { upperMin, upperMax } = this.limits;
+    // Só aviso: a fração parte do detector de rosto e não define a posição.
+    if (frac < 0) return { text: `aviso: faixa reta (${frac.toFixed(2)})`, cls: 'warn' };
+    if (frac < upperMin) return { text: `aviso: raspando (${frac.toFixed(2)})`, cls: 'warn' };
+    if (frac <= upperMax) return { text: `ok (${frac.toFixed(2)})`, cls: 'ok' };
+    return { text: `aviso: baixa demais (${frac.toFixed(2)})`, cls: 'warn' };
   },
 
   async enter() {
@@ -3494,12 +3492,8 @@ const SEAM = {
   },
 
   applyToAll() {
-    const w = this.current();
-    if (!w) return;
-    const frac = this.fraction(this.geometry(w));
-    if (frac == null) { toast('Sem medida do rosto: não dá para levar a mesma altura às outras', 3500); return; }
-    // a MESMA fração, não o mesmo focusY: a cabeça está em altura diferente em
-    // cada janela, e copiar o número cru repetiria o erro que ele apontou.
+    // Em cada janela vale a regra do topo do cabelo, medido pela máscara dela. A
+    // fração do detector de rosto não leva posição nenhuma de uma janela à outra.
     $('seamAll').disabled = true;
     const alvo = frac;
     const janelas = this.windows();
@@ -3507,7 +3501,7 @@ const SEAM = {
       for (const outra of janelas) {
         const meio = (+outra.it.start || 0) + 0.5;
         try {
-          const r = await fetch(`api/seam-head?at=${meio.toFixed(3)}`);
+          const r = await fetch(`api/seam-rule?ref=${outra.ref}`);
           const d = await r.json();
           if (r.ok && d.top != null) {
             this.heads[outra.ref] = { top: +d.top, bottom: +d.bottom };
@@ -3518,7 +3512,8 @@ const SEAM = {
       $('seamAll').disabled = false;
       this.paint();
       refreshHeader();
-      toast(`Altura ${alvo.toFixed(2)} levada às outras janelas`, 3000);
+      const sobra = janelas.length - feitas;
+      toast(`Regra do topo do cabelo em ${feitas} janela(s)${sobra ? `; ${sobra} sem medida ficaram como estavam` : ''}`, 3500);
     })();
   },
   reset() {

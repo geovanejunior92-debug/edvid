@@ -209,18 +209,18 @@ the track reference you load after the gate. One of them is not optional:
   intervalo original, declarada na saída como aproximação. Corrigir o texto
   NUNCA move a legenda: o usuário está consertando o que foi ouvido, não
   quando foi dito.
-- **`seam_check.py <video> --at T --band-h N --focus-y N --zoom Z`** — a costura
-  cruza o alto da cabeça? Mede o topo da cabeça na fonte e aplica a
-  transformação do template (`(y_src − focusY) * zoom + bandH` — **o `+ bandH`
-  é o termo que inverte a conclusão se esquecido**). Exit ≠ 0 quando o efeito
-  não acontece. Só `layout: top`; o `bottom` é recusado em vez de chutado.
-- **`seam_apply.py <edit-dir> [--apply] [--force]`** — grava no `edit-data.json`
+- **`seam_check.py <video> --at T --band-h N --focus-y N --zoom Z [--matte M]`** —
+  **só aviso: não reprova, não decide e não altera a posição.** Sai 0 com qualquer
+  veredito. A posição vem da regra do topo do cabelo pela máscara:
+  `focusY = topo + 0,13 × (queixo − topo)`, que ele imprime quando recebe `--matte`.
+  A fração dele parte do detector de rosto e não define nada. Mantém a conta do
+  template (`(y_src − focusY) * zoom + bandH`) para apontar uma faixa reta. Só
+  `layout: top`; o `bottom` é recusado em vez de chutado.
+- **`seam_apply.py <edit-dir> [--apply]`** — grava no `edit-data.json`
   a altura de costura que ele ajustou com o mouse no preview (`seam[]` dentro de
-  `preview_edits.json`). Mede cada janela com o mesmo detector do
-  `seam_check.py` e **recusa gravar o que o gate reprova** sem `--force`: o
-  preview já mostrava o veredito ao vivo, e gravar um valor reprovado desfaria o
-  sentido de ter o gate. Só mexe em `focusY`, nunca em `bandH` (preso ao clipe),
-  e nunca no corte — só a Fase 2 re-renderiza.
+  `preview_edits.json`). Mostra o aviso do `seam_check.py` e grava mesmo assim. Só
+  mexe em `focusY`, nunca em `bandH` (preso ao clipe), e nunca no corte: só a Fase 2
+  re-renderiza.
 - **`split_band.py <clipe…> [--frame-width N]`** — o `bandH` de cada clipe para
   a costura cair na borda inferior dele, que é o padrão de divisão do Formato 1
   generalizado para qualquer proporção. Avisa quando o valor sai do padrão (aí
@@ -453,19 +453,20 @@ borda apontada com um clique.
   16/08 e 11/09: *"a divisão fica atrás da parte superior da minha cabeça como
   se eu estivesse na frente"*). Ter `matte` não basta: com o `focusY` 400 do
   layout padrão o cabelo para ABAIXO da faixa e o quadro fica idêntico a uma
-  faixa reta — o render conclui e o `check_inserts.py` aprova. Rode
-  **`seam_check.py <cut.mp4> --at <início da janela> --band-h N --focus-y N
-  --zoom Z`**: ele mede onde o topo da cabeça cai e devolve FAIXA RETA /
-  RASPANDO / OK / BAIXA DEMAIS. A fração aprovada por ele é ~0.40.
+  faixa reta — o render conclui e o `check_inserts.py` aprova. Calcule pela regra
+  do topo do cabelo: `focusY = topo + 0,13 × (queixo − topo)`, com o topo pelo alfa
+  da máscara, no primeiro quadro da janela, e confira num still. **`seam_check.py
+  <cut.mp4> --at <início da janela> --band-h N --focus-y N --zoom Z --matte M`** mostra
+  esse valor e avisa FAIXA RETA / RASPANDO / BAIXA DEMAIS; ele não decide nada.
 - `seam[]` (2026-09-12, **a costura ajustada com o mouse**) — ele abre a gaveta
   "Costura da tela dividida", escolhe a janela, clica em "Ajustar no player" e
   **arrasta a própria imagem** sob a linha até ela cruzar onde quiser (Shift =
   fino, ↑↓ = 1px). O palco recria as três camadas que o template compõe — arte no
   topo com a dissolução, pessoa transformada por `(y − focusY) * zoom + bandH`,
-  matte por cima — e o veredito (`ok`/`raspando`/`baixa demais`) aparece ao vivo,
-  medido pelo servidor com o MESMO detector do `seam_check.py` (rota
-  `/api/seam-head`). "Aplicar em todas" leva a **fração**, não o número: a cabeça
-  está em altura diferente em cada janela, e copiar `focusY` cru repetiria o erro.
+  matte por cima — e o aviso do `seam_check.py` aparece ao vivo (rota
+  `/api/seam-head`), sem decidir nada. "Regra em todas" calcula cada janela pela
+  regra do topo do cabelo, na máscara dela (rota `/api/seam-rule`): janela sem
+  máscara fica como estava.
   Aplique com **`seam_apply.py <edit> --apply`**; depois re-renderize só a Fase 2.
   **Por que se arrasta a pessoa e não a linha:** a fração onde a costura cruza a
   cabeça é `(focusY − topo) ÷ altura da cabeça` — `bandH` e `zoom` se cancelam.

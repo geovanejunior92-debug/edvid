@@ -660,11 +660,11 @@ continua medido num still, e mexer em `bandH` obriga a recalculá-lo.
 
 **Onde a costura tem que cair:** *"a divisão fica atrás da parte superior da
 minha cabeça como se eu estivesse na frente"*. Não é "em algum lugar da cabeça"
-— é no alto dela. `seam_check.py` mede isso e devolve a fração da altura da
-cabeça em que a costura cai; a calibragem aprovada é **~0.40**. Os três valores
-medidos num mesmo still: `focusY` 560 → 0.16 (só encosta), 640 → 0.28 (entra),
-720 → 0.40 (lê como a referência). O padrão do layout, 400, dá fração NEGATIVA:
-a cabeça inteira fica abaixo da costura e o resultado é uma faixa reta.
+— é no terço superior da cabeça real, pegando só parte do cabelo. Meça o topo do
+cabelo pelo alfa da máscara, no primeiro quadro da janela, e use
+`focusY = topo + 0,13 × (queixo − topo)`. `seam_check.py` só avisa: a fração dele
+parte do detector de rosto, que ignora o cabelo, e não define a posição. O padrão
+do layout, 400, costuma deixar a cabeça inteira abaixo da costura: uma faixa reta.
 
 
 **Isto, e não o `behindVideos[]` abaixo, é o que ele quer quando diz "atrás da

@@ -2,7 +2,7 @@
 
 O preview escreve `seam[]` dentro de `preview_edits.json` — uma entrada por
 janela mexida, com o `focusY` novo e a fração onde a linha passou a cruzar a
-cabeça. Este helper é o outro lado: valida contra a geometria real e grava.
+cabeça. Este helper é o outro lado: mostra o aviso do `seam_check.py` e grava.
 
 Três coisas que ele NÃO faz, de propósito:
 
@@ -13,9 +13,9 @@ Três coisas que ele NÃO faz, de propósito:
   `focusY` é a única alavanca honesta.
 - **Não toca no corte.** Nada aqui altera `edl.json` nem `cut.mp4`; só a Fase 2
   re-renderiza.
-- **Não decide sozinho.** Fração fora da janela aprovada vira aviso e, sem
-  `--force`, recusa: o preview já mostrava o veredito ao vivo, e gravar um valor
-  que o gate reprova desfaria o sentido de ter o gate.
+- **Não decide nada pela fração.** Ela parte do detector de rosto e só vira
+  aviso; o que vale é o que ele ajustou olhando a imagem. `--force` não tem mais
+  efeito e fica só para não quebrar quem já o passa.
 
 Uso:
     uv run python helpers/seam_apply.py <edit-dir> [--apply] [--force]
@@ -47,7 +47,7 @@ def carregar(edit: Path) -> tuple[dict, list[dict], Path]:
 
 def avaliar(item: dict, janela: dict, cut: Path,
             layout_w: float = seam_check.LAYOUT_W) -> tuple[str, str]:
-    """Veredito da costura com o focusY novo, medido do jeito do gate."""
+    """Aviso sobre a costura com o focusY novo, medido do jeito do `seam_check.py`."""
     novo = float(item["focusY"])
     at = float(item.get("start", janela.get("start", 0))) + 0.5
     try:
@@ -65,7 +65,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Grava no edit-data a costura ajustada no preview")
     ap.add_argument("edit_dir", type=Path)
     ap.add_argument("--apply", action="store_true", help="grava (sem isto, só mostra)")
-    ap.add_argument("--force", action="store_true", help="grava mesmo com veredito reprovado")
+    ap.add_argument("--force", action="store_true", help="sem efeito: o aviso não impede a gravação")
     args = ap.parse_args()
 
     edit = args.edit_dir.expanduser().resolve()
@@ -73,7 +73,7 @@ def main() -> None:
     cut = edit / "cut.mp4"
     janelas = data.get("splitInserts") or []
 
-    reprovados = 0
+    avisos = 0
     mudancas: list[tuple[int, float]] = []
     for item in seam:
         ref = item.get("ref")
@@ -89,17 +89,17 @@ def main() -> None:
         layout_w = float(data.get("width") or seam_check.LAYOUT_W)
         veredito, porque = (avaliar(item, janela, cut, layout_w) if cut.is_file()
                             else ("SEM CORTE", "cut.mp4 ausente — não dá para medir"))
-        marca = "ok    " if veredito in ("OK", "SEM MEDIDA", "SEM CORTE") else "REPROVA"
-        if veredito not in ("OK", "SEM MEDIDA", "SEM CORTE"):
-            reprovados += 1
+        marca = "ok    " if veredito in ("OK", "SEM MEDIDA", "SEM CORTE") else "AVISO "
+        if marca == "AVISO ":
+            avisos += 1
         nome = (janela.get("src") or "").split("/")[-1] or f"janela {ref + 1}"
         print(f"{marca}  {ref + 1}. {nome:<26} focusY {antigo:.0f} → {novo:.0f}  [{veredito}] {porque}")
         mudancas.append((ref, novo))
 
     if not mudancas:
         sys.exit("nada a aplicar")
-    if reprovados and not args.force:
-        sys.exit(f"\n{reprovados} janela(s) com veredito reprovado — use --force se for deliberado")
+    if avisos:
+        print(f"\n{avisos} janela(s) com aviso: confira num still contra a regra do topo do cabelo")
     if not args.apply:
         print(f"\n(sem --apply: nada foi gravado) — {len(mudancas)} janela(s) prontas")
         return

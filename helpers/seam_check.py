@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""A costura passa atrás do ALTO da cabeça? — o gate da tela dividida dele.
+"""A costura passa atrás do ALTO da cabeça? Um aviso, não um gate.
+
+**Este helper só avisa: não reprova, não decide e não altera a posição.** Quem
+define a costura é a regra do topo do cabelo, medido pela máscara:
+`focusY = topo + 0,13 × (queixo − topo)` (`rule_focus`). A fração abaixo parte da
+caixa do detector de rosto, que começa na testa e ignora o cabelo, e por isso não
+define nada: serve para chamar atenção a uma faixa reta ou a um número estranho.
 
 Regra dele, repetida em 16/08 e de novo em 11/09: *"a divisão fica atrás da
 parte superior da minha cabeça como se eu estivesse na frente"*. Ter `matte` na
@@ -11,8 +17,7 @@ template (`focusY` 400 no layout `top`) cai justamente nesse caso.
 
 O que este helper faz é a conta que ninguém deveria fazer de cabeça: onde o
 topo da cabeça CAI na tela, dado o par zoom/focusY, e onde isso fica em relação
-à costura. Ele não julga estética — julga se o efeito existe e se a costura
-cruza o terço superior em vez de atravessar o rosto.
+à costura. Ele não julga estética: aponta se o efeito parece não existir.
 
 A transformação é a que o próprio template documenta: um ponto `y_src` da fonte
 renderiza em `(y_src − focusY) * zoom + bandH`. O termo `+ bandH` é fácil de
@@ -52,6 +57,13 @@ REFERENCE = 0.40          # o que ele aprovou
 # e não um: com dissolução estreita importa onde a linha cruza a cabeça; com
 # dissolução larga importa se o topo da cabeça cai dentro da faixa que dissolve.
 BLEND_MIN, BLEND_MAX = 0.15, 0.85   # do referência: topo da cabeça em 0,24–0,74
+
+# A regra dele (2026-09-23): a costura cruza o terço superior da cabeça real,
+# pegando só parte do cabelo. A costura cai em source-y = focusY, com qualquer
+# zoom ou bandH.
+RULE_FRACTION = 0.13
+ALPHA_LEVEL = 128         # alfa a partir do qual o pixel é pessoa
+HAIR_MIN_WIDTH = 0.005    # fração da largura: fio solto não é o topo do cabelo
 
 
 def seam_position(head_top: float, head_bottom: float, focus_y: float,
@@ -132,8 +144,45 @@ def head_box(video: Path, at: float, layout_w: float = LAYOUT_W) -> tuple[float,
     return float(y) * escala, float(y + h) * escala
 
 
+def hair_top(matte: Path, layout_w: float = LAYOUT_W) -> float:
+    """Topo do cabelo pelo alfa do PRIMEIRO quadro da máscara, na grade do layout.
+
+    O quadro 0 de cada matte é o início da janela (`person_matte.py`).
+    """
+    matte = Path(matte)
+    info = json.loads(subprocess.run(
+        ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height',
+         '-of', 'json', str(matte)], capture_output=True, text=True, check=True).stdout)['streams'][0]
+    w, h = int(info['width']), int(info['height'])
+    # O decodificador nativo do VP9 descarta o alfa; precisa do libvpx.
+    entrada = ['-c:v', 'libvpx-vp9'] if matte.suffix.lower() == '.webm' else []
+    raw = subprocess.run(['ffmpeg', '-v', 'error', *entrada, '-i', str(matte), '-frames:v', '1',
+                          '-vf', 'format=rgba,alphaextract,format=gray', '-f', 'rawvideo', '-'],
+                         capture_output=True, check=True).stdout
+    if len(raw) < w * h:
+        raise ValueError(f'Não consegui ler o alfa de {matte.name}')
+    minimo = max(1, int(w * HAIR_MIN_WIDTH))
+    for y in range(h):
+        if sum(v >= ALPHA_LEVEL for v in raw[y * w:(y + 1) * w]) >= minimo:
+            return y * layout_w / w
+    raise ValueError(f'A máscara {matte.name} não tem pessoa no primeiro quadro')
+
+
+def focus_from_rule(top: float, chin: float) -> float:
+    if chin <= top:
+        raise ValueError('Topo do cabelo abaixo do queixo')
+    return top + RULE_FRACTION * (chin - top)
+
+
+def rule_focus(video: Path, at: float, matte: Path, layout_w: float = LAYOUT_W) -> dict:
+    """O `focusY` da regra: topo pela máscara, queixo pela base da caixa do rosto."""
+    top = hair_top(matte, layout_w)
+    _, chin = head_box(video, at, layout_w)
+    return {'focusY': round(focus_from_rule(top, chin)), 'hairTop': round(top, 1), 'chin': round(chin, 1)}
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description='A costura cruza o alto da cabeça?')
+    ap = argparse.ArgumentParser(description='Aviso: a costura parece cruzar o alto da cabeça?')
     ap.add_argument('video', type=Path)
     ap.add_argument('--at', type=float, required=True, help='instante do início da janela')
     ap.add_argument('--band-h', type=float, required=True)
@@ -144,6 +193,7 @@ def main() -> None:
                     help='192 no Formato 2; 100 (padrão) no Formato 1')
     ap.add_argument('--layout-width', type=float, default=LAYOUT_W,
                     help='`width` do edit-data: a medida do quadro é convertida para essa grade')
+    ap.add_argument('--matte', type=Path, help='máscara da janela: mostra o focusY da regra do cabelo')
     args = ap.parse_args()
 
     try:
@@ -154,13 +204,20 @@ def main() -> None:
         print(f'✗ {e}')
         sys.exit(2)
 
-    print(f"{r['verdict']} ({r['criterion']}): {r['why']}")
+    prefixo = 'ok' if r['verdict'] == 'OK' else f"AVISO {r['verdict']}"
+    print(f"{prefixo} ({r['criterion']}): {r['why']}")
     print(f"  cabeça na fonte {top:.0f}–{bottom:.0f} · topo renderiza em {r['headTopRendered']:.0f} · "
           f"costura em {r['seamY']:.0f} · fração {r['fraction']}")
-    if r['verdict'] != 'OK':
-        step = 'suba' if r['fraction'] < UPPER_MIN else 'desça'
-        print(f"  → {step} o focusY e rode de novo (focusY MAIOR sobe a pessoa)")
-    sys.exit(0 if r['verdict'] == 'OK' else 1)
+    if args.matte:
+        try:
+            regra = rule_focus(args.video, args.at, args.matte, args.layout_width)
+            print(f"  regra do cabelo: focusY {regra['focusY']} (topo {regra['hairTop']:.0f}, "
+                  f"queixo {regra['chin']:.0f}); nesta janela está {args.focus_y:.0f}")
+        except (OSError, ValueError, ImportError, subprocess.CalledProcessError) as e:
+            print(f'  regra do cabelo: sem medida ({e})')
+    else:
+        print('  a posição vem da regra do topo do cabelo: passe --matte para calculá-la')
+    sys.exit(0)
 
 
 if __name__ == '__main__':

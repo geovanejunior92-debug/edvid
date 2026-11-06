@@ -202,8 +202,8 @@ na barra superior do Reels.
 
 - **A costura cruza o TERÇO SUPERIOR da cabeça, pegando só parte do cabelo.**
   *"A divisão está abaixo da minha orelha; essa linha deve ficar no terço
-  superior da minha cabeça."* A "fração 0,40" do `seam_check.py` é medida a
-  partir da caixa do DETECTOR DE ROSTO, que começa na testa e ignora o cabelo.
+  superior da minha cabeça."* A "fração 0,40" do `seam_check.py`, que hoje é só
+  aviso, é medida a partir da caixa do DETECTOR DE ROSTO, que começa na testa e ignora o cabelo.
   Numa fonte em plano médio isso pôs a costura a 52–59% da cabeça real, nos
   olhos. Meça o topo do cabelo pelo alfa da máscara (`person_matte.py`, primeiro
   quadro da janela) e use `focusY = topo + 0,13 × (queixo − topo)`. A costura
