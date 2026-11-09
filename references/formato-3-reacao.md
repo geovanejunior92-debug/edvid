@@ -13,6 +13,7 @@ Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra p
 - **Troca para a saída:** clarão `saida` com whoosh baixo, a única transição do formato. Sem flash no fim da fala de entrada.
 - **Conteúdo maior que o trecho ouvindo:** esse trecho entra em laço, sem repetir a fala, com fusão curta só no painel de baixo.
 - **Entrada e saída:** sempre da mesma roupa. O script recusa a mistura.
+- **Identificação e pedido para seguir:** cortar do conteúdo os trechos em que a pessoa, profissional de saúde ou não, se identifica (nome, profissão, cargo, perfil) ou pede para seguir. Vale em qualquer ponto do vídeo. Transcrever com tempo por palavra antes de montar, cortar a frase inteira e conferir se o que sobra continua fazendo sentido. Nome ou perfil só escrito na tela não sai com esse corte: avisar o usuário.
 - **Velocidade:** 1,07× no vídeo inteiro, com o tom preservado.
 - **Resolução:** 4K vertical, a das entradas e saídas.
 
@@ -20,7 +21,7 @@ Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra p
 ```bash
 python helpers/reacao.py --conteudo video.mp4 --entrada 1 --saida 1 --cartao "Texto" -o saida.mp4
 ```
-Conteúdo dentro de outra montagem: `--crop w:h:x:y --ini S --fim S`. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
+Conteúdo dentro de outra montagem: `--crop w:h:x:y --ini S --fim S`. Trechos a remover: `--cortar "12.3-15,40-44.5"`, no tempo do arquivo original. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
 
 ## Estado
 O render roda, mas o resultado ainda não foi visto. No primeiro vídeo real, abrir quadros da costura, do cartão, da volta do laço e do clarão antes de entregar. O texto do cartão precisa sair do que é dito no conteúdo.

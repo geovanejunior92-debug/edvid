@@ -84,6 +84,39 @@ def segmentos_ouvindo(arq: str, ini: float, fim: float, precisa: float):
     return segs, round(dif, 2)
 
 
+def trechos_mantidos(ini: float, fim: float, cortes: str) -> list[tuple[float, float]]:
+    """Recebe "12.3-15,40-44.5" e devolve o que sobra entre ini e fim."""
+    fora = sorted(tuple(float(x) for x in c.split("-")) for c in cortes.split(","))
+    fica, pos = [], ini
+    for a, b in fora:
+        if a >= b:
+            raise SystemExit(f"Corte inválido: {a}-{b}")
+        if a > pos:
+            fica.append((pos, min(a, fim)))
+        pos = max(pos, b)
+    if pos < fim:
+        fica.append((pos, fim))
+    fica = [(a, b) for a, b in fica if b - a > 0.05]
+    if not fica:
+        raise SystemExit("Os cortes removeram o conteúdo inteiro.")
+    return fica
+
+
+def conteudo_limpo(arq: str, fica: list[tuple[float, float]], destino: str) -> None:
+    """Remove os trechos cortados, com fusão curta no áudio para não estalar."""
+    f, rot = [], ""
+    for i, (a, b) in enumerate(fica):
+        d = b - a
+        f.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts=PTS-STARTPTS[v{i}]")
+        f.append(f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS,"
+                 f"afade=t=in:d=0.02,afade=t=out:st={max(0.0, d - 0.02):.3f}:d=0.02[a{i}]")
+        rot += f"[v{i}][a{i}]"
+    f.append(f"{rot}concat=n={len(fica)}:v=1:a=1[v][a]")
+    subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", arq, "-filter_complex", ";".join(f),
+                    "-map", "[v]", "-map", "[a]", "-c:v", "hevc_videotoolbox", "-q:v", "80",
+                    "-c:a", "aac", "-b:a", "256k", destino], check=True)
+
+
 def mascara(destino: str) -> None:
     y = np.arange(FADE_FIM, dtype=np.float32)
     t = np.clip((y - FADE_INI) / (FADE_FIM - FADE_INI), 0, 1)
@@ -126,6 +159,7 @@ def main() -> None:
     ap.add_argument("--crop", help="w:h:x:y da pessoa original, quando o conteúdo vem dentro de outra montagem")
     ap.add_argument("--ini", type=float, default=0.0)
     ap.add_argument("--fim", type=float)
+    ap.add_argument("--cortar", help='trechos a remover do conteúdo, no tempo do arquivo original: "12.3-15,40-44.5"')
     ap.add_argument("--foco-y", type=float, default=0.0, help="0 = encosta no topo, 1 = na base, ao recortar o conteúdo")
     ap.add_argument("--biblioteca", default="~/Videos/reacoes/biblioteca.json")
     a = ap.parse_args()
@@ -136,6 +170,11 @@ def main() -> None:
         raise SystemExit(f"Roupas diferentes: entrada {a.entrada} é {ent['roupa']}, saída {a.saida} é {sai['roupa']}.")
 
     c_fim = a.fim if a.fim else duracao(a.conteudo)
+    if a.cortar:
+        limpo = f"{tempfile.mkdtemp(prefix='reacao-limpo-')}/conteudo.mov"
+        conteudo_limpo(a.conteudo, trechos_mantidos(a.ini, c_fim, a.cortar), limpo)
+        a.conteudo, a.ini = limpo, 0.0
+        c_fim = duracao(limpo)
     L = c_fim - a.ini
     t0 = max(0.0, ent["fala"][0] - 0.12)
     d_a = ent["fala"][1] + 0.25 - t0          # fim da entrada: a voz dela acabou
