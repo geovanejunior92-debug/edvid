@@ -69,8 +69,8 @@ def segmentos_ouvindo(arq: str, ini: float, fim: float, precisa: float):
     dif, a, b = min(melhores)
     a, b = ini + a, ini + b
     segs, total = [(ini, b)], b - ini
-    while total < precisa:
-        ate = min(b, a + precisa - total + XFADE)
+    while total < precisa - 0.01:  # sem a folga, o arredondamento pode prender este laço
+        ate = min(b, a + max(precisa - total + XFADE, 1.0))
         segs.append((a, ate))
         total += (ate - a) - XFADE
     return segs, round(dif, 2)
@@ -270,6 +270,34 @@ def identificacao(destino: str) -> None:
     im.save(destino)
 
 
+def expr_degrau(trechos, chave, T):
+    """Valor que muda de uma vez em cada corte de cena; t começa no fim da abertura."""
+    pts = [(max(0.0, x["t"] - T), x[chave]) for x in trechos]
+    e = str(pts[0][1])
+    for (_, v0), (t1, v1) in zip(pts, pts[1:]):
+        if v1 != v0:
+            e += f"+({v1 - v0})*gte(t,{t1:.3f})"
+    return e
+
+
+def expr_rampa(trechos, chave, T, mais=0, dur=0.45):
+    """Valor que desliza depois de cada corte, para a imagem de baixo não saltar."""
+    pts = [(max(0.0, x["t"] - T), x[chave]) for x in trechos]
+    e = str(pts[0][1] + mais)
+    for (_, v0), (t1, v1) in zip(pts, pts[1:]):
+        if v1 != v0:
+            e += f"+({v1 - v0})*clip((t-{t1:.3f})/{dur},0,1)"
+    return e
+
+
+def mascara_alta(destino: str, largura: int) -> None:
+    """Faixa estreita: branco em cima, dissolução e preto. Recortada e ampliada a cada quadro."""
+    t = np.clip(np.arange(H, dtype=np.float32) / largura, 0, 1)
+    a = 1 - t * t * (3 - 2 * t)
+    col = np.concatenate([np.full(H, 255, np.uint8), (a * 255).astype(np.uint8)])
+    Image.fromarray(np.tile(col[:, None], (1, 16))).convert("L").save(destino)
+
+
 def montar(job: dict, biblioteca: str, saida: str) -> dict:
     lib = json.load(open(os.path.expanduser(biblioteca)))["clipes"]
     ent, sai = lib[f"entrada {job['entrada']}"], lib[f"saida {job['saida']}"]
@@ -343,6 +371,16 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
         inp += ["-loop", "1", "-framerate", str(FPS), "-i", faixa]
     if cartao2:
         inp += ["-loop", "1", "-framerate", str(FPS), "-i", cartao2]
+    # trechos: enquadramento por cena, em segundos do conteúdo já cortado.
+    # Cada um tem y (linha do original no topo do painel) e fade_ini (início da dissolução em 4K).
+    trechos = mold.get("trechos")
+    if trechos:
+        trechos = sorted(trechos, key=lambda x: x["t"])
+        fw = mold.get("fade_largura", FADE_FIM - FADE_INI)
+        i_alta = i_id + 1 + (1 if faixa else 0) + (1 if cartao2 else 0)
+        alta = f"{tmp}/mascara_alta.png"
+        mascara_alta(alta, fw)
+        inp += ["-loop", "1", "-framerate", str(FPS), "-i", alta]
 
     f = []
     for i in range(n):
@@ -356,7 +394,14 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     d_ab = max(d_int, base_capa - 260 - ent["topo_cabelo"])
     f.append(f"[{ult}]split=2[ba][bm]")
     f.append(f"[ba]trim=0:{D:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_ab}:0:0,pad={W}:{H}:0:{d_ab}:black[f1]")
-    f.append(f"[bm]trim={D:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_int}:0:0,pad={W}:{H}:0:{d_int}:black[f2]")
+    if trechos:
+        cab = ent["topo_cabelo"]
+        y_eu = expr_rampa(trechos, "fade_ini", T, fw - 132 - cab)
+        f.append(f"[bm]trim={D:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS[bmt]")
+        f.append(f"color=black:s={W}x{H}:r={FPS}:d={L - T + 1:.3f},format=yuv420p[bgm]")
+        f.append(f"[bgm][bmt]overlay=0:'{y_eu}':shortest=1,format=yuv420p[f2]")
+    else:
+        f.append(f"[bm]trim={D:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_int}:0:0,pad={W}:{H}:0:{d_int}:black[f2]")
     # abertura em escala 1: a capa original continua alinhada com a imagem de baixo dela
     f.append(f"[{i_p}:v]crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
              f"setpts=PTS*{d_a / job['intro_fim']:.5f},fps={FPS},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuv420p[t1i]")
@@ -381,12 +426,23 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     # meio: recorte acima da legenda antiga e do que vaza do outro reator
     # sem zoom (pedido de 2026-11-09): largura inteira, só desce o recorte com moldura.y
     recorte = f"crop=720:711:0:{mold.get('y', 0)}"
-    f.append(f"[cc2]trim={T:.3f}:{L:.3f},setpts=PTS-STARTPTS,{recorte},"
-             f"scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuva420p[t2a]")
-    f.append(f"[mm2]trim=duration={L - T:.3f},setpts=PTS-STARTPTS[m2]")
+    if trechos:
+        y_cont = "3*(" + expr_degrau(trechos, "y", T) + ")"
+        fi = expr_rampa(trechos, "fade_ini", T)
+        f.append(f"[cc2]trim={T:.3f}:{L:.3f},setpts=PTS-STARTPTS,scale={W}:{H}:flags=lanczos,setsar=1,fps={FPS},"
+                 f"pad={W}:{2 * H}:0:0:black,crop={W}:{H}:0:'{y_cont}',format=yuva420p[t2a]")
+        f.append(f"[mm2]nullsink")
+        f.append(f"[{i_alta}:v]format=gray,trim=duration={L - T:.3f},setpts=PTS-STARTPTS,"
+                 f"crop=16:{H}:0:'{H}-({fi})',scale={W}:{H}:flags=neighbor,format=gray[m2]")
+    else:
+        f.append(f"[cc2]trim={T:.3f}:{L:.3f},setpts=PTS-STARTPTS,{recorte},"
+                 f"scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuva420p[t2a]")
+        f.append(f"[mm2]trim=duration={L - T:.3f},setpts=PTS-STARTPTS[m2]")
     f.append("[t2a][m2]alphamerge[t2]")
     f.append("[f2][t2]overlay=0:0:shortest=1[c2]")
     f.append(f"[{i_l}:v]fps={FPS},format=rgba,trim=duration={L - T:.3f},setpts=PTS-STARTPTS[ll]")
+    if trechos:
+        leg_y = "'" + expr_rampa(trechos, "fade_ini", T, mold.get("leg_mais", -300)) + "'"
     if faixa:
         f.append(f"[c2][ll]overlay=0:{leg_y}:shortest=1[c2l]")
         f.append(f"[{i_id + 1}:v]format=rgba,trim=duration={L - T:.3f},setpts=PTS-STARTPTS[fx]")

@@ -17,6 +17,7 @@ Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra p
 - **Capa:** manter o texto e a posição da capa do conteúdo original durante a entrada. Ela é extraída da abertura e volta por cima de tudo; a pessoa desce o necessário para a capa não cobrir os olhos.
 - **Conteúdo dentro de outra montagem:** usar só a pessoa original. A fala e a saída do outro reator saem, e o que vaza do fundo dele fica fora da dissolução.
 - **Sem zoom no conteúdo:** pedido dele em 2026-11-09. Sempre a largura inteira do vídeo, porque o zoom cortava a pessoa (vídeos 06, 08 e 12 do primeiro lote). Para esconder o que vaza, ajustar `moldura`, nunca ampliar. Logo do conteúdo que sobrar fica: avisar o usuário.
+- **Enquadramento em todo vídeo:** pedido dele em 2026-11-09. Analisar o conteúdo cena a cena e corrigir sempre o que não couber bem em cima, em todo vídeo novo. O recorte acompanha o rosto (`moldura.trechos`). Se não couber, a imagem dele desce por um tempo, a parte de baixo fica menor, e depois volta ao normal. Sem zoom. Conferir quadros de cada trecho antes de entregar.
 - **Identificação do médico:** durante a fala da entrada e da saída, e só nelas, mostrar na parte de baixo, em fonte fina e discreta: `Dr. Geovane Júnior` e `CRM - PE 28037`.
 - **Velocidade:** 1,07× no vídeo inteiro, com o tom preservado.
 - **Resolução:** 4K vertical, a das entradas e saídas.
@@ -41,7 +42,7 @@ python helpers/reacao.py job.json -o saida.mp4
 ```
 O job traz `conteudo`, `ini`, `fim`, `intro_fim`, `cortes`, `capa` (`box` ou `rect`, em pixels de 720x1280), `palavras`, `troca`, `entrada` e `saida`. Conferir `capa` e o texto da legenda em cada vídeo.
 
-`moldura` é opcional e ajusta um vídeo sem zoom: `y` (linha do original em que o recorte começa, para tirar faixa preta ou subir o rosto), `fade_ini` e `fade_fim` (dissolução em 4K; `fade_fim` termina antes de o outro reator aparecer), `topo_cabeca` e `leg_y`. Boca na dissolução: subir com `y` ou começar a dissolução mais abaixo. Conteúdo com legenda própria no meio da imagem: `sem_legenda`, em vez de escrever por cima. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
+`moldura` é opcional e ajusta um vídeo sem zoom: `y` (linha do original em que o recorte começa, para tirar faixa preta ou subir o rosto), `fade_ini` e `fade_fim` (dissolução em 4K; `fade_fim` termina antes de o outro reator aparecer), `topo_cabeca` e `leg_y`. Boca na dissolução: subir com `y` ou começar a dissolução mais abaixo. Para variar por cena: `trechos`, lista de `{t, y, fade_ini}` em segundos do conteúdo já cortado, com `fade_largura` opcional; a imagem de baixo e a legenda deslizam junto. Conteúdo com legenda própria no meio da imagem: `sem_legenda`, em vez de escrever por cima. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
 
 ## Estado
 Em uso: lote de 20 vídeos em 2026-11-08, com quadros de cada um revisados. Áudio medido, mas não ouvido por inteiro.
