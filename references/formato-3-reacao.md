@@ -22,9 +22,18 @@ Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra p
 - **Resolução:** 4K vertical, a das entradas e saídas.
 
 ## Entrega
-Cada vídeo editado vai com uma legenda para o post, informativa e educativa (pedido dele em 2026-11-09, depois de achar ruins as de uma linha só). Estrutura: gancho na primeira linha, de até 125 caracteres; o que o vídeo ensina, em poucas linhas, com os nomes de exames, hábitos, passos ou sintomas ditos nele; uma chamada específica para salvar, enviar ou comentar; 2 a 3 hashtags do tema.
+Cada vídeo editado vai com uma legenda para o post no padrão que ele definiu ao reescrever 51 de 55 legendas em 2026-11-09 (mediana de 73 para 25 palavras). Exemplos: `~/Videos/reacoes/prontos/legendas.md` e `lote2/legendas.md`.
 
-Passar pelo `humanizer` antes de entregar e usar só o que é dito no conteúdo, sem inventar fato, número ou nome. Afirmação discutível vai atribuída a quem fala no vídeo ("segundo ele"), sem virar conselho do médico.
+Estrutura: gancho curto, no máximo uma frase de contexto, uma chamada para salvar, enviar ou comentar, `Dr. Geovane Júnior` / `CRM - PE 28037` e 2 a 4 hashtags do tema. Alvo de 15 a 30 palavras antes da identificação.
+
+- A legenda chama para o vídeo e não resume o conteúdo. Lista só quando ela é o valor do post.
+- Evitar "segundo ele", "no vídeo" e "essa é a tese dele".
+- Tese discutível: não resumir. Perguntar o que a pessoa achou e manter uma frase de cuidado, como levar a dúvida à consulta.
+- Preferir "canetinha" ou "caneta" a nome comercial no texto.
+- Conferir em um quadro se quem fala é homem ou mulher antes de usar ele ou ela.
+- Passar pelo `humanizer` e não inventar fato, número ou nome.
+
+No TikTok, somar `#fy #viral #fyp`. A capa precisa mostrar o Dr. Geovane de olhos abertos e sem careta.
 
 ## Como montar
 ```bash
