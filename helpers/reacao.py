@@ -105,9 +105,9 @@ def conteudo_limpo(arq: str, fica, destino: str) -> None:
                     "-c:a", "aac", "-b:a", "256k", destino], check=True)
 
 
-def mascara(destino: str) -> None:
+def mascara(destino: str, ini: int = FADE_INI, fim: int = FADE_FIM) -> None:
     y = np.arange(FADE_FIM, dtype=np.float32)
-    t = np.clip((y - FADE_INI) / (FADE_FIM - FADE_INI), 0, 1)
+    t = np.clip((y - ini) / (fim - ini), 0, 1)
     a = 1 - t * t * (3 - 2 * t)
     Image.fromarray(np.tile((a * 255).astype(np.uint8)[:, None], (1, W))).convert("L").save(destino)
 
@@ -302,7 +302,11 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     g_s = alvo - lufs(sai["arquivo"], s0, sai["fala"][1] + 0.1 - s0)
 
     masc, capa = f"{tmp}/mascara.png", f"{tmp}/capa.png"
-    mascara(masc)
+    # moldura: conteúdo em que a pessoa anda pela largura toda não pode levar zoom.
+    # Mostra a largura inteira e termina a dissolução antes de vazar o outro reator.
+    mold = job.get("moldura") or {}
+    mascara(masc, mold.get("fade_ini", FADE_INI), mold.get("fade_fim", FADE_FIM))
+    leg_y = mold.get("leg_y", LEG_Y)
     base_capa = extrair_capa(arq, job["intro_fim"], capa, job["capa"])
     # cartão gravado no começo do conteúdo: escala 1 e nada de legenda nova enquanto ele estiver lá
     cartao2 = None
@@ -312,7 +316,6 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
         T = segundo_cartao(arq, ini, job["cartao2"], cartao2) + 0.03
     T = min(max(2 / FPS, T), L - 1)
     capa_ate = d_a + T if job.get("capa_continua") else d_a
-    corta = job.get("faixa", {}).get("corta_topo", 0)
     faixa = None
     if job.get("faixa"):
         amostra = quadros(arq, ini, fim, 1, 720, 1280, "rgb24")
@@ -348,7 +351,7 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     for i in range(1, n):
         f.append(f"[{ult}][b{i}]xfade=transition=fade:duration={XFADE}:offset={ofs - XFADE:.3f}[j{i}]")
         ult, ofs = f"j{i}", ofs - XFADE + (segs[i][1] - segs[i][0])
-    d_int = TOPO_CABECA - ent["topo_cabelo"]
+    d_int = mold.get("topo_cabeca", TOPO_CABECA) - ent["topo_cabelo"]
     # na abertura, a pessoa desce o que for preciso para a capa não cobrir os olhos
     d_ab = max(d_int, base_capa - 260 - ent["topo_cabelo"])
     f.append(f"[{ult}]split=2[ba][bm]")
@@ -376,20 +379,20 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
         f.append("[c1k0]null[c1k]")
     f.append(f"[c1k][id1]overlay=0:{ID_Y}:eof_action=pass,format=yuv420p[p1]")
     # meio: recorte acima da legenda antiga e do que vaza do outro reator
-    lc = job["limpo_ate"]
-    cw = int(720 * (lc - corta) / 711) // 2 * 2
-    f.append(f"[cc2]trim={T:.3f}:{L:.3f},setpts=PTS-STARTPTS,crop={cw}:{lc - corta}:(iw-{cw})/2:{corta},"
+    # sem zoom (pedido de 2026-11-09): largura inteira, só desce o recorte com moldura.y
+    recorte = f"crop=720:711:0:{mold.get('y', 0)}"
+    f.append(f"[cc2]trim={T:.3f}:{L:.3f},setpts=PTS-STARTPTS,{recorte},"
              f"scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuva420p[t2a]")
     f.append(f"[mm2]trim=duration={L - T:.3f},setpts=PTS-STARTPTS[m2]")
     f.append("[t2a][m2]alphamerge[t2]")
     f.append("[f2][t2]overlay=0:0:shortest=1[c2]")
     f.append(f"[{i_l}:v]fps={FPS},format=rgba,trim=duration={L - T:.3f},setpts=PTS-STARTPTS[ll]")
     if faixa:
-        f.append(f"[c2][ll]overlay=0:{LEG_Y}:shortest=1[c2l]")
+        f.append(f"[c2][ll]overlay=0:{leg_y}:shortest=1[c2l]")
         f.append(f"[{i_id + 1}:v]format=rgba,trim=duration={L - T:.3f},setpts=PTS-STARTPTS[fx]")
         f.append("[c2l][fx]overlay=0:0:shortest=1,format=yuv420p[p2]")
     else:
-        f.append(f"[c2][ll]overlay=0:{LEG_Y}:shortest=1,format=yuv420p[p2]")
+        f.append(f"[c2][ll]overlay=0:{leg_y}:shortest=1,format=yuv420p[p2]")
     f.append(f"[id2a]trim=duration={d_c:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0.1:d=0.15:alpha=1,fade=t=out:st={d_c - 0.15:.3f}:d=0.15:alpha=1[id2]")
     f.append(f"[{i_s}:v]fps={FPS},setsar=1,trim=duration={d_c:.3f},setpts=PTS-STARTPTS[sv0]")
     f.append(f"[sv0][id2]overlay=0:{ID_Y}:shortest=1,format=yuv420p[sv]")
