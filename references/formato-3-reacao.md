@@ -1,0 +1,26 @@
+# Formato 3: reação em tela dividida
+
+Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra pessoa.
+
+## Estrutura
+1. **Entrada:** fala curta dele na metade de baixo; conteúdo mudo em cima, com cartão de citação.
+2. **Meio:** conteúdo em cima, com o áudio dele; a pessoa ouvindo embaixo, sem som próprio.
+3. **Saída:** tela cheia, com a fala de encerramento. É o fim do vídeo: **sem tela azul final**.
+
+## Regras
+- **Divisão:** no centro da tela, com dissolução larga (y 874 a 1066 em 1920; 1748 a 2132 em 4K).
+- **Passagem:** o vídeo de cima fica transparente na parte de baixo e se funde com a imagem da pessoa, sem borda, sombra ou faixa escura. Sem matte.
+- **Troca para a saída:** clarão `saida` com whoosh baixo, a única transição do formato. Sem flash no fim da fala de entrada.
+- **Conteúdo maior que o trecho ouvindo:** esse trecho entra em laço, sem repetir a fala, com fusão curta só no painel de baixo.
+- **Entrada e saída:** sempre da mesma roupa. O script recusa a mistura.
+- **Velocidade:** 1,07× no vídeo inteiro, com o tom preservado.
+- **Resolução:** 4K vertical, a das entradas e saídas.
+
+## Como montar
+```bash
+python helpers/reacao.py --conteudo video.mp4 --entrada 1 --saida 1 --cartao "Texto" -o saida.mp4
+```
+Conteúdo dentro de outra montagem: `--crop w:h:x:y --ini S --fim S`. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
+
+## Estado
+O render roda, mas o resultado ainda não foi visto. No primeiro vídeo real, abrir quadros da costura, do cartão, da volta do laço e do clarão antes de entregar. O texto do cartão precisa sair do que é dito no conteúdo.

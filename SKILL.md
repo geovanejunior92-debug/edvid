@@ -1063,6 +1063,8 @@ The cut is approved and the user picked the style in the UI (`preview_style.json
 - **Vertical / Reels / TikTok / Shorts → read `references/shortform.md`.** Karaoke captions, static hook headline, dynamic camera, inserts, behind-the-subject, SFX, soundtrack.
 - **Horizontal / YouTube / tutorial / vlog → read `references/longform.md`.** Retention cut is there too (read it BEFORE Phase 1 on longform jobs), B-roll, lower-thirds, chapter cards, callouts, .srt + chapters, soundtrack.
 
+**"Formato 3" ou vídeo de reação → `references/formato-3-reacao.md` e `helpers/reacao.py`.** Não passa pelas Fases 1 e 2.
+
 **"Tela dividida formato padrão 2" → `assets/presets/formato-2.json`.** Arte em
 cima com dissolução LARGA (bandH 874 + 192 de dissolução) e **sem matte**: a
 arte termina de sumir exatamente onde a cabeça começa, e é isso que põe a pessoa
