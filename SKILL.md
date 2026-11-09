@@ -65,7 +65,7 @@ Pedido de "comercial animado", "comercial estilo Apple", "estúdio de edição" 
 12. **Verify numerically first.** Run `verify_cut.py` on every rendered cut; open images only for flagged junctions. Batch any multi-frame look into one `contact_sheet.py` / `grade.py --candidates` montage.
 13. **Never Read machine data into context**: `transcripts/*.json` (raw), `captions.json`, `track.json`, `segments.json`, matte/track binaries. Read `takes_packed.md` and helper stdout instead. Para inspecionar tempos por palavra, processe por script e leia o stdout: `transcripts/<stem>.json` é `{language, text, words: [{text, start, end, type, speaker_id}]}`, com `words` na raiz e o campo `text`. `type` alterna entre `word` e `spacing`, então filtre `type == "word"`, senão os espaços entram como palavras com duração.
 
-## Execution medium — ffmpeg pipeline (default), Adobe Premiere (MCP), OpenCut e Concat (timeline)
+## Execution medium — ffmpeg pipeline (default), Adobe Premiere (MCP), OpenCut, Concat e Edits (timeline)
 
 The default engine is the ffmpeg/Remotion pipeline below. **If the user asks for the
 edit inside Adobe Premiere Pro via the `premiere-pro` MCP** ("edite a sequência no
@@ -91,6 +91,13 @@ fonte: `helpers/concat_bridge.py open` monta o projeto em
 `<edit>/concat/corte` na resolução da fonte e abre o app; `pull` lê o que ele
 salvou e reescreve o `edl.json`, com backup. Depois: `verify_cut.py` →
 `render.py` → gate.
+
+**Se ele pedir o Edits** ("abre no Edits", "termina no Edits") — read
+`references/edits.md`. Mesmo contrato: `helpers/edits_bridge.py open` monta o projeto
+no app da Meta, `pull` traz a timeline de volta pro `edl.json`, com backup. Depois:
+`verify_cut.py` → `render.py` → gate. O `export` da ponte sai do próprio app, na
+resolução da fonte, mas sem a cor, o J-cut e a Fase 2 do edvid: só quando ele quiser
+acabar lá.
 
 ## Directory layout
 
@@ -265,6 +272,7 @@ the track reference you load after the gate. One of them is not optional:
 
 Interface:
 - **`concat_bridge.py open|pull|status --edit-dir <edit>`** — abre o corte no Concat (app nativo) e traz os ajustes salvos de volta pro `edl.json`, com backup e resumo. `open --rebuild` parte do `edl.json` atual e guarda o projeto antigo.
+- **`edits_bridge.py open|pull|status|export|clean --edit-dir <edit>`** — leva o corte pro app Edits e traz a timeline de volta pro `edl.json`, com backup. `export` sai do app na resolução da fonte, sem o pipeline. Detalhes e limites: `references/edits.md`.
 - **`voiceover.py gen|mix`** — locução gerada no VoiceStudio local, só quando ele pedir locução ou narração. Sem esse pedido não roda e o áudio do vídeo não muda. Read `references/voicestudio.md`.
 - **`opencut_bridge.py serve --edit-dir <edit> [--port 4840]`** — abre o corte numa timeline do OpenCut e recebe os ajustes de volta no `edl.json` (com backup e resumo do que mudou). `status --edit-dir <edit>` mostra a última devolução. Detalhes e limites: `references/opencut.md`.
 - **`preview_server.py --root <edit> [--port 4820]`** — serves the standard preview interface (see the Preview interface section). App code lives at `assets/preview/` and is IMMUTABLE.
@@ -569,8 +577,10 @@ Goal: best take of every beat, cut on silence, graded image, clean `cut.mp4` for
    qualquer número de takes. Rode `opencut_bridge.py serve --edit-dir <edit>` em
    background e `concat_bridge.py open --no-window --edit-dir <edit>`, e ponha na
    mesma mensagem do gate, depois do preview, uma linha sem vender: a URL do OpenCut
-   e "ou peça 'abre no Concat'". A janela do Concat só abre quando ele escolher
-   (`concat_bridge.py open --edit-dir <edit>`). **No Formato 1 não ofereça nenhum** —
+   e "ou peça 'abre no Concat' ou 'abre no Edits'". A janela do Concat só abre quando
+   ele escolher (`concat_bridge.py open --edit-dir <edit>`). O Edits só monta projeto
+   quando ele escolher (`edits_bridge.py open --edit-dir <edit>`), para não encher a
+   biblioteca dele. **No Formato 1 não ofereça nenhum** —
    o preset é entrega pronta e ele pediu que ali não exista escolha a mais. A ponte
    do OpenCut cai sozinha na porta seguinte se outra já estiver no ar. Toda volta
    reescreve o `edl.json`: siga pro passo 7 (`verify_cut.py`) e re-renderize. **Um
