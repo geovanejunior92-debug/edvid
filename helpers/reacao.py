@@ -137,7 +137,7 @@ def mascara_area(fr: np.ndarray, area: dict):
     if n > 1:
         maior = st[1:, cv2.CC_STAT_AREA].max()
         for i in range(1, n):
-            if st[i, cv2.CC_STAT_AREA] >= maior * 0.15:
+            if st[i, cv2.CC_STAT_AREA] >= maior * area.get("minimo", 0.15):
                 m[lab == i] = 1
     cor = (h >= 55) & (h <= 90) & (sat > 110) & (val > 130)
     if area.get("amarelo"):
@@ -160,7 +160,7 @@ def salvar_camada(med: np.ndarray, m: np.ndarray, destino: str) -> None:
 
 def extrair_capa(arq: str, intro_fim: float, destino: str, capa: dict):
     """Salva a capa e devolve a base dela em 4K."""
-    fr = quadros(arq, 0.35, max(0.6, intro_fim - 0.05), 15, 720, 1280, "rgb24")
+    fr = quadros(arq, 0.35, capa.get("ate", max(0.6, intro_fim - 0.05)), 15, 720, 1280, "rgb24")
     med, m = mascara_area(fr, capa)
     salvar_camada(med, m, destino)
     base = int(np.where(m.any(axis=1))[0].max() * 3)
@@ -396,7 +396,7 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     f.append(f"[ba]trim=0:{D:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_ab}:0:0,pad={W}:{H}:0:{d_ab}:black[f1]")
     if trechos:
         cab = ent["topo_cabelo"]
-        y_eu = expr_rampa(trechos, "fade_ini", T, fw - 132 - cab)
+        y_eu = expr_rampa(trechos, "fade_ini", T, fw - mold.get("eu_folga", 132) - cab)  # folga maior: a cabeça entra mais na transparência
         f.append(f"[bm]trim={D:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS[bmt]")
         f.append(f"color=black:s={W}x{H}:r={FPS}:d={L - T + 1:.3f},format=yuv420p[bgm]")
         f.append(f"[bgm][bmt]overlay=0:'{y_eu}':shortest=1,format=yuv420p[f2]")

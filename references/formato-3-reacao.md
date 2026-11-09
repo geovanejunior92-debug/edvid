@@ -42,7 +42,7 @@ python helpers/reacao.py job.json -o saida.mp4
 ```
 O job traz `conteudo`, `ini`, `fim`, `intro_fim`, `cortes`, `capa` (`box` ou `rect`, em pixels de 720x1280), `palavras`, `troca`, `entrada` e `saida`. Conferir `capa` e o texto da legenda em cada vídeo.
 
-`moldura` é opcional e ajusta um vídeo sem zoom: `y` (linha do original em que o recorte começa, para tirar faixa preta ou subir o rosto), `fade_ini` e `fade_fim` (dissolução em 4K; `fade_fim` termina antes de o outro reator aparecer), `topo_cabeca` e `leg_y`. Boca na dissolução: subir com `y` ou começar a dissolução mais abaixo. Para variar por cena: `trechos`, lista de `{t, y, fade_ini}` em segundos do conteúdo já cortado, com `fade_largura` opcional; a imagem de baixo e a legenda deslizam junto. Conteúdo com legenda própria no meio da imagem: `sem_legenda`, em vez de escrever por cima. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
+`moldura` é opcional e ajusta um vídeo sem zoom: `y` (linha do original em que o recorte começa, para tirar faixa preta ou subir o rosto), `fade_ini` e `fade_fim` (dissolução em 4K; `fade_fim` termina antes de o outro reator aparecer), `topo_cabeca` e `leg_y`. Conteúdo muito fechado no rosto: `fade_largura` maior e `eu_folga` maior deixam a cabeça dele entrar na transparência, em altura intermediária. Boca na dissolução: subir com `y` ou começar a dissolução mais abaixo. Para variar por cena: `trechos`, lista de `{t, y, fade_ini}` em segundos do conteúdo já cortado, com `fade_largura` opcional; a imagem de baixo e a legenda deslizam junto. Conteúdo com legenda própria no meio da imagem: `sem_legenda`, em vez de escrever por cima. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
 
 ## Estado
 Em uso: lote de 20 vídeos em 2026-11-08, com quadros de cada um revisados. Áudio medido, mas não ouvido por inteiro.
@@ -50,4 +50,5 @@ Em uso: lote de 20 vídeos em 2026-11-08, com quadros de cada um revisados. Áud
 ## Armadilhas
 - Conteúdo pode ter cartão próprio logo depois da abertura: use `cartao_ate` ou `cartao2` no job, senão ele fica por baixo da legenda nova.
 - Pessoa que anda pela largura ou close em que a boca cai na dissolução: conferir quadros de vários momentos, não só do começo.
+- Capa com linha sumindo: quando o texto entra animado ou uma linha é curta, use `capa.ate` (fim da janela de leitura), `capa.minimo` ou `capa.rect`. Conferir o quadro com a capa ao lado do original.
 - Texto da legenda vem da transcrição: corrigir com `troca`, e deixar o trecho sem legenda quando a fala não estiver clara.
