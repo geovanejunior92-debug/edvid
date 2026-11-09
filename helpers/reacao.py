@@ -31,6 +31,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 FONTE = RAIZ / "assets/fonts/Poppins-ExtraBold.ttf"
 WHOOSH = RAIZ / "assets/shortform/public/sfx/whoosh.mp3"
 LEG_Y, LEG_H = 1180, 560          # faixa da legenda nova, acima da dissolução
+FONTE_ID = RAIZ / "assets/fonts/Poppins-Light.ttf"
+ID_NOME, ID_REG = "Dr. Geovane Júnior", "CRM - PE 28037"
+ID_Y = 3190                       # acima da área que o Instagram cobre com a legenda do post
 
 
 def duracao(p: str) -> float:
@@ -109,46 +112,75 @@ def mascara(destino: str) -> None:
     Image.fromarray(np.tile((a * 255).astype(np.uint8)[:, None], (1, W))).convert("L").save(destino)
 
 
-def extrair_capa(arq: str, intro_fim: float, destino: str, capa: dict):
-    """Isola a capa na área indicada no job, em pixels de 720x1280.
+def mascara_area(fr: np.ndarray, area: dict):
+    """Isola texto parado na área indicada, em pixels de 720x1280.
 
-    capa = {"box": [y0, y1, x0, x1], "amarelo": false}: blocos brancos e ícone verde.
-    capa = {"rect": [y0, y1, x0, x1]}: copia a área inteira, para cartão de fundo sólido.
+    {"box": [y0, y1, x0, x1], "amarelo": false}: blocos brancos e ícone verde.
+    {"rect": [y0, y1, x0, x1]}: copia a área inteira, para cartão de fundo sólido.
     """
-    fr = quadros(arq, 0.35, max(0.6, intro_fim - 0.05), 15, 720, 1280, "rgb24")
     med = np.median(fr, axis=0).astype(np.uint8)
     m = np.zeros(med.shape[:2], np.uint8)
-    if "rect" in capa:
-        y0, y1, x0, x1 = capa["rect"]
+    if "rect" in area:
+        y0, y1, x0, x1 = area["rect"]
         m[y0:y1, x0:x1] = 1
-    else:
-        y0, y1, x0, x1 = capa["box"]
-        std = fr.astype(np.float32).std(axis=0).max(axis=2)
-        cinza = cv2.cvtColor(med, cv2.COLOR_RGB2GRAY)
-        h, sat, val = [c for c in np.moveaxis(cv2.cvtColor(med, cv2.COLOR_RGB2HSV), 2, 0)]
-        janela = np.zeros(m.shape, bool)
-        janela[y0:y1, x0:x1] = True
-        br = ((std < 10) & (cinza > 205) & janela).astype(np.uint8)
-        br = cv2.morphologyEx(br, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        br = cv2.morphologyEx(br, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (41, 15)))
-        n, lab, st, _ = cv2.connectedComponentsWithStats(br, connectivity=8)
-        if n > 1:
-            maior = st[1:, cv2.CC_STAT_AREA].max()
-            for i in range(1, n):
-                if st[i, cv2.CC_STAT_AREA] >= maior * 0.15:
-                    m[lab == i] = 1
-        cor = (h >= 55) & (h <= 90) & (sat > 110) & (val > 130)
-        if capa.get("amarelo"):
-            cor |= (h >= 18) & (h <= 34) & (sat > 170) & (val > 200)
-        cor = ((std < 8) & cor & janela).astype(np.uint8)
-        cor = cv2.morphologyEx(cor, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
-        n, lab, st, _ = cv2.connectedComponentsWithStats(cor, connectivity=8)
+        return med, m
+    y0, y1, x0, x1 = area["box"]
+    std = fr.astype(np.float32).std(axis=0).max(axis=2)
+    cinza = cv2.cvtColor(med, cv2.COLOR_RGB2GRAY)
+    h, sat, val = [c for c in np.moveaxis(cv2.cvtColor(med, cv2.COLOR_RGB2HSV), 2, 0)]
+    janela = np.zeros(m.shape, bool)
+    janela[y0:y1, x0:x1] = True
+    br = ((std < 10) & (cinza > 205) & janela).astype(np.uint8)
+    br = cv2.morphologyEx(br, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    br = cv2.morphologyEx(br, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (41, 15)))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(br, connectivity=8)
+    if n > 1:
+        maior = st[1:, cv2.CC_STAT_AREA].max()
         for i in range(1, n):
-            if st[i, cv2.CC_STAT_AREA] >= 250:
+            if st[i, cv2.CC_STAT_AREA] >= maior * 0.15:
                 m[lab == i] = 1
+    cor = (h >= 55) & (h <= 90) & (sat > 110) & (val > 130)
+    if area.get("amarelo"):
+        cor |= (h >= 18) & (h <= 34) & (sat > 170) & (val > 200)
+    if area.get("vermelho"):
+        cor |= ((h < 8) | (h > 172)) & (sat > 150) & (val > 150)
+    cor = ((std < 8) & cor & janela).astype(np.uint8)
+    cor = cv2.morphologyEx(cor, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(cor, connectivity=8)
+    for i in range(1, n):
+        if st[i, cv2.CC_STAT_AREA] >= 250:
+            m[lab == i] = 1
+    return med, m
+
+
+def salvar_camada(med: np.ndarray, m: np.ndarray, destino: str) -> None:
     a = cv2.GaussianBlur(m.astype(np.float32), (0, 0), 0.7)
     Image.fromarray(np.dstack([med, (a * 255).astype(np.uint8)]), "RGBA").resize((W, H), Image.LANCZOS).save(destino)
-    return int(np.where(m.any(axis=1))[0].max() * 3)
+
+
+def extrair_capa(arq: str, intro_fim: float, destino: str, capa: dict):
+    """Salva a capa e devolve a base dela em 4K."""
+    fr = quadros(arq, 0.35, max(0.6, intro_fim - 0.05), 15, 720, 1280, "rgb24")
+    med, m = mascara_area(fr, capa)
+    salvar_camada(med, m, destino)
+    base = int(np.where(m.any(axis=1))[0].max() * 3)
+    return base
+
+
+def segundo_cartao(arq: str, ini: float, area: dict, destino: str) -> float:
+    """Cartão que o conteúdo mostra logo depois da abertura. Devolve quanto tempo ele fica."""
+    primeiro = quadros(arq, ini, ini + 1.5, 10, 720, 1280, "rgb24")
+    med, m = mascara_area(primeiro, area)
+    salvar_camada(med, m, destino)
+    cinza = cv2.cvtColor(med, cv2.COLOR_RGB2GRAY)
+    sel = m.astype(bool) & ((cinza > 190) | (cinza < 50))
+    dep = quadros(arq, ini, ini + 20, 10, 720, 1280, "rgb24")
+    dif = np.abs(dep.astype(np.float32)[:, sel] - med[sel].astype(np.float32)).mean(axis=(1, 2))
+    fora = dif > 35
+    for i in range(len(fora) - 2):
+        if fora[i:i + 3].all():
+            return i / 10
+    return len(fora) / 10
 
 
 def grupos_de_legenda(palavras, troca, max_pal=5, max_car=30):
@@ -169,6 +201,7 @@ def grupos_de_legenda(palavras, troca, max_pal=5, max_car=30):
         if not ach:
             corr.append(tok[i])
             i += 1
+    corr = [c for c in corr if re.sub(r"[,.?!]", "", c[2]).strip()]
     out, atual = [], []
     for a, b, w in corr:
         if atual and (a - atual[-1][1] > 0.45 or len(atual) >= max_pal
@@ -226,6 +259,17 @@ def camada_legenda(grupos, total: float, tmp: str) -> str:
     return lista
 
 
+def identificacao(destino: str) -> None:
+    """Nome e registro, discretos, só nos trechos em que o médico fala."""
+    im = Image.new("RGBA", (W, 240), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    for y, txt, tam in ((70, ID_NOME, 66), (156, ID_REG, 50)):
+        f = ImageFont.truetype(str(FONTE_ID), tam)
+        d.text((W / 2, y), txt, font=f, fill=(255, 255, 255, 235), anchor="mm",
+               stroke_width=3, stroke_fill=(0, 0, 0, 110))
+    im.save(destino)
+
+
 def montar(job: dict, biblioteca: str, saida: str) -> dict:
     lib = json.load(open(os.path.expanduser(biblioteca)))["clipes"]
     ent, sai = lib[f"entrada {job['entrada']}"], lib[f"saida {job['saida']}"]
@@ -242,7 +286,8 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     for a, b in fica:
         pal += [(x - a + base, y - a + base, w) for x, y, w in job["palavras"] if a - 0.05 <= x and x < b]
         base += b - a
-    grupos = grupos_de_legenda(pal, job.get("troca", []))
+    grupos = [] if job.get("sem_legenda") else grupos_de_legenda(pal, job.get("troca", []))
+    grupos_todos = grupos
 
     t0 = max(0.0, ent["fala"][0] - 0.12)
     d_a = ent["fala"][1] + 0.25 - t0
@@ -259,18 +304,42 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     masc, capa = f"{tmp}/mascara.png", f"{tmp}/capa.png"
     mascara(masc)
     base_capa = extrair_capa(arq, job["intro_fim"], capa, job["capa"])
-    lista = camada_legenda(grupos, L, tmp)
+    # cartão gravado no começo do conteúdo: escala 1 e nada de legenda nova enquanto ele estiver lá
+    cartao2 = None
+    T = job.get("cartao_ate", 0.0)
+    if job.get("cartao2"):
+        cartao2 = f"{tmp}/cartao2.png"
+        T = segundo_cartao(arq, ini, job["cartao2"], cartao2) + 0.03
+    T = min(max(2 / FPS, T), L - 1)
+    capa_ate = d_a + T if job.get("capa_continua") else d_a
+    corta = job.get("faixa", {}).get("corta_topo", 0)
+    faixa = None
+    if job.get("faixa"):
+        amostra = quadros(arq, ini, fim, 1, 720, 1280, "rgb24")
+        fm, fk = mascara_area(amostra, job["faixa"])
+        faixa = f"{tmp}/faixa.png"
+        salvar_camada(fm, fk, faixa)
+    grupos = [(max(a - T, 0.0), b - T, t) for a, b, t in grupos_todos if b - T > 0.2]
+    lista = camada_legenda(grupos, L - T, tmp)
+    ident = f"{tmp}/id.png"
+    identificacao(ident)
 
     inp = ["-ss", f"{t0:.3f}", "-t", f"{segs[0][1] - t0:.3f}", "-i", ent["arquivo"]]
     for de, ate in segs[1:]:
         inp += ["-ss", f"{de:.3f}", "-t", f"{ate - de:.3f}", "-i", ent["arquivo"]]
     n = len(segs)
-    i_c, i_p, i_s, i_m, i_k, i_w, i_l = n, n + 1, n + 2, n + 3, n + 4, n + 5, n + 6
+    i_c, i_p, i_s, i_m, i_k, i_w, i_l, i_id = n, n + 1, n + 2, n + 3, n + 4, n + 5, n + 6, n + 7
+    D = d_a + T
     inp += ["-i", limpo, "-t", f"{job['intro_fim']:.3f}", "-i", arq,
             "-ss", f"{s0:.3f}", "-t", f"{d_c:.3f}", "-i", sai["arquivo"],
             "-loop", "1", "-framerate", str(FPS), "-i", masc,
             "-loop", "1", "-framerate", str(FPS), "-i", capa,
-            "-i", str(WHOOSH), "-f", "concat", "-safe", "0", "-i", lista]
+            "-i", str(WHOOSH), "-f", "concat", "-safe", "0", "-i", lista,
+            "-loop", "1", "-framerate", str(FPS), "-i", ident]
+    if faixa:
+        inp += ["-loop", "1", "-framerate", str(FPS), "-i", faixa]
+    if cartao2:
+        inp += ["-loop", "1", "-framerate", str(FPS), "-i", cartao2]
 
     f = []
     for i in range(n):
@@ -283,26 +352,47 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     # na abertura, a pessoa desce o que for preciso para a capa não cobrir os olhos
     d_ab = max(d_int, base_capa - 260 - ent["topo_cabelo"])
     f.append(f"[{ult}]split=2[ba][bm]")
-    f.append(f"[ba]trim=0:{d_a:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_ab}:0:0,pad={W}:{H}:0:{d_ab}:black[f1]")
-    f.append(f"[bm]trim={d_a:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_int}:0:0,pad={W}:{H}:0:{d_int}:black[f2]")
+    f.append(f"[ba]trim=0:{D:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_ab}:0:0,pad={W}:{H}:0:{d_ab}:black[f1]")
+    f.append(f"[bm]trim={D:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_int}:0:0,pad={W}:{H}:0:{d_int}:black[f2]")
     # abertura em escala 1: a capa original continua alinhada com a imagem de baixo dela
     f.append(f"[{i_p}:v]crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
-             f"setpts=PTS*{d_a / job['intro_fim']:.5f},fps={FPS},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuva420p[t1a]")
-    f.append(f"[{i_m}:v]format=gray,trim=duration={d_a:.3f},setpts=PTS-STARTPTS[m1]")
+             f"setpts=PTS*{d_a / job['intro_fim']:.5f},fps={FPS},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuv420p[t1i]")
+    f.append(f"[{i_c}:v]split=2[cc1][cc2]")
+    f.append(f"[cc1]trim=0:{T:.3f},setpts=PTS-STARTPTS,crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuv420p[t1c]")
+    f.append("[t1i][t1c]concat=n=2:v=1:a=0,format=yuva420p[t1a]")
+    f.append(f"[{i_m}:v]format=gray,split=2[mm1][mm2]")
+    f.append(f"[mm1]trim=duration={D:.3f},setpts=PTS-STARTPTS[m1]")
     f.append("[t1a][m1]alphamerge[t1]")
     f.append(f"[f1][t1]overlay=0:0:shortest=1[c1]")
-    f.append(f"[{i_k}:v]format=rgba,trim=duration={d_a:.3f},setpts=PTS-STARTPTS[kk]")
-    f.append("[c1][kk]overlay=0:0:shortest=1,format=yuv420p[p1]")
+    f.append(f"[{i_k}:v]format=rgba,trim=duration={capa_ate:.3f},setpts=PTS-STARTPTS[kk]")
+    f.append(f"[{i_id}:v]format=rgba,split=2[id1a][id2a]")
+    f.append(f"[id1a]trim=duration={d_a:.3f},setpts=PTS-STARTPTS,fade=t=in:d=0.15:alpha=1,fade=t=out:st={d_a - 0.15:.3f}:d=0.15:alpha=1[id1]")
+    f.append(f"[c1][kk]overlay=0:0:eof_action=pass[c1k0]")
+    if cartao2:
+        i_c2 = i_id + (2 if faixa else 1)
+        f.append(f"[{i_c2}:v]format=rgba,trim=duration={max(0.1, T - 0.3):.3f},setpts=PTS-STARTPTS+{d_a:.3f}/TB[c2k]")
+        f.append("[c1k0][c2k]overlay=0:0:eof_action=pass[c1k]")
+    else:
+        f.append("[c1k0]null[c1k]")
+    f.append(f"[c1k][id1]overlay=0:{ID_Y}:eof_action=pass,format=yuv420p[p1]")
     # meio: recorte acima da legenda antiga e do que vaza do outro reator
     lc = job["limpo_ate"]
-    cw = int(720 * lc / 711) // 2 * 2
-    f.append(f"[{i_c}:v]crop={cw}:{lc}:(iw-{cw})/2:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuva420p[t2a]")
-    f.append(f"[{i_m}:v]format=gray,trim=duration={L:.3f},setpts=PTS-STARTPTS[m2]")
+    cw = int(720 * (lc - corta) / 711) // 2 * 2
+    f.append(f"[cc2]trim={T:.3f}:{L:.3f},setpts=PTS-STARTPTS,crop={cw}:{lc - corta}:(iw-{cw})/2:{corta},"
+             f"scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuva420p[t2a]")
+    f.append(f"[mm2]trim=duration={L - T:.3f},setpts=PTS-STARTPTS[m2]")
     f.append("[t2a][m2]alphamerge[t2]")
     f.append("[f2][t2]overlay=0:0:shortest=1[c2]")
-    f.append(f"[{i_l}:v]fps={FPS},format=rgba,trim=duration={L:.3f},setpts=PTS-STARTPTS[ll]")
-    f.append(f"[c2][ll]overlay=0:{LEG_Y}:shortest=1,format=yuv420p[p2]")
-    f.append(f"[{i_s}:v]fps={FPS},setsar=1,format=yuv420p,trim=duration={d_c:.3f},setpts=PTS-STARTPTS[sv]")
+    f.append(f"[{i_l}:v]fps={FPS},format=rgba,trim=duration={L - T:.3f},setpts=PTS-STARTPTS[ll]")
+    if faixa:
+        f.append(f"[c2][ll]overlay=0:{LEG_Y}:shortest=1[c2l]")
+        f.append(f"[{i_id + 1}:v]format=rgba,trim=duration={L - T:.3f},setpts=PTS-STARTPTS[fx]")
+        f.append("[c2l][fx]overlay=0:0:shortest=1,format=yuv420p[p2]")
+    else:
+        f.append(f"[c2][ll]overlay=0:{LEG_Y}:shortest=1,format=yuv420p[p2]")
+    f.append(f"[id2a]trim=duration={d_c:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0.1:d=0.15:alpha=1,fade=t=out:st={d_c - 0.15:.3f}:d=0.15:alpha=1[id2]")
+    f.append(f"[{i_s}:v]fps={FPS},setsar=1,trim=duration={d_c:.3f},setpts=PTS-STARTPTS[sv0]")
+    f.append(f"[sv0][id2]overlay=0:{ID_Y}:shortest=1,format=yuv420p[sv]")
     f.append("[p1][p2][sv]concat=n=3:v=1:a=0[todo]")
     sobe, desce = 2 / FPS, 3 / FPS
     f.append(f"color=white:s={W}x{H}:r={FPS}:d={sobe + desce:.4f},format=yuva420p,"
@@ -322,7 +412,7 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
                     "-map", "[v]", "-map", "[a]", "-c:v", "hevc_videotoolbox", "-q:v", "68", "-tag:v", "hvc1",
                     "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", saida], check=True)
     return {"saida": saida, "conteudo_s": round(L, 2), "total_s": round(duracao(saida), 2), "laco": segs, "dif_emenda": dif,
-            "fim_abertura": round(d_a / VELOCIDADE, 2), "clarao": round(x / VELOCIDADE, 2), "base_capa": base_capa,
+            "fim_abertura": round(d_a / VELOCIDADE, 2), "clarao": round(x / VELOCIDADE, 2), "base_capa": base_capa, "capa_ate": round(D / VELOCIDADE, 2),
             "legendas": len(grupos), "ganhos_db": [round(g_e, 1), round(g_c, 1), round(g_s, 1)]}
 
 

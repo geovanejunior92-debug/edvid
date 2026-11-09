@@ -16,6 +16,7 @@ Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra p
 - **Identificação e pedido para seguir:** cortar do conteúdo os trechos em que a pessoa, profissional de saúde ou não, se identifica (nome, profissão, cargo, perfil) ou pede para seguir. Vale em qualquer ponto do vídeo. Transcrever com tempo por palavra antes de montar, cortar a frase inteira e conferir se o que sobra continua fazendo sentido. Nome ou perfil só escrito na tela não sai com esse corte: avisar o usuário.
 - **Capa:** manter o texto e a posição da capa do conteúdo original durante a entrada. Ela é extraída da abertura e volta por cima de tudo; a pessoa desce o necessário para a capa não cobrir os olhos.
 - **Conteúdo dentro de outra montagem:** usar só a pessoa original. A fala e a saída do outro reator saem, e o recorte fica acima da legenda gravada e do que vaza do fundo dele.
+- **Identificação do médico:** durante a fala da entrada e da saída, e só nelas, mostrar na parte de baixo, em fonte fina e discreta: `Dr. Geovane Júnior` e `CRM - PE 28037`.
 - **Velocidade:** 1,07× no vídeo inteiro, com o tom preservado.
 - **Resolução:** 4K vertical, a das entradas e saídas.
 
@@ -29,4 +30,9 @@ python helpers/reacao.py job.json -o saida.mp4
 O job traz `conteudo`, `ini`, `fim`, `intro_fim`, `limpo_ate`, `cortes`, `capa` (`box` ou `rect`, em pixels de 720x1280), `palavras`, `troca`, `entrada` e `saida`. Conferir `capa` e o texto da legenda em cada vídeo. A biblioteca fica fora do repositório, em `~/Videos/reacoes/biblioteca.json`.
 
 ## Estado
-Testado em duas amostras reais, com quadros revisados. A legenda nova aguarda aprovação do usuário.
+Em uso: lote de 20 vídeos em 2026-11-08, com quadros de cada um revisados. Áudio medido, mas não ouvido por inteiro.
+
+## Armadilhas
+- Conteúdo pode ter cartão próprio logo depois da abertura: use `cartao_ate` ou `cartao2` no job, senão ele fica ampliado junto com a legenda nova.
+- Título fixo no topo sai cortado no zoom: use `faixa`.
+- Texto da legenda vem da transcrição: corrigir com `troca`, e deixar o trecho sem legenda quando a fala não estiver clara.
