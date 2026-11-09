@@ -22,7 +22,9 @@ Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra p
 - **Resolução:** 4K vertical, a das entradas e saídas.
 
 ## Entrega
-Cada vídeo editado vai com uma legenda para o post: breve, direta e sem sinais de texto de IA. Passar pelo `humanizer` antes de entregar e usar só o que é dito no conteúdo, sem inventar fato, número ou nome.
+Cada vídeo editado vai com uma legenda para o post, informativa e educativa (pedido dele em 2026-11-09, depois de achar ruins as de uma linha só). Estrutura: gancho na primeira linha, de até 125 caracteres; o que o vídeo ensina, em poucas linhas, com os nomes de exames, hábitos, passos ou sintomas ditos nele; uma chamada específica para salvar, enviar ou comentar; 2 a 3 hashtags do tema.
+
+Passar pelo `humanizer` antes de entregar e usar só o que é dito no conteúdo, sem inventar fato, número ou nome. Afirmação discutível vai atribuída a quem fala no vídeo ("segundo ele"), sem virar conselho do médico.
 
 ## Como montar
 ```bash
