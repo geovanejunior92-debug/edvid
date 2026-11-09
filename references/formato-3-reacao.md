@@ -17,6 +17,9 @@ Pedido do usuário em 2026-11-08. A pessoa aparece reagindo ao vídeo de outra p
 - **Velocidade:** 1,07× no vídeo inteiro, com o tom preservado.
 - **Resolução:** 4K vertical, a das entradas e saídas.
 
+## Entrega
+Cada vídeo editado vai com uma legenda para o post: breve, direta e sem sinais de texto de IA. Passar pelo `humanizer` antes de entregar e usar só o que é dito no conteúdo, sem inventar fato, número ou nome.
+
 ## Como montar
 ```bash
 python helpers/reacao.py --conteudo video.mp4 --entrada 1 --saida 1 --cartao "Texto" -o saida.mp4
