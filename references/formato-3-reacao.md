@@ -54,6 +54,9 @@ Em uso: lote de 20 vídeos em 2026-11-08, com quadros de cada um revisados. Áud
 - Texto da legenda vem da transcrição: corrigir com `troca`, e deixar o trecho sem legenda quando a fala não estiver clara.
 
 
-## Abertura com corte (2026-11-09)
+## Abertura com corte: PADRÃO (2026-11-09)
+
+Aprovado por ele como padrão de todo vídeo do Formato 3. Vale também para entradas de take único (1 a 6): a escuta começa com um salto no mesmo arquivo. `"corte": false` no job volta ao formato antigo, só a pedido.
+
 
 Pedido do Dr. Geovane: a abertura mostra uma IMAGEM parada do conteúdo em cima, com ele falando embaixo; em seguida um clarão rápido (e whoosh baixo) marca o corte para outro take dele assistindo, e o conteúdo começa no corte. Na biblioteca, a entrada leva `ouvindo_arquivo`, `ouvindo` [ini, fim] e `topo_cabelo_ouvindo`; `reacao.py` entra nesse modo sozinho. `imagem_t` no job escolhe o quadro da imagem (padrão: metade de `intro_fim`). Takes atuais: entradas/saídas 7, 8 e 9 (arquivos 1.x, 2.x, 3.x em Downloads).

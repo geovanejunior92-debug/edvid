@@ -321,10 +321,16 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     d_a = min(ent["fala"][1] + 0.25 - t0, ent["duracao"] - t0 - 0.02)
     # corte (pedido de 2026-11-09): fala e escuta em takes separados. A abertura mostra uma
     # imagem parada do conteúdo em cima, e um clarão rápido marca o corte para o take ouvindo.
-    corte = bool(ent.get("ouvindo_arquivo"))
+    # Padrão desde 2026-11-09 (aprovado por ele). Entrada de take único também entra no corte:
+    # a escuta começa depois de um salto no mesmo arquivo. job["corte"] = false volta ao formato antigo.
+    corte = job.get("corte", True)
     arq_ouv = ent.get("ouvindo_arquivo", ent["arquivo"])
     if corte:
-        segs, dif = segmentos_ouvindo(arq_ouv, ent["ouvindo"][0], ent["ouvindo"][1], L)
+        if ent.get("ouvindo_arquivo"):
+            o_ini, o_fim = ent["ouvindo"]
+        else:
+            o_ini, o_fim = t0 + d_a + 1.5, ent["duracao"] - 0.5
+        segs, dif = segmentos_ouvindo(arq_ouv, o_ini, o_fim, L)
     else:
         segs, dif = segmentos_ouvindo(ent["arquivo"], t0 + d_a, ent["duracao"] - 0.5, L)
     s0 = max(0.0, sai["fala"][0] - 0.12)
