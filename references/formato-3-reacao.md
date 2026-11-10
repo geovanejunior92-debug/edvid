@@ -52,3 +52,8 @@ Em uso: lote de 20 vídeos em 2026-11-08, com quadros de cada um revisados. Áud
 - Pessoa que anda pela largura ou close em que a boca cai na dissolução: conferir quadros de vários momentos, não só do começo.
 - Capa com linha sumindo: quando o texto entra animado ou uma linha é curta, use `capa.ate` (fim da janela de leitura), `capa.minimo` ou `capa.rect`. Conferir o quadro com a capa ao lado do original.
 - Texto da legenda vem da transcrição: corrigir com `troca`, e deixar o trecho sem legenda quando a fala não estiver clara.
+
+
+## Abertura com corte (2026-11-09)
+
+Pedido do Dr. Geovane: a abertura mostra uma IMAGEM parada do conteúdo em cima, com ele falando embaixo; em seguida um clarão rápido (e whoosh baixo) marca o corte para outro take dele assistindo, e o conteúdo começa no corte. Na biblioteca, a entrada leva `ouvindo_arquivo`, `ouvindo` [ini, fim] e `topo_cabelo_ouvindo`; `reacao.py` entra nesse modo sozinho. `imagem_t` no job escolhe o quadro da imagem (padrão: metade de `intro_fim`). Takes atuais: entradas/saídas 7, 8 e 9 (arquivos 1.x, 2.x, 3.x em Downloads).

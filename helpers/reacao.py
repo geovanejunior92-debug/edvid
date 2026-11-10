@@ -318,8 +318,15 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     grupos_todos = grupos
 
     t0 = max(0.0, ent["fala"][0] - 0.12)
-    d_a = ent["fala"][1] + 0.25 - t0
-    segs, dif = segmentos_ouvindo(ent["arquivo"], t0 + d_a, ent["duracao"] - 0.5, L)
+    d_a = min(ent["fala"][1] + 0.25 - t0, ent["duracao"] - t0 - 0.02)
+    # corte (pedido de 2026-11-09): fala e escuta em takes separados. A abertura mostra uma
+    # imagem parada do conteúdo em cima, e um clarão rápido marca o corte para o take ouvindo.
+    corte = bool(ent.get("ouvindo_arquivo"))
+    arq_ouv = ent.get("ouvindo_arquivo", ent["arquivo"])
+    if corte:
+        segs, dif = segmentos_ouvindo(arq_ouv, ent["ouvindo"][0], ent["ouvindo"][1], L)
+    else:
+        segs, dif = segmentos_ouvindo(ent["arquivo"], t0 + d_a, ent["duracao"] - 0.5, L)
     s0 = max(0.0, sai["fala"][0] - 0.12)
     d_c = sai["usar_ate"] - s0
     x = d_a + L
@@ -355,10 +362,16 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     ident = f"{tmp}/id.png"
     identificacao(ident)
 
-    inp = ["-ss", f"{t0:.3f}", "-t", f"{segs[0][1] - t0:.3f}", "-i", ent["arquivo"]]
-    for de, ate in segs[1:]:
-        inp += ["-ss", f"{de:.3f}", "-t", f"{ate - de:.3f}", "-i", ent["arquivo"]]
-    n = len(segs)
+    if corte:
+        inp = ["-ss", f"{t0:.3f}", "-t", f"{d_a:.3f}", "-i", ent["arquivo"]]
+        for de, ate in segs:
+            inp += ["-ss", f"{de:.3f}", "-t", f"{ate - de:.3f}", "-i", arq_ouv]
+        n = len(segs) + 1
+    else:
+        inp = ["-ss", f"{t0:.3f}", "-t", f"{segs[0][1] - t0:.3f}", "-i", ent["arquivo"]]
+        for de, ate in segs[1:]:
+            inp += ["-ss", f"{de:.3f}", "-t", f"{ate - de:.3f}", "-i", ent["arquivo"]]
+        n = len(segs)
     i_c, i_p, i_s, i_m, i_k, i_w, i_l, i_id = n, n + 1, n + 2, n + 3, n + 4, n + 5, n + 6, n + 7
     D = d_a + T
     inp += ["-i", limpo, "-t", f"{job['intro_fim']:.3f}", "-i", arq,
@@ -385,17 +398,23 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     f = []
     for i in range(n):
         f.append(f"[{i}:v]fps={FPS},setsar=1,format=yuv420p[b{i}]")
-    ult, ofs = "b0", segs[0][1] - t0
-    for i in range(1, n):
+    k0 = 1 if corte else 0
+    ult, ofs = f"b{k0}", segs[0][1] - (segs[0][0] if corte else t0)
+    for i in range(k0 + 1, n):
+        sg = segs[i - k0]
         f.append(f"[{ult}][b{i}]xfade=transition=fade:duration={XFADE}:offset={ofs - XFADE:.3f}[j{i}]")
-        ult, ofs = f"j{i}", ofs - XFADE + (segs[i][1] - segs[i][0])
-    d_int = mold.get("topo_cabeca", TOPO_CABECA) - ent["topo_cabelo"]
+        ult, ofs = f"j{i}", ofs - XFADE + (sg[1] - sg[0])
+    if corte:
+        f.append(f"[b0][{ult}]concat=n=2:v=1:a=0[jc]")
+        ult = "jc"
+    cab_ouv = ent.get("topo_cabelo_ouvindo", ent["topo_cabelo"])
+    d_int = mold.get("topo_cabeca", TOPO_CABECA) - cab_ouv
     # na abertura, a pessoa desce o que for preciso para a capa não cobrir os olhos
-    d_ab = max(d_int, base_capa - 260 - ent["topo_cabelo"])
+    d_ab = max(mold.get("topo_cabeca", TOPO_CABECA) - ent["topo_cabelo"], base_capa - 260 - ent["topo_cabelo"])
     f.append(f"[{ult}]split=2[ba][bm]")
     f.append(f"[ba]trim=0:{D:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_ab}:0:0,pad={W}:{H}:0:{d_ab}:black[f1]")
     if trechos:
-        cab = ent["topo_cabelo"]
+        cab = cab_ouv
         y_eu = expr_rampa(trechos, "fade_ini", T, fw - mold.get("eu_folga", 132) - cab)  # folga maior: a cabeça entra mais na transparência
         f.append(f"[bm]trim={D:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS[bmt]")
         f.append(f"color=black:s={W}x{H}:r={FPS}:d={L - T + 1:.3f},format=yuv420p[bgm]")
@@ -403,8 +422,13 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     else:
         f.append(f"[bm]trim={D:.3f}:{d_a + L:.3f},setpts=PTS-STARTPTS,crop={W}:{H - d_int}:0:0,pad={W}:{H}:0:{d_int}:black[f2]")
     # abertura em escala 1: a capa original continua alinhada com a imagem de baixo dela
-    f.append(f"[{i_p}:v]crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
-             f"setpts=PTS*{d_a / job['intro_fim']:.5f},fps={FPS},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuv420p[t1i]")
+    if corte:  # imagem parada: um quadro da capa do conteúdo
+        ti = job.get("imagem_t", job["intro_fim"] / 2)
+        f.append(f"[{i_p}:v]trim=start={ti:.3f}:duration={2 / FPS:.4f},setpts=PTS-STARTPTS,crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
+                 f"fps={FPS},tpad=stop_mode=clone:stop_duration={d_a:.3f},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuv420p[t1i]")
+    else:
+        f.append(f"[{i_p}:v]crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
+                 f"setpts=PTS*{d_a / job['intro_fim']:.5f},fps={FPS},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuv420p[t1i]")
     f.append(f"[{i_c}:v]split=2[cc1][cc2]")
     f.append(f"[cc1]trim=0:{T:.3f},setpts=PTS-STARTPTS,crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuv420p[t1c]")
     f.append("[t1i][t1c]concat=n=2:v=1:a=0,format=yuva420p[t1a]")
@@ -457,14 +481,27 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     f.append(f"color=white:s={W}x{H}:r={FPS}:d={sobe + desce:.4f},format=yuva420p,"
              f"fade=t=in:st=0:d={sobe:.4f}:alpha=1,fade=t=out:st={sobe:.4f}:d={desce:.4f}:alpha=1,"
              f"colorchannelmixer=aa=0.62,setpts=PTS+{x - sobe:.4f}/TB[fl]")
-    f.append(f"[todo][fl]overlay=0:0:eof_action=pass,format=yuv420p,setpts=PTS/{VELOCIDADE}[v]")
+    if corte:  # clarão rápido no corte da abertura para o take ouvindo
+        f.append(f"color=white:s={W}x{H}:r={FPS}:d={sobe + desce:.4f},format=yuva420p,"
+                 f"fade=t=in:st=0:d={sobe:.4f}:alpha=1,fade=t=out:st={sobe:.4f}:d={desce:.4f}:alpha=1,"
+                 f"colorchannelmixer=aa=0.62,setpts=PTS+{d_a - sobe:.4f}/TB[fl0]")
+        f.append("[todo][fl0]overlay=0:0:eof_action=pass[todo2]")
+        f.append(f"[todo2][fl]overlay=0:0:eof_action=pass,format=yuv420p,setpts=PTS/{VELOCIDADE}[v]")
+    else:
+        f.append(f"[todo][fl]overlay=0:0:eof_action=pass,format=yuv420p,setpts=PTS/{VELOCIDADE}[v]")
     st = "aresample=48000,aformat=channel_layouts=stereo"
     f.append(f"[0:a]atrim=duration={d_a:.3f},asetpts=PTS-STARTPTS,volume={g_e:.2f}dB,afade=t=out:st={d_a - 0.05:.3f}:d=0.05,{st}[a1]")
     f.append(f"[{i_c}:a]volume={g_c:.2f}dB,afade=t=in:d=0.03,afade=t=out:st={L - 0.05:.3f}:d=0.05,{st}[a2]")
     f.append(f"[{i_s}:a]volume={g_s:.2f}dB,afade=t=out:st={d_c - 0.12:.3f}:d=0.12,{st}[a3]")
     f.append("[a1][a2][a3]concat=n=3:v=0:a=1[voz]")
-    f.append(f"[{i_w}:a]volume=0.5,adelay={int((x - 1 / FPS) * 1000)}:all=1,{st}[wh]")
-    f.append(f"[voz][wh]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89:level=false,atempo={VELOCIDADE}[a]")
+    if corte:
+        f.append(f"[{i_w}:a]asplit=2[w1][w2]")
+        f.append(f"[w1]volume=0.5,adelay={int((x - 1 / FPS) * 1000)}:all=1,{st}[wh]")
+        f.append(f"[w2]volume=0.35,adelay={int((d_a - 1 / FPS) * 1000)}:all=1,{st}[wh0]")
+        f.append(f"[voz][wh][wh0]amix=inputs=3:duration=first:normalize=0,alimiter=limit=0.89:level=false,atempo={VELOCIDADE}[a]")
+    else:
+        f.append(f"[{i_w}:a]volume=0.5,adelay={int((x - 1 / FPS) * 1000)}:all=1,{st}[wh]")
+        f.append(f"[voz][wh]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89:level=false,atempo={VELOCIDADE}[a]")
 
     Path(saida).parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", *inp, "-filter_complex", ";".join(f),
