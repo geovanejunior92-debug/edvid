@@ -60,3 +60,7 @@ Aprovado por ele como padrão de todo vídeo do Formato 3. Vale também para ent
 
 
 Pedido do Dr. Geovane: a abertura mostra uma IMAGEM parada do conteúdo em cima, com ele falando embaixo; em seguida um clarão rápido (e whoosh baixo) marca o corte para outro take dele assistindo, e o conteúdo começa no corte. Na biblioteca, a entrada leva `ouvindo_arquivo`, `ouvindo` [ini, fim] e `topo_cabelo_ouvindo`; `reacao.py` entra nesse modo sozinho. `imagem_t` no job escolhe o quadro da imagem (padrão: metade de `intro_fim`). Takes atuais: entradas/saídas 7, 8 e 9 (arquivos 1.x, 2.x, 3.x em Downloads).
+
+## Cartão de aspas desenhado (2026-11-16)
+
+Quando o conteúdo já vem montado por outro reator, a capa dele fica em cima do reator que se mexe e o extrator perde linhas (no lote 4 a última linha sumiu atrás da cabeça). Nesse caso use `capa_texto` no job: o `reacao.py` desenha o cartão no padrão aprovado (balão verde-menta 100,203,165 com aspas brancas, Montserrat ExtraBold em caixa alta, aspas retas, faixas brancas), com a última faixa em `capa_base` (4K, padrão 2050, em cima da linha divisória). Se o conteúdo tiver legenda própria logo abaixo, suba o cartão (`capa_base` ~1720). Use também `intro_fim = ini + 0.6` e `imagem_t = ini + 0.35`, para a imagem parada da abertura vir do conteúdo já sem o cartão do outro reator. Conteúdo com legenda própria: `sem_legenda: true`, senão a legenda sai dobrada.

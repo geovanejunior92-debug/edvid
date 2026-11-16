@@ -32,6 +32,7 @@ FONTE = RAIZ / "assets/fonts/Poppins-ExtraBold.ttf"
 WHOOSH = RAIZ / "assets/shortform/public/sfx/whoosh.mp3"
 LEG_Y, LEG_H = 1180, 560          # faixa da legenda nova, acima da dissolução
 FONTE_ID = RAIZ / "assets/fonts/Poppins-Light.ttf"
+FONTE_CARTAO = RAIZ / "assets/fonts/Montserrat-ExtraBold.ttf"
 ID_NOME, ID_REG = "Dr. Geovane Júnior", "CRM - PE 28037"
 ID_Y = 3190                       # acima da área que o Instagram cobre com a legenda do post
 
@@ -164,6 +165,39 @@ def extrair_capa(arq: str, intro_fim: float, destino: str, capa: dict):
     med, m = mascara_area(fr, capa)
     salvar_camada(med, m, destino)
     base = int(np.where(m.any(axis=1))[0].max() * 3)
+    return base
+
+
+def cartao_aspas(texto: str, destino: str, base: int = 2050) -> int:
+    """Cartão de aspas no padrão aprovado (10/11/2026): balão verde-menta com aspas brancas,
+    texto em caixa alta com aspas retas, cada linha em faixa branca. A última faixa termina em `base` (4K).
+    Usado quando a capa do conteúdo não pode ser extraída limpa (outro reator mexendo por trás)."""
+    f = ImageFont.truetype(str(FONTE_CARTAO), 132)
+    fa = ImageFont.truetype(str(FONTE_CARTAO), 300)
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    linhas, atual = [], ""
+    for p in texto.upper().split():
+        t = f"{atual} {p}".strip()
+        if d.textlength(t, font=f) > 1700 and atual:
+            linhas.append(atual)
+            atual = p
+        else:
+            atual = t
+    linhas.append(atual)
+    linhas[0] = '"' + linhas[0]
+    linhas[-1] += '"'
+    lh, pad, x0, selo, vao = 196, 44, 124, 224, 124
+    y = base - lh * len(linhas) + 16 - selo - vao
+    d.rounded_rectangle((x0 + 24, y, x0 + 24 + selo, y + selo), 40, fill=(100, 203, 165))
+    d.text((x0 + 24 + selo / 2, y + selo / 2 + 68), "\u201c", font=fa, fill="white", anchor="mm")
+    y += selo + vao
+    for l in linhas:
+        w = d.textlength(l, font=f)
+        d.rectangle((x0, y, x0 + w + 2 * pad, y + lh - 16), fill="white")
+        d.text((x0 + pad, y + (lh - 16) / 2 + 4), l, font=f, fill=(17, 17, 17), anchor="lm")
+        y += lh
+    im.save(destino)
     return base
 
 
@@ -348,7 +382,10 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     mold = job.get("moldura") or {}
     mascara(masc, mold.get("fade_ini", FADE_INI), mold.get("fade_fim", FADE_FIM))
     leg_y = mold.get("leg_y", LEG_Y)
-    base_capa = extrair_capa(arq, job["intro_fim"], capa, job["capa"])
+    if job.get("capa_texto"):  # cartão desenhado no padrão aprovado, no lugar do extraído
+        base_capa = cartao_aspas(job["capa_texto"], capa, job.get("capa_base", 2050))
+    else:
+        base_capa = extrair_capa(arq, job["intro_fim"], capa, job["capa"])
     # cartão gravado no começo do conteúdo: escala 1 e nada de legenda nova enquanto ele estiver lá
     cartao2 = None
     T = job.get("cartao_ate", 0.0)
