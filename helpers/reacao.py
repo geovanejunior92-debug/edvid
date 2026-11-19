@@ -438,6 +438,13 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
         mascara_alta(alta, fw)
         inp += ["-loop", "1", "-framerate", str(FPS), "-i", alta]
 
+    # inserts (2026-11-19): b-roll externo em tela cheia por cima do conteúdo, com a fala dele seguindo.
+    # Cada um: {"arquivo", "de", "ate"} em segundos do conteúdo já cortado, e "src" (início no clipe).
+    ins = [x for x in job.get("inserts", []) if x["ate"] > T + 0.05]
+    i_ins0 = len([a for a in inp if a == "-i"])
+    for xi in ins:
+        inp += ["-ss", f"{xi.get('src', 0):.3f}", "-t", f"{xi['ate'] - xi['de'] + 0.2:.3f}", "-i", xi["arquivo"]]
+
     f = []
     for i in range(n):
         f.append(f"[{i}:v]fps={FPS},setsar=1,format=yuv420p[b{i}]")
@@ -509,7 +516,15 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
                  f"scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuva420p[t2a]")
         f.append(f"[mm2]trim=duration={L - T:.3f},setpts=PTS-STARTPTS[m2]")
     f.append("[t2a][m2]alphamerge[t2]")
-    f.append("[f2][t2]overlay=0:0:shortest=1[c2]")
+    f.append("[f2][t2]overlay=0:0:shortest=1[c2s]")
+    ult2 = "c2s"
+    for k, xi in enumerate(ins):
+        a0 = max(0.0, xi["de"] - T)
+        f.append(f"[{i_ins0 + k}:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}:(iw-ow)*{xi.get('x', 0.5)}:(ih-oh)/2,setsar=1,fps={FPS},"
+                 f"format=yuv420p,setpts=PTS-STARTPTS+{a0:.3f}/TB[in{k}]")
+        f.append(f"[{ult2}][in{k}]overlay=0:0:eof_action=pass:enable='between(t,{a0:.3f},{xi['ate'] - T:.3f})'[c2i{k}]")
+        ult2 = f"c2i{k}"
+    f.append(f"[{ult2}]null[c2]")
     f.append(f"[{i_l}:v]fps={FPS},format=rgba,trim=duration={L - T:.3f},setpts=PTS-STARTPTS[ll]")
     if trechos:
         leg_y = "'" + expr_rampa(trechos, "fade_ini", T, mold.get("leg_mais", -300)) + "'"
