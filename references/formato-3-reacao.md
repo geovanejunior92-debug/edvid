@@ -64,3 +64,9 @@ Pedido do Dr. Geovane: a abertura mostra uma IMAGEM parada do conteúdo em cima,
 ## Cartão de aspas desenhado (2026-11-16)
 
 Quando o conteúdo já vem montado por outro reator, a capa dele fica em cima do reator que se mexe e o extrator perde linhas (no lote 4 a última linha sumiu atrás da cabeça). Nesse caso use `capa_texto` no job: o `reacao.py` desenha o cartão no padrão aprovado (balão verde-menta 100,203,165 com aspas brancas, Montserrat ExtraBold em caixa alta, aspas retas, faixas brancas), com a última faixa em `capa_base` (4K, padrão 2050, em cima da linha divisória). Se o conteúdo tiver legenda própria logo abaixo, suba o cartão (`capa_base` ~1720). Use também `intro_fim = ini + 0.6` e `imagem_t = ini + 0.35`, para a imagem parada da abertura vir do conteúdo já sem o cartão do outro reator. Conteúdo com legenda própria: `sem_legenda: true`, senão a legenda sai dobrada.
+
+## Vídeo dele mesmo como conteúdo e tela cheia (2026-11-19)
+
+Pedido do usuário: repostar reels antigos dele que viralizaram no Formato 3, com o reel antigo em cima e ele reagindo embaixo. Antes de montar, o reel antigo passa por uma otimização: corte das pausas pela transcrição (a trilha de fundo esconde os silêncios do `speech_regions.py`), tratamento de pele, brilho e nitidez (`~/Videos/repost20/grade_pele.txt`: suavização só nas áreas lisas, depois clareamento leve, nitidez por último), sem aceleração, porque o `reacao.py` já aplica 1,07×. Corta o cartão final da marca antiga e qualquer pedido para seguir.
+
+`tela_cheia` no job: lista de `[a, b]` em segundos do conteúdo já cortado. Nesses trechos o conteúdo ocupa a tela inteira por cima da escuta e da legenda nova. Usar onde ele não aparece no reel antigo (b-roll, detectado por rosto) e no título queimado da abertura, que na tela dividida cai na dissolução e aparece cortado. O conteúdo pode ter qualquer resolução: os recortes agora são proporcionais à largura.

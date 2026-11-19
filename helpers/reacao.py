@@ -467,13 +467,16 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     # abertura em escala 1: a capa original continua alinhada com a imagem de baixo dela
     if corte:  # imagem parada: um quadro da capa do conteúdo
         ti = job.get("imagem_t", job["intro_fim"] / 2)
-        f.append(f"[{i_p}:v]trim=start={ti:.3f}:duration={2 / FPS:.4f},setpts=PTS-STARTPTS,crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
+        f.append(f"[{i_p}:v]trim=start={ti:.3f}:duration={2 / FPS:.4f},setpts=PTS-STARTPTS,crop=iw:iw*711/720:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
                  f"fps={FPS},tpad=stop_mode=clone:stop_duration={d_a:.3f},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuv420p[t1i]")
     else:
-        f.append(f"[{i_p}:v]crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
+        f.append(f"[{i_p}:v]crop=iw:iw*711/720:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,"
                  f"setpts=PTS*{d_a / job['intro_fim']:.5f},fps={FPS},trim=duration={d_a:.3f},setpts=PTS-STARTPTS,format=yuv420p[t1i]")
-    f.append(f"[{i_c}:v]split=2[cc1][cc2]")
-    f.append(f"[cc1]trim=0:{T:.3f},setpts=PTS-STARTPTS,crop=720:711:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuv420p[t1c]")
+    # tela_cheia (pedido de 2026-11-19): trechos em segundos do conteúdo já cortado em que a pessoa
+    # do conteúdo não aparece (b-roll). Neles o conteúdo ocupa a tela inteira até a pessoa voltar.
+    cheia = [(float(a), float(b)) for a, b in job.get("tela_cheia", []) if b > T + 0.05]
+    f.append(f"[{i_c}:v]split={3 if cheia else 2}[cc1][cc2]" + ("[cc3]" if cheia else ""))
+    f.append(f"[cc1]trim=0:{T:.3f},setpts=PTS-STARTPTS,crop=iw:iw*711/720:0:0,scale={W}:{FADE_FIM}:flags=lanczos,setsar=1,fps={FPS},format=yuv420p[t1c]")
     f.append("[t1i][t1c]concat=n=2:v=1:a=0,format=yuva420p[t1a]")
     f.append(f"[{i_m}:v]format=gray,split=2[mm1][mm2]")
     f.append(f"[mm1]trim=duration={D:.3f},setpts=PTS-STARTPTS[m1]")
@@ -492,7 +495,7 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
     f.append(f"[c1k][id1]overlay=0:{ID_Y}:eof_action=pass,format=yuv420p[p1]")
     # meio: recorte acima da legenda antiga e do que vaza do outro reator
     # sem zoom (pedido de 2026-11-09): largura inteira, só desce o recorte com moldura.y
-    recorte = f"crop=720:711:0:{mold.get('y', 0)}"
+    recorte = f"crop=iw:iw*711/720:0:{mold.get('y', 0)}*iw/720"
     if trechos:
         y_cont = "3*(" + expr_degrau(trechos, "y", T) + ")"
         fi = expr_rampa(trechos, "fade_ini", T)
@@ -516,10 +519,14 @@ def montar(job: dict, biblioteca: str, saida: str) -> dict:
         f.append("[c2l][fx]overlay=0:0:shortest=1,format=yuv420p[p2]")
     else:
         f.append(f"[c2][ll]overlay=0:{leg_y}:shortest=1,format=yuv420p[p2]")
+    if cheia:
+        en = "+".join(f"between(t,{max(0.0, a - T):.3f},{b - T:.3f})" for a, b in cheia)
+        f.append(f"[cc3]trim={T:.3f}:{L:.3f},setpts=PTS-STARTPTS,scale={W}:{H}:flags=lanczos,setsar=1,fps={FPS},format=yuv420p[tc]")
+        f.append(f"[p2][tc]overlay=0:0:shortest=1:enable='{en}',format=yuv420p[p2c]")
     f.append(f"[id2a]trim=duration={d_c:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0.1:d=0.15:alpha=1,fade=t=out:st={d_c - 0.15:.3f}:d=0.15:alpha=1[id2]")
     f.append(f"[{i_s}:v]fps={FPS},setsar=1,trim=duration={d_c:.3f},setpts=PTS-STARTPTS[sv0]")
     f.append(f"[sv0][id2]overlay=0:{ID_Y}:shortest=1,format=yuv420p[sv]")
-    f.append("[p1][p2][sv]concat=n=3:v=1:a=0[todo]")
+    f.append(f"[p1][{'p2c' if cheia else 'p2'}][sv]concat=n=3:v=1:a=0[todo]")
     sobe, desce = 2 / FPS, 3 / FPS
     f.append(f"color=white:s={W}x{H}:r={FPS}:d={sobe + desce:.4f},format=yuva420p,"
              f"fade=t=in:st=0:d={sobe:.4f}:alpha=1,fade=t=out:st={sobe:.4f}:d={desce:.4f}:alpha=1,"
