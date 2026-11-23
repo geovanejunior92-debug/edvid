@@ -19,7 +19,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H = 2160, 3840
 FPS = 30
@@ -295,7 +295,15 @@ def camada_legenda(grupos, total: float, tmp: str) -> str:
 
 def identificacao(destino: str) -> None:
     """Nome e registro, discretos, só nos trechos em que o médico fala."""
-    im = Image.new("RGBA", (W, 240), (0, 0, 0, 0))
+    # sombra suave por baixo (2026-11-22): sem ela, o texto branco some em camisa clara ou teclado
+    sombra = Image.new("RGBA", (W, 240), (0, 0, 0, 0))
+    ds = ImageDraw.Draw(sombra)
+    for y, txt, tam in ((70, ID_NOME, 66), (156, ID_REG, 50)):
+        ds.text((W / 2, y + 3), txt, font=ImageFont.truetype(str(FONTE_ID), tam), fill=(0, 0, 0, 255),
+                anchor="mm", stroke_width=6, stroke_fill=(0, 0, 0, 255))
+    sombra = sombra.filter(ImageFilter.GaussianBlur(10))
+    sombra.putalpha(sombra.getchannel("A").point(lambda v: int(v * 0.6)))
+    im = sombra
     d = ImageDraw.Draw(im)
     for y, txt, tam in ((70, ID_NOME, 66), (156, ID_REG, 50)):
         f = ImageFont.truetype(str(FONTE_ID), tam)
