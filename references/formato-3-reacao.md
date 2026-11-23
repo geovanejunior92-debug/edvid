@@ -29,7 +29,7 @@ Estrutura: gancho curto, no máximo uma frase de contexto, uma chamada para salv
 
 - A legenda chama para o vídeo e não resume o conteúdo. Lista só quando ela é o valor do post.
 - Evitar "segundo ele", "no vídeo" e "essa é a tese dele".
-- Tese discutível: não resumir. Perguntar o que a pessoa achou e manter uma frase de cuidado, como levar a dúvida à consulta.
+- Tese discutível: não resumir. Perguntar o que a pessoa achou, sem frase de cuidado ("leve a dúvida à consulta", "fale com seu médico"): pedido dele em 2026-11-22.
 - Preferir "canetinha" ou "caneta" a nome comercial no texto.
 - Conferir em um quadro se quem fala é homem ou mulher antes de usar ele ou ela.
 - Passar pelo `humanizer` e não inventar fato, número ou nome.
