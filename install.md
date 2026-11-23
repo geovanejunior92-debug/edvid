@@ -32,6 +32,11 @@ editing, read `SKILL.md`. Always read `helpers/` — that's where the scripts li
 3. `ffmpeg` + `ffprobe` on PATH — Phase 1 cannot run without them.
 4. **Node.js 18+** and the `remotion-best-practices` skill — Phase 2 only. The
    installer fetches that skill too.
+5. **Detector de olho e boca (opcional, recomendado):** `uv sync --extra visual`
+   instala o `face-alignment` (modelo de ~91 MB baixado no primeiro uso). Sem ele,
+   `cover.py` escolhe capa sem medir olho e boca e `shot_check.py` cai na detecção
+   Haar, mais grosseira. Nesta máquina está instalado desde 2026-11-23. Num `uv sync`
+   sem o extra ele é removido: rode sempre `uv sync --extra visual`.
 **No key is part of the install.** WhisperX transcribes locally, and Phase 1 needs
 nothing else. Phase 2/3 have a few optional keys for illustrative images and the
 AI soundtrack; they live in the track reference and are asked for only when the

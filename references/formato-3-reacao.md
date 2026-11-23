@@ -34,7 +34,7 @@ Estrutura: gancho curto, no máximo uma frase de contexto, uma chamada para salv
 - Conferir em um quadro se quem fala é homem ou mulher antes de usar ele ou ela.
 - Passar pelo `humanizer` e não inventar fato, número ou nome.
 
-No TikTok, somar `#fy #viral #fyp`. A capa precisa mostrar o Dr. Geovane de olhos abertos e sem careta.
+No TikTok, somar `#fy #viral #fyp`. A capa precisa mostrar o Dr. Geovane de olhos abertos e sem careta. Escolher o quadro enquanto o cartão de aspas está na tela (antes do clarão, ~0 a 2,1 s) e medir com `cover.Eyes().medir()` sobre a metade de baixo: olho ≥ 95% da mediana do trecho e a menor abertura de boca (alvo < 0,08). Depois do clarão a boca fecha, mas as aspas já sumiram.
 
 ## Como montar
 ```bash
